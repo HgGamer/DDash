@@ -1,0 +1,41 @@
+appId: com.dash.app
+productName: Dash
+copyright: Copyright © 2026 Dash
+directories:
+  output: release/${version}
+  buildResources: build
+files:
+  - out/**/*
+  - package.json
+asarUnpack:
+  - "**/node_modules/node-pty/**/*"
+mac:
+  target:
+    - target: dmg
+      arch:
+        - arm64
+        - x64
+  category: public.app-category.developer-tools
+  artifactName: ${productName}-${version}-${arch}.${ext}
+  hardenedRuntime: true
+  gatekeeperAssess: false
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  artifactName: ${productName}-${version}-setup.${ext}
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  shortcutName: Dash
+linux:
+  target:
+    - target: AppImage
+      arch:
+        - x64
+    - target: deb
+      arch:
+        - x64
+  category: Development
+  artifactName: ${productName}-${version}-${arch}.${ext}
