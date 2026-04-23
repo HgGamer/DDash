@@ -2,11 +2,15 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import {
   DEFAULT_APP_STATE,
+  DEFAULT_GIT_VIEW_SETTINGS,
   DEFAULT_NOTIFICATION_SETTINGS,
   DEFAULT_TERMINAL_STYLE,
+  GIT_VIEW_MAX_WIDTH,
+  GIT_VIEW_MIN_WIDTH,
   TERMINAL_STYLE_PRESET_IDS,
   type ActiveSelection,
   type AppState,
+  type GitViewSettings,
   type NotificationSettings,
   type Project,
   type TerminalStyleSettings,
@@ -127,6 +131,7 @@ export class JsonStore {
       window: { ...base.window, ...((r.window as object) ?? {}) },
       terminalStyle: migrateTerminalStyle(r.terminalStyle),
       notifications: migrateNotifications(r.notifications),
+      gitView: migrateGitView(r.gitView),
     };
   }
 }
@@ -223,6 +228,21 @@ function migrateTerminalStyle(raw: unknown): TerminalStyleSettings {
   if (typeof r.customStyleName === 'string') out.customStyleName = r.customStyleName;
   if (r.overrides && typeof r.overrides === 'object') out.overrides = r.overrides;
   return out;
+}
+
+function migrateGitView(raw: unknown): GitViewSettings {
+  if (!raw || typeof raw !== 'object') return { ...DEFAULT_GIT_VIEW_SETTINGS };
+  const r = raw as Partial<GitViewSettings>;
+  const panelWidth =
+    typeof r.panelWidth === 'number' && Number.isFinite(r.panelWidth)
+      ? Math.min(GIT_VIEW_MAX_WIDTH, Math.max(GIT_VIEW_MIN_WIDTH, Math.round(r.panelWidth)))
+      : DEFAULT_GIT_VIEW_SETTINGS.panelWidth;
+  return {
+    version: 1,
+    enabled: typeof r.enabled === 'boolean' ? r.enabled : DEFAULT_GIT_VIEW_SETTINGS.enabled,
+    expanded: typeof r.expanded === 'boolean' ? r.expanded : DEFAULT_GIT_VIEW_SETTINGS.expanded,
+    panelWidth,
+  };
 }
 
 function migrateNotifications(raw: unknown): NotificationSettings {

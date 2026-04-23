@@ -1,5 +1,6 @@
 import type {
   ActiveSelection,
+  GitViewSettings,
   NotificationSettings,
   Project,
   PtySpawnResult,
@@ -8,6 +9,13 @@ import type {
   TerminalStyleSettings,
   Worktree,
 } from './types';
+import type {
+  GitBranch,
+  GitChangedEvent,
+  GitCommit,
+  GitOperationResult,
+  GitStatus,
+} from './git';
 
 export const IPC = {
   // Project registry (renderer → main, request/response)
@@ -51,6 +59,28 @@ export const IPC = {
   // Attention / system notifications (renderer → main)
   NotifyAttention: 'notify:attention',
   NotifyAttentionClear: 'notify:attentionClear',
+
+  // Git view (renderer ↔ main)
+  GitIsRepo: 'git:isRepo',
+  GitStatus: 'git:status',
+  GitLog: 'git:log',
+  GitBranches: 'git:branches',
+  GitStage: 'git:stage',
+  GitUnstage: 'git:unstage',
+  GitCommit: 'git:commit',
+  GitPush: 'git:push',
+  GitCheckout: 'git:checkout',
+  GitCreateBranch: 'git:createBranch',
+  GitDiff: 'git:diff',
+  GitDiscard: 'git:discard',
+  GitSubscribe: 'git:subscribe',
+  GitUnsubscribe: 'git:unsubscribe',
+  GitChanged: 'git:changed',
+
+  // Git-view settings (renderer ↔ main)
+  SettingsGetGitView: 'settings:getGitView',
+  SettingsSetGitView: 'settings:setGitView',
+  SettingsGitViewChanged: 'settings:gitViewChanged',
 
   // Menu/shortcut events (main → renderer)
   MenuAddProject: 'menu:addProject',
@@ -168,6 +198,75 @@ export interface WorktreeReconcileEntry {
   status: 'present' | 'missing';
 }
 
+// Git view IPC payloads --------------------------------------------------
+
+/** Addresses a project primary tree OR one of its worktrees — the main
+ *  process resolves it to an absolute `cwd` for git operations. */
+export interface GitTabRef {
+  projectId: string;
+  worktreeId?: string | null;
+}
+
+export type GitIsRepoResult =
+  | { ok: true; cwd: string }
+  | { ok: false; reason: 'not-a-repo' | 'git-missing' | 'tab-missing' };
+
+export type GitStatusResult =
+  | { ok: true; status: GitStatus }
+  | { ok: false; reason: 'not-a-repo' | 'git-missing' | 'tab-missing'; stderr?: string };
+
+export interface GitLogArgs extends GitTabRef {
+  /** Max commits to return. Defaults to 500 in the main process. */
+  limit?: number;
+}
+
+export type GitLogResult =
+  | { ok: true; commits: GitCommit[] }
+  | { ok: false; reason: 'not-a-repo' | 'git-missing' | 'tab-missing'; stderr?: string };
+
+export type GitBranchesResult =
+  | { ok: true; branches: GitBranch[] }
+  | { ok: false; reason: 'not-a-repo' | 'git-missing' | 'tab-missing'; stderr?: string };
+
+export interface GitStagePathsArgs extends GitTabRef {
+  paths: string[];
+}
+
+export interface GitCommitArgs extends GitTabRef {
+  subject: string;
+  description?: string;
+}
+
+export interface GitCheckoutArgs extends GitTabRef {
+  branch: string;
+}
+
+export interface GitCreateBranchArgs extends GitTabRef {
+  name: string;
+}
+
+export interface GitDiffArgs extends GitTabRef {
+  path: string;
+  /**
+   * 'staged'    — diffs the index against HEAD
+   * 'unstaged'  — diffs the worktree against the index
+   * 'untracked' — treats the file as all-new (diff vs /dev/null)
+   */
+  stage: 'staged' | 'unstaged' | 'untracked';
+}
+
+export interface GitDiscardArgs extends GitTabRef {
+  paths: string[];
+  /** 'tracked' restores from HEAD; 'untracked' deletes the files from disk. */
+  kind: 'tracked' | 'untracked';
+}
+
+export type GitDiffResult =
+  | { ok: true; diff: string; binary: boolean }
+  | { ok: false; reason: 'not-a-repo' | 'git-missing' | 'tab-missing'; stderr?: string };
+
+export type { GitChangedEvent, GitOperationResult };
+
 // The typed API exposed on window.api via contextBridge.
 export interface DashApi {
   projects: {
@@ -209,10 +308,30 @@ export interface DashApi {
       patch: Partial<Omit<NotificationSettings, 'version'>>,
     ): Promise<NotificationSettings>;
     onNotificationsChanged(handler: (s: NotificationSettings) => void): () => void;
+    getGitView(): Promise<GitViewSettings>;
+    setGitView(patch: Partial<Omit<GitViewSettings, 'version'>>): Promise<GitViewSettings>;
+    onGitViewChanged(handler: (s: GitViewSettings) => void): () => void;
   };
   notify: {
     attention(args: NotifyAttentionArgs): void;
     attentionClear(key: string): void;
+  };
+  git: {
+    isRepo(args: GitTabRef): Promise<GitIsRepoResult>;
+    status(args: GitTabRef): Promise<GitStatusResult>;
+    log(args: GitLogArgs): Promise<GitLogResult>;
+    branches(args: GitTabRef): Promise<GitBranchesResult>;
+    stage(args: GitStagePathsArgs): Promise<GitOperationResult>;
+    unstage(args: GitStagePathsArgs): Promise<GitOperationResult>;
+    commit(args: GitCommitArgs): Promise<GitOperationResult>;
+    push(args: GitTabRef): Promise<GitOperationResult>;
+    checkout(args: GitCheckoutArgs): Promise<GitOperationResult>;
+    createBranch(args: GitCreateBranchArgs): Promise<GitOperationResult>;
+    diff(args: GitDiffArgs): Promise<GitDiffResult>;
+    discard(args: GitDiscardArgs): Promise<GitOperationResult>;
+    subscribe(args: GitTabRef): Promise<void>;
+    unsubscribe(args: GitTabRef): Promise<void>;
+    onChanged(handler: (ev: GitChangedEvent) => void): () => void;
   };
   menu: {
     onAddProject(handler: () => void): () => void;

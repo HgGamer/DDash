@@ -33,7 +33,7 @@ const CURSOR_STYLES: Array<{ id: TerminalCursorStyle; label: string }> = [
   { id: 'bar', label: 'Bar' },
 ];
 
-type TabId = 'terminal' | 'notifications';
+type TabId = 'terminal' | 'notifications' | 'git';
 
 export function SettingsModal({ onClose }: { onClose: () => void }) {
   const tab = useStore((s) => s.settingsModalTab);
@@ -74,9 +74,21 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
           >
             Notifications
           </button>
+          <button
+            className={`settings-nav-item${tab === 'git' ? ' active' : ''}`}
+            onClick={() => setTab('git')}
+          >
+            Git
+          </button>
         </nav>
         <div className="settings-body">
-          {tab === 'terminal' ? <TerminalPanel /> : <NotificationsPanel />}
+          {tab === 'terminal' ? (
+            <TerminalPanel />
+          ) : tab === 'notifications' ? (
+            <NotificationsPanel />
+          ) : (
+            <GitPanel />
+          )}
           <div className="modal-actions">
             <button onClick={onClose}>Done</button>
           </div>
@@ -245,6 +257,31 @@ function TerminalPanel() {
             }}
           />
         </div>
+      </section>
+    </div>
+  );
+}
+
+function GitPanel() {
+  const gv = useStore((s) => s.gitView);
+  return (
+    <div className="settings-panel">
+      <section>
+        <h4>Git view</h4>
+        <div className="field-row">
+          <label className="field-label">
+            Show the Git view panel alongside the terminal
+          </label>
+          <input
+            type="checkbox"
+            checked={gv.enabled}
+            onChange={(e) => void window.api.settings.setGitView({ enabled: e.target.checked })}
+          />
+        </div>
+        <p className="preset-desc">
+          When off, the Git toggle button and panel are hidden. Turn this off to reclaim the
+          window width for the terminal.
+        </p>
       </section>
     </div>
   );

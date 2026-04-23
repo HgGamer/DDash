@@ -152,6 +152,26 @@ export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
   systemNotifications: true,
 };
 
+export interface GitViewSettings {
+  version: 1;
+  /** Feature flag — when false, the git view button and panel are hidden. */
+  enabled: boolean;
+  /** Whether the panel is expanded. Persisted globally, not per-tab. */
+  expanded: boolean;
+  /** Width in pixels of the expanded panel. */
+  panelWidth: number;
+}
+
+export const DEFAULT_GIT_VIEW_SETTINGS: GitViewSettings = {
+  version: 1,
+  enabled: true,
+  expanded: false,
+  panelWidth: 360,
+};
+
+export const GIT_VIEW_MIN_WIDTH = 240;
+export const GIT_VIEW_MAX_WIDTH = 720;
+
 export interface ActiveSelection {
   projectId: string;
   worktreeId: string | null;
@@ -164,6 +184,7 @@ export interface AppState {
   window: WindowState;
   terminalStyle: TerminalStyleSettings;
   notifications: NotificationSettings;
+  gitView: GitViewSettings;
 }
 
 export const DEFAULT_WINDOW_STATE: WindowState = {
@@ -181,6 +202,7 @@ export const DEFAULT_APP_STATE: AppState = {
   window: DEFAULT_WINDOW_STATE,
   terminalStyle: DEFAULT_TERMINAL_STYLE,
   notifications: DEFAULT_NOTIFICATION_SETTINGS,
+  gitView: DEFAULT_GIT_VIEW_SETTINGS,
 };
 
 export type PtySessionStatus = 'not-started' | 'running' | 'exited';

@@ -3,6 +3,7 @@ import { Sidebar } from './components/Sidebar';
 import { Workspace } from './components/Workspace';
 import { SettingsModal } from './components/SettingsModal';
 import { NewWorktreeModal } from './components/NewWorktreeModal';
+import { StatusBar } from './components/StatusBar';
 import { useStore } from './store';
 import { compositeKey } from '@shared/ipc';
 import type { ActiveSelection, Project } from '@shared/types';
@@ -18,6 +19,7 @@ export function App() {
     clearProjectAndWorktrees,
     setTerminalStyle,
     setNotifications,
+    setGitView,
     openSettings,
     closeSettings,
     settingsModalOpen,
@@ -97,6 +99,15 @@ export function App() {
     const off = window.api.settings.onNotificationsChanged((s) => setNotifications(s));
     return () => off();
   }, [setNotifications]);
+
+  useEffect(() => {
+    void (async () => {
+      const current = await window.api.settings.getGitView();
+      setGitView(current);
+    })();
+    const off = window.api.settings.onGitViewChanged((s) => setGitView(s));
+    return () => off();
+  }, [setGitView]);
 
   // PTY events.
   useEffect(() => {
@@ -197,17 +208,20 @@ export function App() {
 
   return (
     <div className="app">
-      <Sidebar
-        activeId={activeId}
-        onActivate={activate}
-        onAddProject={addProject}
-        onRefresh={refreshProjects}
-        onNewWorktree={(projectId) => {
-          const p = projects.find((pp) => pp.id === projectId);
-          if (p) setNewWorktreeFor(p);
-        }}
-      />
-      <Workspace activeId={activeId} />
+      <div className="app-body">
+        <Sidebar
+          activeId={activeId}
+          onActivate={activate}
+          onAddProject={addProject}
+          onRefresh={refreshProjects}
+          onNewWorktree={(projectId) => {
+            const p = projects.find((pp) => pp.id === projectId);
+            if (p) setNewWorktreeFor(p);
+          }}
+        />
+        <Workspace activeId={activeId} />
+      </div>
+      <StatusBar />
       {settingsModalOpen && <SettingsModal onClose={closeSettings} />}
       {newWorktreeFor && (
         <NewWorktreeModal

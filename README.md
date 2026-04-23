@@ -62,6 +62,18 @@ test/           Vitest unit tests
 openspec/       Specification and change history
 ```
 
+## Git view
+
+Each tab has a collapsible **Git view** panel on the right that reflects the active project's (or worktree's) repository:
+
+- Status: staged / unstaged / untracked files with click-to-stage and per-file diff preview.
+- Commit: subject + optional description.
+- Branches: switch, create new from HEAD (disabled on worktree tabs — each worktree is pinned to its branch).
+- Push to the tracked upstream; errors surface inline, including the "no upstream" case.
+- Commit history (up to ~500 commits) with HEAD and branch-tip markers.
+
+Toggle with the **Git** button in the terminal's top-right. Turn the whole feature off under **Settings → Git** if you want to reclaim the window width. The view relies on the system `git` binary being on `PATH`.
+
 ## Keyboard shortcuts
 
 | Action             | macOS              | Win/Linux          |

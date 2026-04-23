@@ -2,6 +2,15 @@ import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
 import {
   IPC,
   type DashApi,
+  type GitCheckoutArgs,
+  type GitChangedEvent,
+  type GitCommitArgs,
+  type GitCreateBranchArgs,
+  type GitDiffArgs,
+  type GitDiscardArgs,
+  type GitLogArgs,
+  type GitStagePathsArgs,
+  type GitTabRef,
   type ProjectAddArgs,
   type ProjectRenameArgs,
   type ProjectReorderArgs,
@@ -18,6 +27,7 @@ import {
 } from '@shared/ipc';
 import type {
   ActiveSelection,
+  GitViewSettings,
   NotificationSettings,
   TerminalStyleOptions,
   TerminalStylePreset,
@@ -74,6 +84,27 @@ const api: DashApi = {
       ipcRenderer.invoke(IPC.SettingsSetNotifications, patch),
     onNotificationsChanged: (h) =>
       subscribe<NotificationSettings>(IPC.SettingsNotificationsChanged, h),
+    getGitView: () => ipcRenderer.invoke(IPC.SettingsGetGitView),
+    setGitView: (patch: Partial<Omit<GitViewSettings, 'version'>>) =>
+      ipcRenderer.invoke(IPC.SettingsSetGitView, patch),
+    onGitViewChanged: (h) => subscribe<GitViewSettings>(IPC.SettingsGitViewChanged, h),
+  },
+  git: {
+    isRepo: (args: GitTabRef) => ipcRenderer.invoke(IPC.GitIsRepo, args),
+    status: (args: GitTabRef) => ipcRenderer.invoke(IPC.GitStatus, args),
+    log: (args: GitLogArgs) => ipcRenderer.invoke(IPC.GitLog, args),
+    branches: (args: GitTabRef) => ipcRenderer.invoke(IPC.GitBranches, args),
+    stage: (args: GitStagePathsArgs) => ipcRenderer.invoke(IPC.GitStage, args),
+    unstage: (args: GitStagePathsArgs) => ipcRenderer.invoke(IPC.GitUnstage, args),
+    commit: (args: GitCommitArgs) => ipcRenderer.invoke(IPC.GitCommit, args),
+    push: (args: GitTabRef) => ipcRenderer.invoke(IPC.GitPush, args),
+    checkout: (args: GitCheckoutArgs) => ipcRenderer.invoke(IPC.GitCheckout, args),
+    createBranch: (args: GitCreateBranchArgs) => ipcRenderer.invoke(IPC.GitCreateBranch, args),
+    diff: (args: GitDiffArgs) => ipcRenderer.invoke(IPC.GitDiff, args),
+    discard: (args: GitDiscardArgs) => ipcRenderer.invoke(IPC.GitDiscard, args),
+    subscribe: (args: GitTabRef) => ipcRenderer.invoke(IPC.GitSubscribe, args),
+    unsubscribe: (args: GitTabRef) => ipcRenderer.invoke(IPC.GitUnsubscribe, args),
+    onChanged: (h) => subscribe<GitChangedEvent>(IPC.GitChanged, h),
   },
   notify: {
     attention: (args: NotifyAttentionArgs) => ipcRenderer.send(IPC.NotifyAttention, args),

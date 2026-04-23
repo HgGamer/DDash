@@ -1,13 +1,17 @@
 import { EventEmitter } from 'node:events';
 import type {
+  GitViewSettings,
   NotificationSettings,
   TerminalStyleOptions,
   TerminalStylePreset,
   TerminalStyleSettings,
 } from '@shared/types';
 import {
+  DEFAULT_GIT_VIEW_SETTINGS,
   DEFAULT_NOTIFICATION_SETTINGS,
   DEFAULT_TERMINAL_STYLE,
+  GIT_VIEW_MAX_WIDTH,
+  GIT_VIEW_MIN_WIDTH,
   TERMINAL_STYLE_PRESET_IDS,
 } from '@shared/types';
 import type { JsonStore } from './store';
@@ -15,6 +19,7 @@ import type { JsonStore } from './store';
 export interface SettingsManagerEvents {
   terminalStyleChanged: (settings: TerminalStyleSettings) => void;
   notificationsChanged: (settings: NotificationSettings) => void;
+  gitViewChanged: (settings: GitViewSettings) => void;
 }
 
 export class SettingsManager extends EventEmitter {
@@ -39,6 +44,7 @@ export class SettingsManager extends EventEmitter {
     const out: TerminalStyleSettings = { version: 1, preset: raw.preset };
     if (raw.customStyle) out.customStyle = raw.customStyle;
     if (raw.customStyleName) out.customStyleName = raw.customStyleName;
+    if (raw.overrides && Object.keys(raw.overrides).length > 0) out.overrides = raw.overrides;
     return out;
   }
 
@@ -112,6 +118,29 @@ export class SettingsManager extends EventEmitter {
       draft.notifications = next;
     });
     this.emit('notificationsChanged', next);
+    return next;
+  }
+
+  getGitView(): GitViewSettings {
+    const raw = this.store.get().gitView;
+    if (!raw) return { ...DEFAULT_GIT_VIEW_SETTINGS };
+    return { ...raw };
+  }
+
+  setGitView(patch: Partial<Omit<GitViewSettings, 'version'>>): GitViewSettings {
+    const current = this.getGitView();
+    let panelWidth = patch.panelWidth ?? current.panelWidth;
+    panelWidth = Math.min(GIT_VIEW_MAX_WIDTH, Math.max(GIT_VIEW_MIN_WIDTH, Math.round(panelWidth)));
+    const next: GitViewSettings = {
+      version: 1,
+      enabled: patch.enabled ?? current.enabled,
+      expanded: patch.expanded ?? current.expanded,
+      panelWidth,
+    };
+    this.store.update((draft) => {
+      draft.gitView = next;
+    });
+    this.emit('gitViewChanged', next);
     return next;
   }
 }

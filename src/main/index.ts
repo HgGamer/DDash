@@ -4,6 +4,7 @@ import { JsonStore } from './store';
 import { ProjectRegistry } from './registry';
 import { PtySessionManager } from './pty-session';
 import { registerIpc } from './ipc';
+import { registerGitIpc } from './git-ipc';
 import { installAppMenu } from './menu';
 import { SettingsManager } from './settings';
 import { attachWindowStatePersistence } from './window-state';
@@ -78,6 +79,7 @@ app.whenReady().then(async () => {
   const settings = new SettingsManager(store);
 
   registerIpc({ store, registry, ptyManager, settings, getWindow: () => mainWindow });
+  registerGitIpc({ registry, getWindow: () => mainWindow });
   installAppMenu(() => mainWindow);
 
   await createWindow();

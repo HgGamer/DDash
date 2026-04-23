@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type {
   ActiveSelection,
+  GitViewSettings,
   NotificationSettings,
   Project,
   PtySessionStatus,
@@ -8,7 +9,7 @@ import type {
   TerminalStyleSettings,
   Worktree,
 } from '@shared/types';
-import { DEFAULT_NOTIFICATION_SETTINGS } from '@shared/types';
+import { DEFAULT_GIT_VIEW_SETTINGS, DEFAULT_NOTIFICATION_SETTINGS } from '@shared/types';
 import { compositeKey } from '@shared/ipc';
 
 export interface TabState {
@@ -21,6 +22,15 @@ export interface TabState {
   needsAttention?: boolean;
 }
 
+/** When set, the main workspace area shows a diff view instead of the
+ *  terminal. Cleared on active-tab change. */
+export interface GitDiffSelection {
+  projectId: string;
+  worktreeId: string | null;
+  path: string;
+  stage: 'staged' | 'unstaged' | 'untracked';
+}
+
 interface AppStore {
   projects: Project[];
   activeId: ActiveSelection | null;
@@ -30,8 +40,10 @@ interface AppStore {
   loaded: boolean;
   terminalStyle: TerminalStyleSettings;
   notifications: NotificationSettings;
+  gitView: GitViewSettings;
+  gitDiff: GitDiffSelection | null;
   settingsModalOpen: boolean;
-  settingsModalTab: 'terminal' | 'notifications';
+  settingsModalTab: 'terminal' | 'notifications' | 'git';
 
   setProjects: (projects: Project[]) => void;
   setActive: (active: ActiveSelection | null) => void;
@@ -41,7 +53,10 @@ interface AppStore {
   clearProjectAndWorktrees: (projectId: string) => void;
   setTerminalStyle: (s: TerminalStyleSettings) => void;
   setNotifications: (s: NotificationSettings) => void;
-  openSettings: (tab?: 'terminal' | 'notifications') => void;
+  setGitView: (s: GitViewSettings) => void;
+  openDiff: (sel: GitDiffSelection) => void;
+  closeDiff: () => void;
+  openSettings: (tab?: 'terminal' | 'notifications' | 'git') => void;
   closeSettings: () => void;
 }
 
@@ -53,6 +68,8 @@ export const useStore = create<AppStore>((set) => ({
   loaded: false,
   terminalStyle: { version: 1, preset: 'dash-dark' },
   notifications: { ...DEFAULT_NOTIFICATION_SETTINGS },
+  gitView: { ...DEFAULT_GIT_VIEW_SETTINGS },
+  gitDiff: null,
   settingsModalOpen: false,
   settingsModalTab: 'terminal',
 
@@ -70,6 +87,8 @@ export const useStore = create<AppStore>((set) => ({
         mountedKeys:
           key && !s.mountedKeys.includes(key) ? [...s.mountedKeys, key] : s.mountedKeys,
         tabs,
+        // Any open diff belongs to the previously active tab; discard it.
+        gitDiff: null,
       };
     }),
   ensureMounted: (key) =>
@@ -105,6 +124,9 @@ export const useStore = create<AppStore>((set) => ({
     }),
   setTerminalStyle: (s) => set({ terminalStyle: s }),
   setNotifications: (s) => set({ notifications: s }),
+  setGitView: (s) => set({ gitView: s }),
+  openDiff: (sel) => set({ gitDiff: sel }),
+  closeDiff: () => set({ gitDiff: null }),
   openSettings: (tab) =>
     set((s) => ({ settingsModalOpen: true, settingsModalTab: tab ?? s.settingsModalTab })),
   closeSettings: () => set({ settingsModalOpen: false }),

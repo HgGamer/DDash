@@ -29,6 +29,7 @@ import type { JsonStore } from './store';
 import type { SettingsManager } from './settings';
 import type {
   ActiveSelection,
+  GitViewSettings,
   NotificationSettings,
   TerminalStyleOptions,
   TerminalStylePreset,
@@ -370,6 +371,23 @@ export function registerIpc(args: {
 
   settings.on('notificationsChanged', (s: NotificationSettings) => {
     send(IPC.SettingsNotificationsChanged, s);
+  });
+
+  ipcMain.handle(IPC.SettingsGetGitView, async (): Promise<GitViewSettings> => {
+    return settings.getGitView();
+  });
+
+  ipcMain.handle(
+    IPC.SettingsSetGitView,
+    async (_e, patch: Partial<Omit<GitViewSettings, 'version'>>): Promise<GitViewSettings> => {
+      const next = settings.setGitView(patch);
+      await store.flush();
+      return next;
+    },
+  );
+
+  settings.on('gitViewChanged', (s: GitViewSettings) => {
+    send(IPC.SettingsGitViewChanged, s);
   });
 
   ipcMain.handle(IPC.SettingsBrowseTerminalStyle, async (): Promise<BrowseTerminalStyleResult> => {
