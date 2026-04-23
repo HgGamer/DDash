@@ -10,6 +10,10 @@ export interface TabState {
   status: PtySessionStatus;
   error?: PtySpawnError;
   exitCode?: number | null;
+  /** Set when the PTY rings the terminal bell (BEL) while the tab is not
+   * active — typically Claude asking for a permission/confirmation. Cleared
+   * when the tab becomes active. */
+  needsAttention?: boolean;
 }
 
 interface AppStore {
@@ -42,10 +46,18 @@ export const useStore = create<AppStore>((set) => ({
 
   setProjects: (projects) => set({ projects, loaded: true }),
   setActive: (id) =>
-    set((s) => ({
-      activeId: id,
-      mountedIds: id && !s.mountedIds.includes(id) ? [...s.mountedIds, id] : s.mountedIds,
-    })),
+    set((s) => {
+      let tabs = s.tabs;
+      if (id && s.tabs[id]?.needsAttention) {
+        tabs = { ...s.tabs, [id]: { ...s.tabs[id], needsAttention: false } };
+        window.api.notify.attentionClear(id);
+      }
+      return {
+        activeId: id,
+        mountedIds: id && !s.mountedIds.includes(id) ? [...s.mountedIds, id] : s.mountedIds,
+        tabs,
+      };
+    }),
   ensureMounted: (id) =>
     set((s) => ({
       mountedIds: s.mountedIds.includes(id) ? s.mountedIds : [...s.mountedIds, id],
@@ -57,6 +69,7 @@ export const useStore = create<AppStore>((set) => ({
     }),
   clearTab: (id) =>
     set((s) => {
+      if (s.tabs[id]?.needsAttention) window.api.notify.attentionClear(id);
       const { [id]: _omit, ...rest } = s.tabs;
       return { tabs: rest, mountedIds: s.mountedIds.filter((m) => m !== id) };
     }),

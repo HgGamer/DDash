@@ -144,6 +144,29 @@ button:hover {
   background: var(--fg-muted);
   opacity: 0.5;
 }
+.project-row.needs-attention {
+  animation: row-pulse 1.4s ease-in-out infinite;
+}
+.project-row.needs-attention .status-dot {
+  background: var(--warn);
+  opacity: 1;
+}
+@keyframes row-pulse {
+  0%,
+  100% {
+    background: rgba(224, 175, 104, 0.12);
+    box-shadow: inset 2px 0 0 var(--warn);
+  }
+  50% {
+    background: rgba(224, 175, 104, 0.28);
+    box-shadow: inset 2px 0 0 var(--warn);
+  }
+}
+/* Active tab shouldn't pulse — user is looking at it. setActive() clears
+   the flag anyway; this is belt-and-suspenders for race conditions. */
+.project-row.active.needs-attention {
+  animation: none;
+}
 
 .workspace {
   flex: 1;

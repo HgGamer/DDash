@@ -11,6 +11,14 @@ interface Props {
   active: boolean;
 }
 
+// Markers that indicate Claude's TUI is awaiting user input:
+//   • "ask me something" — input placeholder shown when idle after a response
+//   • "Do you want to" — permission / confirmation prompts
+//   • "❯ 1. Yes" — numbered-choice menus (yes/no and similar)
+// We scan the rendered buffer (not raw PTY bytes) so ANSI/cursor-movement
+// noise is already resolved to plain text.
+const CLAUDE_PROMPT_RE = /ask me something|Do you want to|❯\s*\d+\.\s/;
+
 export function TerminalPane({ project, active }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
@@ -57,6 +65,35 @@ export function TerminalPane({ project, active }: Props) {
     });
     const disposeResize = term.onResize(({ cols, rows }) => {
       window.api.pty.resize({ projectId: project.id, cols, rows });
+    });
+
+    // Detect "Claude is waiting for user input" by scanning the rendered
+    // xterm buffer for Claude's idle/permission prompt markers. Runs ~150ms
+    // after each data burst so we inspect the settled frame, not a partial
+    // repaint. We skip the scan when the tab is active (the user is already
+    // looking at it) — and `setActive` clears the flag on focus.
+    let scanTimer: ReturnType<typeof setTimeout> | null = null;
+    const scanForPrompt = () => {
+      scanTimer = null;
+      if (useStore.getState().activeId === project.id) return;
+      const buf = term.buffer.active;
+      const startY = Math.max(0, buf.baseY + term.rows - 20);
+      let text = '';
+      for (let y = startY; y < buf.baseY + term.rows; y++) {
+        const line = buf.getLine(y);
+        if (line) text += line.translateToString(true) + '\n';
+      }
+      if (CLAUDE_PROMPT_RE.test(text)) {
+        const already = useStore.getState().tabs[project.id]?.needsAttention;
+        useStore.getState().upsertTab(project.id, { needsAttention: true });
+        if (!already) {
+          window.api.notify.attention({ projectId: project.id, projectName: project.name });
+        }
+      }
+    };
+    const disposeWriteParsed = term.onWriteParsed(() => {
+      if (scanTimer) clearTimeout(scanTimer);
+      scanTimer = setTimeout(scanForPrompt, 150);
     });
 
     // Subscribe to this project's PTY output.
@@ -146,6 +183,8 @@ export function TerminalPane({ project, active }: Props) {
       host.removeEventListener('drop', onDrop);
       disposeData.dispose();
       disposeResize.dispose();
+      disposeWriteParsed.dispose();
+      if (scanTimer) clearTimeout(scanTimer);
       offPtyData();
       offPtyExit();
       offPtyErr();

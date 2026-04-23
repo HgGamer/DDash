@@ -27,6 +27,10 @@ export const IPC = {
   SettingsBrowseTerminalStyle: 'settings:browseTerminalStyle',
   SettingsTerminalStyleChanged: 'settings:terminalStyleChanged',
 
+  // Attention / system notifications (renderer → main)
+  NotifyAttention: 'notify:attention',
+  NotifyAttentionClear: 'notify:attentionClear',
+
   // Menu/shortcut events (main → renderer)
   MenuAddProject: 'menu:addProject',
   MenuRemoveActive: 'menu:removeActive',
@@ -90,6 +94,11 @@ export interface PtyErrorEvent {
   error: NonNullable<PtySpawnResult['error']>;
 }
 
+export interface NotifyAttentionArgs {
+  projectId: string;
+  projectName: string;
+}
+
 // The typed API exposed on window.api via contextBridge.
 export interface DashApi {
   projects: {
@@ -115,6 +124,10 @@ export interface DashApi {
     setTerminalStyle(preset: TerminalStylePreset): Promise<TerminalStyleSettings>;
     browseTerminalStyle(): Promise<BrowseTerminalStyleResult>;
     onTerminalStyleChanged(handler: (s: TerminalStyleSettings) => void): () => void;
+  };
+  notify: {
+    attention(args: NotifyAttentionArgs): void;
+    attentionClear(projectId: string): void;
   };
   menu: {
     onAddProject(handler: () => void): () => void;

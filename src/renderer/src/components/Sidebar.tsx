@@ -109,6 +109,7 @@ export function Sidebar({ activeId, onActivate, onAddProject, onRefresh }: Props
                 'project-row',
                 isActive ? 'active' : '',
                 dragOverId === proj.id ? 'drag-over' : '',
+                tab?.needsAttention ? 'needs-attention' : '',
               ]
                 .filter(Boolean)
                 .join(' ')}

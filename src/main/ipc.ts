@@ -1,7 +1,8 @@
-import { BrowserWindow, dialog, ipcMain } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Notification } from 'electron';
 import {
   IPC,
   type BrowseTerminalStyleResult,
+  type NotifyAttentionArgs,
   type ProjectAddArgs,
   type ProjectPickDirectoryResult,
   type ProjectRenameArgs,
@@ -123,6 +124,59 @@ export function registerIpc(args: {
     ptyManager.delete(args.projectId);
     await session.kill();
   });
+
+  // Attention signal from the renderer: Claude in an inactive tab is
+  // waiting for input. We track which projects are waiting so the dock
+  // badge can show a count; we bounce 'critical' so the dock keeps
+  // bouncing until the user focuses Dash (that's when all attention
+  // clears). No notification when the window is focused — redundant.
+  const attention = new Set<string>();
+  const updateBadge = () => {
+    if (process.platform === 'darwin') {
+      app.dock?.setBadge(attention.size > 0 ? String(attention.size) : '');
+    } else {
+      app.setBadgeCount(attention.size);
+    }
+  };
+
+  ipcMain.on(IPC.NotifyAttention, (_e, args: NotifyAttentionArgs) => {
+    const win = getWindow();
+    const focused = !!win && win.isFocused();
+    if (focused) return;
+    const firstTime = !attention.has(args.projectId);
+    attention.add(args.projectId);
+    updateBadge();
+    if (!firstTime) return;
+    if (Notification.isSupported()) {
+      new Notification({
+        title: args.projectName,
+        body: 'Claude is waiting for input.',
+        silent: false,
+      }).show();
+    }
+    // 'critical' bounces until the user activates the app; 'informational'
+    // only bounces once. We want the former — that's the user's ask.
+    if (process.platform === 'darwin') app.dock?.bounce('critical');
+  });
+
+  ipcMain.on(IPC.NotifyAttentionClear, (_e, projectId: string) => {
+    if (!attention.delete(projectId)) return;
+    updateBadge();
+  });
+
+  // Clear everything the moment the user brings Dash forward. The dock
+  // bounce also stops automatically on activation; this just resets the
+  // badge + set so subsequent prompts re-trigger the bounce/notification.
+  const attachFocusClear = (win: BrowserWindow) => {
+    win.on('focus', () => {
+      if (attention.size === 0) return;
+      attention.clear();
+      updateBadge();
+    });
+  };
+  const initialWin = getWindow();
+  if (initialWin) attachFocusClear(initialWin);
+  app.on('browser-window-created', (_e, win) => attachFocusClear(win));
 
   ipcMain.handle(IPC.SettingsGetTerminalStyle, async (): Promise<TerminalStyleSettings> => {
     return settings.getTerminalStyle();

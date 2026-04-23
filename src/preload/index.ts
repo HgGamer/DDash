@@ -12,6 +12,7 @@ import {
   type PtyOpenArgs,
   type PtyResizeArgs,
   type PtyWriteArgs,
+  type NotifyAttentionArgs,
 } from '@shared/ipc';
 import type { TerminalStylePreset, TerminalStyleSettings } from '@shared/types';
 
@@ -47,6 +48,10 @@ const api: DashApi = {
     browseTerminalStyle: () => ipcRenderer.invoke(IPC.SettingsBrowseTerminalStyle),
     onTerminalStyleChanged: (h) =>
       subscribe<TerminalStyleSettings>(IPC.SettingsTerminalStyleChanged, h),
+  },
+  notify: {
+    attention: (args: NotifyAttentionArgs) => ipcRenderer.send(IPC.NotifyAttention, args),
+    attentionClear: (projectId: string) => ipcRenderer.send(IPC.NotifyAttentionClear, projectId),
   },
   menu: {
     onAddProject: (h) => subscribe<void>(IPC.MenuAddProject, () => h()),
