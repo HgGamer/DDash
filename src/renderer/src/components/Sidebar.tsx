@@ -160,6 +160,15 @@ export function Sidebar({ activeId, onActivate, onAddProject, onRefresh, onNewWo
     <aside className="sidebar">
       <div className="sidebar-header">
         <h1>Projects</h1>
+        <button
+          type="button"
+          className="header-add"
+          onClick={onAddProject}
+          title="Add project"
+          aria-label="Add project"
+        >
+          +
+        </button>
       </div>
       <div className="project-list">
         {projects.map((proj) => {
@@ -294,11 +303,6 @@ export function Sidebar({ activeId, onActivate, onAddProject, onRefresh, onNewWo
             </div>
           );
         })}
-      </div>
-      <div style={{ padding: 8, borderTop: '1px solid var(--border)' }}>
-        <button className="btn-add" onClick={onAddProject}>
-          + Add Project
-        </button>
       </div>
       {menu && (
         <ContextMenu

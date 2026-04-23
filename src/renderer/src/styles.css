@@ -113,6 +113,20 @@ button:hover {
   text-transform: uppercase;
   color: var(--fg-muted);
 }
+.sidebar-header .header-add {
+  background: transparent;
+  border: none;
+  color: var(--fg-muted);
+  font-size: 16px;
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.sidebar-header .header-add:hover {
+  color: var(--fg);
+  background: var(--bg-hover, rgba(255, 255, 255, 0.06));
+}
 
 .project-list {
   flex: 1;
