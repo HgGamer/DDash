@@ -172,6 +172,39 @@ export const DEFAULT_GIT_VIEW_SETTINGS: GitViewSettings = {
 export const GIT_VIEW_MIN_WIDTH = 240;
 export const GIT_VIEW_MAX_WIDTH = 720;
 
+export interface IntegratedTerminalSettings {
+  version: 1;
+  /** When false, the statusbar button and dock are hidden. */
+  enabled: boolean;
+  /** Whether the dock is expanded. Global, not per-tab. */
+  expanded: boolean;
+  /** Dock height in pixels. Clamped at render time. */
+  height: number;
+  /** Optional shell override. When unset, resolves from $SHELL / %COMSPEC%. */
+  defaultShell?: string;
+}
+
+export const DEFAULT_INTEGRATED_TERMINAL_SETTINGS: IntegratedTerminalSettings = {
+  version: 1,
+  enabled: true,
+  expanded: false,
+  height: 240,
+};
+
+export const INTEGRATED_TERMINAL_MIN_HEIGHT = 120;
+export const INTEGRATED_TERMINAL_MAX_HEIGHT_RATIO = 0.8;
+
+export interface ShellTab {
+  tabId: string;
+  projectId: string;
+  worktreeId: string | null;
+  cwd: string;
+  shell: string;
+  label: string;
+  startedAt: string;
+  exitCode: number | null;
+}
+
 export interface ActiveSelection {
   projectId: string;
   worktreeId: string | null;
@@ -185,6 +218,7 @@ export interface AppState {
   terminalStyle: TerminalStyleSettings;
   notifications: NotificationSettings;
   gitView: GitViewSettings;
+  integratedTerminal: IntegratedTerminalSettings;
 }
 
 export const DEFAULT_WINDOW_STATE: WindowState = {
@@ -203,6 +237,7 @@ export const DEFAULT_APP_STATE: AppState = {
   terminalStyle: DEFAULT_TERMINAL_STYLE,
   notifications: DEFAULT_NOTIFICATION_SETTINGS,
   gitView: DEFAULT_GIT_VIEW_SETTINGS,
+  integratedTerminal: DEFAULT_INTEGRATED_TERMINAL_SETTINGS,
 };
 
 export type PtySessionStatus = 'not-started' | 'running' | 'exited';

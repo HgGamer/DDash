@@ -33,7 +33,7 @@ const CURSOR_STYLES: Array<{ id: TerminalCursorStyle; label: string }> = [
   { id: 'bar', label: 'Bar' },
 ];
 
-type TabId = 'terminal' | 'notifications' | 'git';
+type TabId = 'terminal' | 'notifications' | 'git' | 'integrated-terminal';
 
 export function SettingsModal({ onClose }: { onClose: () => void }) {
   const tab = useStore((s) => s.settingsModalTab);
@@ -80,12 +80,20 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
           >
             Git
           </button>
+          <button
+            className={`settings-nav-item${tab === 'integrated-terminal' ? ' active' : ''}`}
+            onClick={() => setTab('integrated-terminal')}
+          >
+            Integrated terminal
+          </button>
         </nav>
         <div className="settings-body">
           {tab === 'terminal' ? (
             <TerminalPanel />
           ) : tab === 'notifications' ? (
             <NotificationsPanel />
+          ) : tab === 'integrated-terminal' ? (
+            <IntegratedTerminalPanel />
           ) : (
             <GitPanel />
           )}
@@ -281,6 +289,46 @@ function GitPanel() {
         <p className="preset-desc">
           When off, the Git toggle button and panel are hidden. Turn this off to reclaim the
           window width for the terminal.
+        </p>
+      </section>
+    </div>
+  );
+}
+
+function IntegratedTerminalPanel() {
+  const it = useStore((s) => s.integratedTerminal);
+  return (
+    <div className="settings-panel">
+      <section>
+        <h4>Integrated terminal</h4>
+        <div className="field-row">
+          <label className="field-label">Enable the bottom-docked terminal panel</label>
+          <input
+            type="checkbox"
+            checked={it.enabled}
+            onChange={(e) =>
+              void window.api.settings.setIntegratedTerminal({ enabled: e.target.checked })
+            }
+          />
+        </div>
+        <div className="field-row">
+          <label className="field-label">Default shell</label>
+          <input
+            className="field-input"
+            type="text"
+            value={it.defaultShell ?? ''}
+            placeholder="$SHELL (e.g. /bin/zsh)"
+            onChange={(e) =>
+              void window.api.settings.setIntegratedTerminal({
+                defaultShell: e.target.value || undefined,
+              })
+            }
+          />
+        </div>
+        <p className="preset-desc">
+          Leave blank to use the value of <code>$SHELL</code> (or <code>%COMSPEC%</code> on
+          Windows). Shortcut: <code>Ctrl/Cmd+`</code> toggles the panel;{' '}
+          <code>Ctrl/Cmd+Shift+`</code> opens a new tab.
         </p>
       </section>
     </div>

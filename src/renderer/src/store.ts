@@ -2,14 +2,20 @@ import { create } from 'zustand';
 import type {
   ActiveSelection,
   GitViewSettings,
+  IntegratedTerminalSettings,
   NotificationSettings,
   Project,
   PtySessionStatus,
   PtySpawnError,
+  ShellTab,
   TerminalStyleSettings,
   Worktree,
 } from '@shared/types';
-import { DEFAULT_GIT_VIEW_SETTINGS, DEFAULT_NOTIFICATION_SETTINGS } from '@shared/types';
+import {
+  DEFAULT_GIT_VIEW_SETTINGS,
+  DEFAULT_INTEGRATED_TERMINAL_SETTINGS,
+  DEFAULT_NOTIFICATION_SETTINGS,
+} from '@shared/types';
 import { compositeKey } from '@shared/ipc';
 
 export interface TabState {
@@ -31,6 +37,11 @@ export interface GitDiffSelection {
   stage: 'staged' | 'unstaged' | 'untracked';
 }
 
+export interface ShellTabsEntry {
+  tabs: ShellTab[];
+  activeTabId: string | null;
+}
+
 interface AppStore {
   projects: Project[];
   activeId: ActiveSelection | null;
@@ -41,9 +52,12 @@ interface AppStore {
   terminalStyle: TerminalStyleSettings;
   notifications: NotificationSettings;
   gitView: GitViewSettings;
+  integratedTerminal: IntegratedTerminalSettings;
+  /** Per-selection shell tab state, keyed by compositeKey(projectId, worktreeId). */
+  shellTabs: Record<string, ShellTabsEntry>;
   gitDiff: GitDiffSelection | null;
   settingsModalOpen: boolean;
-  settingsModalTab: 'terminal' | 'notifications' | 'git';
+  settingsModalTab: 'terminal' | 'notifications' | 'git' | 'integrated-terminal';
 
   setProjects: (projects: Project[]) => void;
   setActive: (active: ActiveSelection | null) => void;
@@ -54,9 +68,16 @@ interface AppStore {
   setTerminalStyle: (s: TerminalStyleSettings) => void;
   setNotifications: (s: NotificationSettings) => void;
   setGitView: (s: GitViewSettings) => void;
+  setIntegratedTerminal: (s: IntegratedTerminalSettings) => void;
+  setShellTabsFor: (selectionKey: string, tabs: ShellTab[]) => void;
+  addShellTab: (selectionKey: string, tab: ShellTab) => void;
+  removeShellTab: (selectionKey: string, tabId: string) => void;
+  renameShellTab: (selectionKey: string, tabId: string, label: string) => void;
+  setActiveShellTab: (selectionKey: string, tabId: string | null) => void;
+  recordShellExit: (selectionKey: string, tabId: string, code: number | null) => void;
   openDiff: (sel: GitDiffSelection) => void;
   closeDiff: () => void;
-  openSettings: (tab?: 'terminal' | 'notifications' | 'git') => void;
+  openSettings: (tab?: 'terminal' | 'notifications' | 'git' | 'integrated-terminal') => void;
   closeSettings: () => void;
 }
 
@@ -69,6 +90,8 @@ export const useStore = create<AppStore>((set) => ({
   terminalStyle: { version: 1, preset: 'dash-dark' },
   notifications: { ...DEFAULT_NOTIFICATION_SETTINGS },
   gitView: { ...DEFAULT_GIT_VIEW_SETTINGS },
+  integratedTerminal: { ...DEFAULT_INTEGRATED_TERMINAL_SETTINGS },
+  shellTabs: {},
   gitDiff: null,
   settingsModalOpen: false,
   settingsModalTab: 'terminal',
@@ -117,14 +140,99 @@ export const useStore = create<AppStore>((set) => ({
         }
         tabs[k] = v;
       }
+      const shellTabs: Record<string, ShellTabsEntry> = {};
+      for (const [k, v] of Object.entries(s.shellTabs)) {
+        if (!isMatch(k)) shellTabs[k] = v;
+      }
       return {
         tabs,
         mountedKeys: s.mountedKeys.filter((k) => !isMatch(k)),
+        shellTabs,
       };
     }),
   setTerminalStyle: (s) => set({ terminalStyle: s }),
   setNotifications: (s) => set({ notifications: s }),
   setGitView: (s) => set({ gitView: s }),
+  setIntegratedTerminal: (s) => set({ integratedTerminal: s }),
+  setShellTabsFor: (selectionKey, tabs) =>
+    set((s) => ({
+      shellTabs: {
+        ...s.shellTabs,
+        [selectionKey]: {
+          tabs,
+          activeTabId: s.shellTabs[selectionKey]?.activeTabId
+            ?? (tabs[0]?.tabId ?? null),
+        },
+      },
+    })),
+  addShellTab: (selectionKey, tab) =>
+    set((s) => {
+      const prev = s.shellTabs[selectionKey] ?? { tabs: [], activeTabId: null };
+      return {
+        shellTabs: {
+          ...s.shellTabs,
+          [selectionKey]: {
+            tabs: [...prev.tabs, tab],
+            activeTabId: tab.tabId,
+          },
+        },
+      };
+    }),
+  removeShellTab: (selectionKey, tabId) =>
+    set((s) => {
+      const prev = s.shellTabs[selectionKey];
+      if (!prev) return {};
+      const nextTabs = prev.tabs.filter((t) => t.tabId !== tabId);
+      const wasActive = prev.activeTabId === tabId;
+      return {
+        shellTabs: {
+          ...s.shellTabs,
+          [selectionKey]: {
+            tabs: nextTabs,
+            activeTabId: wasActive ? nextTabs[nextTabs.length - 1]?.tabId ?? null : prev.activeTabId,
+          },
+        },
+      };
+    }),
+  renameShellTab: (selectionKey, tabId, label) =>
+    set((s) => {
+      const prev = s.shellTabs[selectionKey];
+      if (!prev) return {};
+      return {
+        shellTabs: {
+          ...s.shellTabs,
+          [selectionKey]: {
+            ...prev,
+            tabs: prev.tabs.map((t) => (t.tabId === tabId ? { ...t, label } : t)),
+          },
+        },
+      };
+    }),
+  setActiveShellTab: (selectionKey, tabId) =>
+    set((s) => {
+      const prev = s.shellTabs[selectionKey];
+      if (!prev) return {};
+      return {
+        shellTabs: {
+          ...s.shellTabs,
+          [selectionKey]: { ...prev, activeTabId: tabId },
+        },
+      };
+    }),
+  recordShellExit: (selectionKey, tabId, code) =>
+    set((s) => {
+      const prev = s.shellTabs[selectionKey];
+      if (!prev) return {};
+      return {
+        shellTabs: {
+          ...s.shellTabs,
+          [selectionKey]: {
+            ...prev,
+            tabs: prev.tabs.map((t) => (t.tabId === tabId ? { ...t, exitCode: code } : t)),
+          },
+        },
+      };
+    }),
   openDiff: (sel) => set({ gitDiff: sel }),
   closeDiff: () => set({ gitDiff: null }),
   openSettings: (tab) =>

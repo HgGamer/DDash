@@ -1,9 +1,11 @@
 import type {
   ActiveSelection,
   GitViewSettings,
+  IntegratedTerminalSettings,
   NotificationSettings,
   Project,
   PtySpawnResult,
+  ShellTab,
   TerminalStyleOptions,
   TerminalStylePreset,
   TerminalStyleSettings,
@@ -81,6 +83,21 @@ export const IPC = {
   SettingsGetGitView: 'settings:getGitView',
   SettingsSetGitView: 'settings:setGitView',
   SettingsGitViewChanged: 'settings:gitViewChanged',
+
+  // Integrated-terminal settings (renderer ↔ main)
+  SettingsGetIntegratedTerminal: 'settings:getIntegratedTerminal',
+  SettingsSetIntegratedTerminal: 'settings:setIntegratedTerminal',
+  SettingsIntegratedTerminalChanged: 'settings:integratedTerminalChanged',
+
+  // Integrated shell tabs (renderer ↔ main)
+  ShellOpen: 'shell:open',
+  ShellClose: 'shell:close',
+  ShellWrite: 'shell:write',
+  ShellResize: 'shell:resize',
+  ShellList: 'shell:list',
+  ShellRename: 'shell:rename',
+  ShellData: 'shell:data',
+  ShellExit: 'shell:exit',
 
   // Menu/shortcut events (main → renderer)
   MenuAddProject: 'menu:addProject',
@@ -267,6 +284,57 @@ export type GitDiffResult =
 
 export type { GitChangedEvent, GitOperationResult };
 
+// Shell / integrated-terminal IPC payloads ------------------------------
+
+export interface ShellOpenArgs {
+  projectId: string;
+  worktreeId?: string | null;
+  tabId: string;
+  cols: number;
+  rows: number;
+  label?: string;
+}
+
+export type ShellOpenResult =
+  | { ok: true; tab: ShellTab; replay: string }
+  | { ok: false; reason: 'tab-missing' | 'spawn-failed'; message?: string };
+
+export interface ShellTabIdArgs {
+  tabId: string;
+}
+
+export interface ShellWriteArgs {
+  tabId: string;
+  data: string;
+}
+
+export interface ShellResizeArgs {
+  tabId: string;
+  cols: number;
+  rows: number;
+}
+
+export interface ShellListArgs {
+  projectId: string;
+  worktreeId?: string | null;
+}
+
+export interface ShellRenameArgs {
+  tabId: string;
+  label: string;
+}
+
+export interface ShellDataEvent {
+  tabId: string;
+  data: string;
+}
+
+export interface ShellExitEvent {
+  tabId: string;
+  exitCode: number | null;
+  signal: number | null;
+}
+
 // The typed API exposed on window.api via contextBridge.
 export interface DashApi {
   projects: {
@@ -311,6 +379,21 @@ export interface DashApi {
     getGitView(): Promise<GitViewSettings>;
     setGitView(patch: Partial<Omit<GitViewSettings, 'version'>>): Promise<GitViewSettings>;
     onGitViewChanged(handler: (s: GitViewSettings) => void): () => void;
+    getIntegratedTerminal(): Promise<IntegratedTerminalSettings>;
+    setIntegratedTerminal(
+      patch: Partial<Omit<IntegratedTerminalSettings, 'version'>>,
+    ): Promise<IntegratedTerminalSettings>;
+    onIntegratedTerminalChanged(handler: (s: IntegratedTerminalSettings) => void): () => void;
+  };
+  shell: {
+    open(args: ShellOpenArgs): Promise<ShellOpenResult>;
+    close(args: ShellTabIdArgs): Promise<void>;
+    write(args: ShellWriteArgs): void;
+    resize(args: ShellResizeArgs): void;
+    list(args: ShellListArgs): Promise<ShellTab[]>;
+    rename(args: ShellRenameArgs): Promise<void>;
+    onData(handler: (ev: ShellDataEvent) => void): () => void;
+    onExit(handler: (ev: ShellExitEvent) => void): () => void;
   };
   notify: {
     attention(args: NotifyAttentionArgs): void;

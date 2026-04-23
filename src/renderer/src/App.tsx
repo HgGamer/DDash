@@ -20,6 +20,7 @@ export function App() {
     setTerminalStyle,
     setNotifications,
     setGitView,
+    setIntegratedTerminal,
     openSettings,
     closeSettings,
     settingsModalOpen,
@@ -108,6 +109,50 @@ export function App() {
     const off = window.api.settings.onGitViewChanged((s) => setGitView(s));
     return () => off();
   }, [setGitView]);
+
+  useEffect(() => {
+    void (async () => {
+      const current = await window.api.settings.getIntegratedTerminal();
+      setIntegratedTerminal(current);
+    })();
+    const off = window.api.settings.onIntegratedTerminalChanged((s) => setIntegratedTerminal(s));
+    return () => off();
+  }, [setIntegratedTerminal]);
+
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => {
+      const modifier = e.metaKey || e.ctrlKey;
+      if (!modifier || e.key !== '`') return;
+      e.preventDefault();
+      const cur = useStore.getState().integratedTerminal;
+      if (!cur.enabled) return;
+      if (e.shiftKey) {
+        // New tab in the active selection; also expand if collapsed.
+        const active = useStore.getState().activeId;
+        if (!active) return;
+        void window.api.settings.setIntegratedTerminal({ expanded: true });
+        const tabId = crypto.randomUUID();
+        void window.api.shell
+          .open({
+            projectId: active.projectId,
+            worktreeId: active.worktreeId,
+            tabId,
+            cols: 80,
+            rows: 24,
+          })
+          .then((r) => {
+            if (r.ok) {
+              const selectionKey = compositeKey(active.projectId, active.worktreeId);
+              useStore.getState().addShellTab(selectionKey, r.tab);
+            }
+          });
+      } else {
+        void window.api.settings.setIntegratedTerminal({ expanded: !cur.expanded });
+      }
+    };
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  }, []);
 
   // PTY events.
   useEffect(() => {

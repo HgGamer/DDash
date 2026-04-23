@@ -1,6 +1,7 @@
 import { EventEmitter } from 'node:events';
 import type {
   GitViewSettings,
+  IntegratedTerminalSettings,
   NotificationSettings,
   TerminalStyleOptions,
   TerminalStylePreset,
@@ -8,10 +9,12 @@ import type {
 } from '@shared/types';
 import {
   DEFAULT_GIT_VIEW_SETTINGS,
+  DEFAULT_INTEGRATED_TERMINAL_SETTINGS,
   DEFAULT_NOTIFICATION_SETTINGS,
   DEFAULT_TERMINAL_STYLE,
   GIT_VIEW_MAX_WIDTH,
   GIT_VIEW_MIN_WIDTH,
+  INTEGRATED_TERMINAL_MIN_HEIGHT,
   TERMINAL_STYLE_PRESET_IDS,
 } from '@shared/types';
 import type { JsonStore } from './store';
@@ -20,6 +23,7 @@ export interface SettingsManagerEvents {
   terminalStyleChanged: (settings: TerminalStyleSettings) => void;
   notificationsChanged: (settings: NotificationSettings) => void;
   gitViewChanged: (settings: GitViewSettings) => void;
+  integratedTerminalChanged: (settings: IntegratedTerminalSettings) => void;
 }
 
 export class SettingsManager extends EventEmitter {
@@ -141,6 +145,36 @@ export class SettingsManager extends EventEmitter {
       draft.gitView = next;
     });
     this.emit('gitViewChanged', next);
+    return next;
+  }
+
+  getIntegratedTerminal(): IntegratedTerminalSettings {
+    const raw = this.store.get().integratedTerminal;
+    if (!raw) return { ...DEFAULT_INTEGRATED_TERMINAL_SETTINGS };
+    return { ...raw };
+  }
+
+  setIntegratedTerminal(
+    patch: Partial<Omit<IntegratedTerminalSettings, 'version'>>,
+  ): IntegratedTerminalSettings {
+    const current = this.getIntegratedTerminal();
+    let height = patch.height ?? current.height;
+    height = Math.max(INTEGRATED_TERMINAL_MIN_HEIGHT, Math.round(height));
+    const next: IntegratedTerminalSettings = {
+      version: 1,
+      enabled: patch.enabled ?? current.enabled,
+      expanded: patch.expanded ?? current.expanded,
+      height,
+    };
+    const defaultShell =
+      'defaultShell' in patch ? patch.defaultShell : current.defaultShell;
+    if (typeof defaultShell === 'string' && defaultShell.trim().length > 0) {
+      next.defaultShell = defaultShell;
+    }
+    this.store.update((draft) => {
+      draft.integratedTerminal = next;
+    });
+    this.emit('integratedTerminalChanged', next);
     return next;
   }
 }

@@ -74,6 +74,19 @@ Each tab has a collapsible **Git view** panel on the right that reflects the act
 
 Toggle with the **Git** button in the terminal's top-right. Turn the whole feature off under **Settings → Git** if you want to reclaim the window width. The view relies on the system `git` binary being on `PATH`.
 
+## Integrated terminal
+
+A bottom-docked **terminal panel** sits underneath the Claude pane for running dev servers, tests, scripts, and anything else you'd normally open an external terminal for:
+
+- **Per project/worktree** — switching projects swaps the tab set; backgrounded shells keep running.
+- **Multiple tabs** per selection (`+` to add, `×` to close, double-click a tab to rename).
+- **Resizable**; height and expanded/collapsed state persist across restarts.
+- **Process survives panel collapse** — hiding the dock does not kill shells.
+- Uses your login shell (`$SHELL` on macOS/Linux, `%COMSPEC%` on Windows). Override under **Settings → Integrated terminal**.
+- Shares the terminal style (font/cursor/palette) with the Claude pane.
+
+Toggle with the **Terminal** button in the bottom statusbar or with `Ctrl/Cmd+\``. `Ctrl/Cmd+Shift+\`` opens a new tab in the active project/worktree.
+
 ## Keyboard shortcuts
 
 | Action             | macOS              | Win/Linux          |
@@ -83,6 +96,8 @@ Toggle with the **Git** button in the terminal's top-right. Turn the whole featu
 | Next Tab           | Cmd+Alt+Right      | Ctrl+Tab           |
 | Previous Tab       | Cmd+Alt+Left       | Ctrl+Shift+Tab     |
 | Activate Tab 1..9  | Cmd+1..9           | Ctrl+1..9          |
+| Toggle terminal    | Cmd+`              | Ctrl+`             |
+| New terminal tab   | Cmd+Shift+`        | Ctrl+Shift+`       |
 
 ## Status
 

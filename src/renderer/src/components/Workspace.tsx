@@ -5,6 +5,8 @@ import { compositeKey, parseCompositeKey } from '@shared/ipc';
 import { useStore } from '../store';
 import { TerminalPane } from './TerminalPane';
 import { DiffView, GitView } from './GitView';
+import { IntegratedTerminalDock, useWorkspaceHeight } from './IntegratedTerminalDock';
+import { useShellTabs } from '../hooks/useShellTabs';
 
 interface Props {
   activeId: ActiveSelection | null;
@@ -14,8 +16,15 @@ export function Workspace({ activeId }: Props) {
   const mountedKeys = useStore((s) => s.mountedKeys);
   const projects = useStore((s) => s.projects);
   const gitViewSettings = useStore((s) => s.gitView);
+  const integratedTerminal = useStore((s) => s.integratedTerminal);
   const gitDiff = useStore((s) => s.gitDiff);
   const closeDiff = useStore((s) => s.closeDiff);
+  const workspaceRef = useRef<HTMLElement>(null);
+  const workspaceHeight = useWorkspaceHeight(workspaceRef);
+
+  const showIntegratedTerminal =
+    integratedTerminal.enabled && integratedTerminal.expanded && !!activeId;
+  useShellTabs(activeId, integratedTerminal.enabled);
 
   const resolved = mountedKeys
     .map((k) => {
@@ -33,7 +42,7 @@ export function Workspace({ activeId }: Props) {
 
   if (!activeKey && resolved.length === 0) {
     return (
-      <main className="workspace">
+      <main className="workspace" ref={workspaceRef}>
         <div className="empty-state">
           <div>
             <h2 style={{ marginTop: 0 }}>No project selected</h2>
@@ -45,32 +54,41 @@ export function Workspace({ activeId }: Props) {
   }
 
   return (
-    <main className="workspace workspace-split">
-      <div className="workspace-terminals">
-        {resolved.map(({ key, proj, worktree }) => {
-          const active = key === activeKey;
-          return (
-            <div
-              key={key}
-              style={{
-                position: 'absolute',
-                inset: 0,
-                visibility: active ? 'visible' : 'hidden',
-                pointerEvents: active ? 'auto' : 'none',
-              }}
-            >
-              <TerminalPane project={proj} worktree={worktree} active={active} />
+    <main className="workspace workspace-split" ref={workspaceRef}>
+      <div className="workspace-left">
+        <div className="workspace-terminals">
+          {resolved.map(({ key, proj, worktree }) => {
+            const active = key === activeKey;
+            return (
+              <div
+                key={key}
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  visibility: active ? 'visible' : 'hidden',
+                  pointerEvents: active ? 'auto' : 'none',
+                }}
+              >
+                <TerminalPane project={proj} worktree={worktree} active={active} />
+              </div>
+            );
+          })}
+          {gitDiff && activeId && gitDiff.projectId === activeId.projectId && (
+            <div className="workspace-diff-overlay">
+              <DiffView
+                active={activeId}
+                file={{ path: gitDiff.path, stage: gitDiff.stage }}
+                onClose={closeDiff}
+              />
             </div>
-          );
-        })}
-        {gitDiff && activeId && gitDiff.projectId === activeId.projectId && (
-          <div className="workspace-diff-overlay">
-            <DiffView
-              active={activeId}
-              file={{ path: gitDiff.path, stage: gitDiff.stage }}
-              onClose={closeDiff}
-            />
-          </div>
+          )}
+        </div>
+        {showIntegratedTerminal && activeId && (
+          <IntegratedTerminalDock
+            active={activeId}
+            height={integratedTerminal.height}
+            workspaceHeight={workspaceHeight}
+          />
         )}
       </div>
       {showGitView && (

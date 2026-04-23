@@ -3,14 +3,17 @@ import path from 'node:path';
 import {
   DEFAULT_APP_STATE,
   DEFAULT_GIT_VIEW_SETTINGS,
+  DEFAULT_INTEGRATED_TERMINAL_SETTINGS,
   DEFAULT_NOTIFICATION_SETTINGS,
   DEFAULT_TERMINAL_STYLE,
   GIT_VIEW_MAX_WIDTH,
   GIT_VIEW_MIN_WIDTH,
+  INTEGRATED_TERMINAL_MIN_HEIGHT,
   TERMINAL_STYLE_PRESET_IDS,
   type ActiveSelection,
   type AppState,
   type GitViewSettings,
+  type IntegratedTerminalSettings,
   type NotificationSettings,
   type Project,
   type TerminalStyleSettings,
@@ -132,6 +135,7 @@ export class JsonStore {
       terminalStyle: migrateTerminalStyle(r.terminalStyle),
       notifications: migrateNotifications(r.notifications),
       gitView: migrateGitView(r.gitView),
+      integratedTerminal: migrateIntegratedTerminal(r.integratedTerminal),
     };
   }
 }
@@ -243,6 +247,27 @@ function migrateGitView(raw: unknown): GitViewSettings {
     expanded: typeof r.expanded === 'boolean' ? r.expanded : DEFAULT_GIT_VIEW_SETTINGS.expanded,
     panelWidth,
   };
+}
+
+function migrateIntegratedTerminal(raw: unknown): IntegratedTerminalSettings {
+  if (!raw || typeof raw !== 'object') return { ...DEFAULT_INTEGRATED_TERMINAL_SETTINGS };
+  const r = raw as Partial<IntegratedTerminalSettings>;
+  const height =
+    typeof r.height === 'number' && Number.isFinite(r.height)
+      ? Math.max(INTEGRATED_TERMINAL_MIN_HEIGHT, Math.round(r.height))
+      : DEFAULT_INTEGRATED_TERMINAL_SETTINGS.height;
+  const out: IntegratedTerminalSettings = {
+    version: 1,
+    enabled:
+      typeof r.enabled === 'boolean' ? r.enabled : DEFAULT_INTEGRATED_TERMINAL_SETTINGS.enabled,
+    expanded:
+      typeof r.expanded === 'boolean' ? r.expanded : DEFAULT_INTEGRATED_TERMINAL_SETTINGS.expanded,
+    height,
+  };
+  if (typeof r.defaultShell === 'string' && r.defaultShell.trim().length > 0) {
+    out.defaultShell = r.defaultShell;
+  }
+  return out;
 }
 
 function migrateNotifications(raw: unknown): NotificationSettings {

@@ -22,12 +22,21 @@ import {
   type PtyResizeArgs,
   type PtyWriteArgs,
   type NotifyAttentionArgs,
+  type ShellDataEvent,
+  type ShellExitEvent,
+  type ShellListArgs,
+  type ShellOpenArgs,
+  type ShellRenameArgs,
+  type ShellResizeArgs,
+  type ShellTabIdArgs,
+  type ShellWriteArgs,
   type WorktreeCreateArgs,
   type WorktreeRemoveArgs,
 } from '@shared/ipc';
 import type {
   ActiveSelection,
   GitViewSettings,
+  IntegratedTerminalSettings,
   NotificationSettings,
   TerminalStyleOptions,
   TerminalStylePreset,
@@ -88,6 +97,21 @@ const api: DashApi = {
     setGitView: (patch: Partial<Omit<GitViewSettings, 'version'>>) =>
       ipcRenderer.invoke(IPC.SettingsSetGitView, patch),
     onGitViewChanged: (h) => subscribe<GitViewSettings>(IPC.SettingsGitViewChanged, h),
+    getIntegratedTerminal: () => ipcRenderer.invoke(IPC.SettingsGetIntegratedTerminal),
+    setIntegratedTerminal: (patch: Partial<Omit<IntegratedTerminalSettings, 'version'>>) =>
+      ipcRenderer.invoke(IPC.SettingsSetIntegratedTerminal, patch),
+    onIntegratedTerminalChanged: (h) =>
+      subscribe<IntegratedTerminalSettings>(IPC.SettingsIntegratedTerminalChanged, h),
+  },
+  shell: {
+    open: (args: ShellOpenArgs) => ipcRenderer.invoke(IPC.ShellOpen, args),
+    close: (args: ShellTabIdArgs) => ipcRenderer.invoke(IPC.ShellClose, args),
+    write: (args: ShellWriteArgs) => ipcRenderer.send(IPC.ShellWrite, args),
+    resize: (args: ShellResizeArgs) => ipcRenderer.send(IPC.ShellResize, args),
+    list: (args: ShellListArgs) => ipcRenderer.invoke(IPC.ShellList, args),
+    rename: (args: ShellRenameArgs) => ipcRenderer.invoke(IPC.ShellRename, args),
+    onData: (h) => subscribe<ShellDataEvent>(IPC.ShellData, h),
+    onExit: (h) => subscribe<ShellExitEvent>(IPC.ShellExit, h),
   },
   git: {
     isRepo: (args: GitTabRef) => ipcRenderer.invoke(IPC.GitIsRepo, args),

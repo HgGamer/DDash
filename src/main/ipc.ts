@@ -30,6 +30,7 @@ import type { SettingsManager } from './settings';
 import type {
   ActiveSelection,
   GitViewSettings,
+  IntegratedTerminalSettings,
   NotificationSettings,
   TerminalStyleOptions,
   TerminalStylePreset,
@@ -37,6 +38,7 @@ import type {
   Worktree,
 } from '@shared/types';
 import { PtySessionManager } from './pty-session';
+import type { ShellSessionManager } from './shell-session';
 import {
   addWorktree as gitAddWorktree,
   computeDefaultWorktreePath,
@@ -49,10 +51,11 @@ export function registerIpc(args: {
   store: JsonStore;
   registry: ProjectRegistry;
   ptyManager: PtySessionManager;
+  shellManager: ShellSessionManager;
   settings: SettingsManager;
   getWindow: () => BrowserWindow | null;
 }): void {
-  const { store, registry, ptyManager, settings, getWindow } = args;
+  const { store, registry, ptyManager, shellManager, settings, getWindow } = args;
 
   const send = (channel: string, payload: unknown) => {
     const win = getWindow();
@@ -86,6 +89,7 @@ export function registerIpc(args: {
         await s.kill();
       }
     }
+    shellManager.killForProject(id);
     // Remove each worktree via git, collecting failures.
     for (const wt of proj.worktrees) {
       const r = await gitRemoveWorktree(proj.path, wt.path, { force: false });
@@ -164,6 +168,7 @@ export function registerIpc(args: {
         ptyManager.delete(k);
         await s.kill();
       }
+      shellManager.killForProject(a.projectId, a.worktreeId);
       const r = await gitRemoveWorktree(proj.path, wt.path, { force: !!a.force });
       if (!r.ok) {
         return { ok: false, error: r.stderr || r.stdout || `git exited ${r.exitCode}` };
@@ -388,6 +393,27 @@ export function registerIpc(args: {
 
   settings.on('gitViewChanged', (s: GitViewSettings) => {
     send(IPC.SettingsGitViewChanged, s);
+  });
+
+  ipcMain.handle(
+    IPC.SettingsGetIntegratedTerminal,
+    async (): Promise<IntegratedTerminalSettings> => settings.getIntegratedTerminal(),
+  );
+
+  ipcMain.handle(
+    IPC.SettingsSetIntegratedTerminal,
+    async (
+      _e,
+      patch: Partial<Omit<IntegratedTerminalSettings, 'version'>>,
+    ): Promise<IntegratedTerminalSettings> => {
+      const next = settings.setIntegratedTerminal(patch);
+      await store.flush();
+      return next;
+    },
+  );
+
+  settings.on('integratedTerminalChanged', (s: IntegratedTerminalSettings) => {
+    send(IPC.SettingsIntegratedTerminalChanged, s);
   });
 
   ipcMain.handle(IPC.SettingsBrowseTerminalStyle, async (): Promise<BrowseTerminalStyleResult> => {

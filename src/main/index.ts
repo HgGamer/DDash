@@ -5,6 +5,8 @@ import { ProjectRegistry } from './registry';
 import { PtySessionManager } from './pty-session';
 import { registerIpc } from './ipc';
 import { registerGitIpc } from './git-ipc';
+import { registerShellIpc } from './shell-ipc';
+import { ShellSessionManager } from './shell-session';
 import { installAppMenu } from './menu';
 import { SettingsManager } from './settings';
 import { attachWindowStatePersistence } from './window-state';
@@ -21,6 +23,7 @@ let mainWindow: BrowserWindow | null = null;
 let store!: JsonStore;
 let registry!: ProjectRegistry;
 const ptyManager = new PtySessionManager();
+const shellManager = new ShellSessionManager();
 
 async function createWindow(): Promise<void> {
   const state = store.get();
@@ -78,8 +81,9 @@ app.whenReady().then(async () => {
   await registry.refreshGitMeta();
   const settings = new SettingsManager(store);
 
-  registerIpc({ store, registry, ptyManager, settings, getWindow: () => mainWindow });
+  registerIpc({ store, registry, ptyManager, shellManager, settings, getWindow: () => mainWindow });
   registerGitIpc({ registry, getWindow: () => mainWindow });
+  registerShellIpc({ registry, settings, shellManager, getWindow: () => mainWindow });
   installAppMenu(() => mainWindow);
 
   await createWindow();
@@ -103,6 +107,7 @@ app.on('before-quit', (event) => {
   void (async () => {
     try {
       await ptyManager.killAll();
+      shellManager.killAll();
       if (store) await store.flush();
     } finally {
       app.exit(0);
