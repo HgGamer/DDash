@@ -8,7 +8,7 @@ import { CLAUDE_INSTALL_URL, resolveClaudeEnv } from './claude-resolver';
 const pty: typeof NodePty = require('node-pty');
 
 export interface PtySessionOpts {
-  projectId: string;
+  key: string;
   cwd: string;
   cols: number;
   rows: number;
@@ -17,14 +17,14 @@ export interface PtySessionOpts {
 }
 
 export class PtySession {
-  readonly projectId: string;
+  readonly key: string;
   private proc: NodePty.IPty;
   private emitter = new EventEmitter();
   private exited = false;
 
-  private constructor(proc: NodePty.IPty, projectId: string) {
+  private constructor(proc: NodePty.IPty, key: string) {
     this.proc = proc;
-    this.projectId = projectId;
+    this.key = key;
   }
 
   static async spawn(opts: PtySessionOpts): Promise<PtySession | PtySpawnError> {
@@ -44,7 +44,7 @@ export class PtySession {
 
     // eslint-disable-next-line no-console
     console.log(
-      `[pty:${opts.projectId.slice(0, 6)}] spawning claude=${claudePath} cwd=${opts.cwd} cols=${opts.cols} rows=${opts.rows} PATH=${(env.PATH ?? '').slice(0, 60)}…`,
+      `[pty:${opts.key.slice(0, 8)}] spawning claude=${claudePath} cwd=${opts.cwd} cols=${opts.cols} rows=${opts.rows} PATH=${(env.PATH ?? '').slice(0, 60)}…`,
     );
 
     const proc = pty.spawn(claudePath, [], {
@@ -55,7 +55,7 @@ export class PtySession {
       env: env as { [key: string]: string },
     });
 
-    const session = new PtySession(proc, opts.projectId);
+    const session = new PtySession(proc, opts.key);
     proc.onData((data) => opts.onData(data));
     proc.onExit(({ exitCode, signal }) => {
       session.exited = true;
@@ -109,16 +109,20 @@ export class PtySession {
 export class PtySessionManager {
   private sessions = new Map<string, PtySession>();
 
-  get(projectId: string): PtySession | undefined {
-    return this.sessions.get(projectId);
+  get(key: string): PtySession | undefined {
+    return this.sessions.get(key);
   }
 
-  set(projectId: string, session: PtySession): void {
-    this.sessions.set(projectId, session);
+  set(key: string, session: PtySession): void {
+    this.sessions.set(key, session);
   }
 
-  delete(projectId: string): void {
-    this.sessions.delete(projectId);
+  delete(key: string): void {
+    this.sessions.delete(key);
+  }
+
+  keys(): string[] {
+    return [...this.sessions.keys()];
   }
 
   async killAll(): Promise<void> {
@@ -128,23 +132,23 @@ export class PtySessionManager {
   }
 
   async spawn(args: {
-    projectId: string;
+    key: string;
     cwd: string;
     cols: number;
     rows: number;
     onData: (data: string) => void;
     onExit: (code: number | null, signal: number | null) => void;
   }): Promise<PtySpawnResult> {
-    // Close any previous exited session for this project.
-    const existing = this.sessions.get(args.projectId);
-    if (existing && existing.isExited()) this.sessions.delete(args.projectId);
-    if (this.sessions.has(args.projectId)) {
+    // Close any previous exited session for this key.
+    const existing = this.sessions.get(args.key);
+    if (existing && existing.isExited()) this.sessions.delete(args.key);
+    if (this.sessions.has(args.key)) {
       return { ok: true };
     }
 
     const result = await PtySession.spawn(args);
     if (result instanceof PtySession) {
-      this.sessions.set(args.projectId, result);
+      this.sessions.set(args.key, result);
       return { ok: true };
     }
     return { ok: false, error: result };

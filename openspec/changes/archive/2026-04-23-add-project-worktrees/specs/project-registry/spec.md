@@ -1,6 +1,4 @@
-# Project Registry
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Persisted project list
 
@@ -21,25 +19,6 @@ The application SHALL maintain a persisted list of user-added projects, where ea
 - **WHEN** the registry on disk was written by a version that predates worktree support and contains no `worktrees` field on a project
 - **THEN** the project SHALL load successfully and SHALL be treated as having an empty worktree list
 
-### Requirement: Add a project
-
-The application SHALL allow the user to add a project by selecting a local directory via a native folder picker. The new project MUST be appended to the registry with a default display name derived from the directory's basename and persisted immediately.
-
-#### Scenario: User adds a new project
-
-- **WHEN** the user invokes "Add Project" and selects a directory that is not already registered
-- **THEN** a new project entry SHALL be appended to the registry with the directory's basename as its default name and its absolute path recorded, and SHALL become visible in the sidebar
-
-#### Scenario: User selects an already-registered directory
-
-- **WHEN** the user invokes "Add Project" and selects a directory whose absolute path matches an existing project
-- **THEN** no duplicate SHALL be created, and the existing project SHALL be activated instead
-
-#### Scenario: User cancels the picker
-
-- **WHEN** the user opens the folder picker and cancels
-- **THEN** the registry SHALL remain unchanged
-
 ### Requirement: Remove a project
 
 The application SHALL allow the user to remove a project from the registry. Removal MUST be confirmed by the user and MUST NOT delete the project's own files on disk. If the project has worktrees, the application SHALL terminate every worktree's terminal session, then attempt to `git worktree remove` each worktree directory; the project record SHALL only be removed from the registry once all worktrees have been successfully removed. If any worktree removal fails, the project SHALL remain in the registry with the failed worktrees still present, and the per-worktree errors SHALL be surfaced to the user.
@@ -58,30 +37,3 @@ The application SHALL allow the user to remove a project from the registry. Remo
 
 - **WHEN** removing a project's worktrees and at least one `git worktree remove` exits non-zero
 - **THEN** the project SHALL remain in the registry with the failed worktrees still present, the successfully-removed worktrees SHALL be gone from the registry, and the per-worktree errors SHALL be surfaced to the user
-
-### Requirement: Rename a project
-
-The application SHALL allow the user to change a project's display name without changing its path or identifier.
-
-#### Scenario: User renames a project
-
-- **WHEN** the user edits a project's display name and commits the change
-- **THEN** the project's `name` field SHALL be updated in the registry and reflected in the sidebar, while its `id` and `path` SHALL remain unchanged
-
-### Requirement: Reorder projects
-
-The application SHALL allow the user to reorder projects in the sidebar, and the new order MUST persist across restarts.
-
-#### Scenario: User reorders the sidebar
-
-- **WHEN** the user drags a project to a new position in the sidebar
-- **THEN** the project's order in the registry SHALL be updated and the new order SHALL be preserved after restart
-
-### Requirement: Invalid project paths are surfaced, not silently dropped
-
-If a registered project's path no longer exists on disk, the application SHALL keep the project in the registry and surface the missing-path state to the user rather than deleting the entry.
-
-#### Scenario: Project directory has been moved or deleted
-
-- **WHEN** the application attempts to use a project whose `path` no longer exists on disk
-- **THEN** the project SHALL remain in the registry and the UI SHALL show a missing-path indication with options to locate the new path or remove the project

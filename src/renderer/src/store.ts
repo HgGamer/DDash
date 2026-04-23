@@ -1,12 +1,15 @@
 import { create } from 'zustand';
 import type {
+  ActiveSelection,
   NotificationSettings,
   Project,
   PtySessionStatus,
   PtySpawnError,
   TerminalStyleSettings,
+  Worktree,
 } from '@shared/types';
 import { DEFAULT_NOTIFICATION_SETTINGS } from '@shared/types';
+import { compositeKey } from '@shared/ipc';
 
 export interface TabState {
   status: PtySessionStatus;
@@ -20,22 +23,22 @@ export interface TabState {
 
 interface AppStore {
   projects: Project[];
-  activeId: string | null;
-  /** IDs of projects whose terminal pane has been mounted this session. */
-  mountedIds: string[];
+  activeId: ActiveSelection | null;
+  /** Composite keys of tabs whose terminal pane has been mounted this session. */
+  mountedKeys: string[];
   tabs: Record<string, TabState>;
   loaded: boolean;
   terminalStyle: TerminalStyleSettings;
   notifications: NotificationSettings;
   settingsModalOpen: boolean;
-  /** Which settings tab is currently showing. */
   settingsModalTab: 'terminal' | 'notifications';
 
   setProjects: (projects: Project[]) => void;
-  setActive: (id: string | null) => void;
-  ensureMounted: (id: string) => void;
-  upsertTab: (id: string, patch: Partial<TabState>) => void;
-  clearTab: (id: string) => void;
+  setActive: (active: ActiveSelection | null) => void;
+  ensureMounted: (key: string) => void;
+  upsertTab: (key: string, patch: Partial<TabState>) => void;
+  clearTab: (key: string) => void;
+  clearProjectAndWorktrees: (projectId: string) => void;
   setTerminalStyle: (s: TerminalStyleSettings) => void;
   setNotifications: (s: NotificationSettings) => void;
   openSettings: (tab?: 'terminal' | 'notifications') => void;
@@ -45,7 +48,7 @@ interface AppStore {
 export const useStore = create<AppStore>((set) => ({
   projects: [],
   activeId: null,
-  mountedIds: [],
+  mountedKeys: [],
   tabs: {},
   loaded: false,
   terminalStyle: { version: 1, preset: 'dash-dark' },
@@ -54,33 +57,51 @@ export const useStore = create<AppStore>((set) => ({
   settingsModalTab: 'terminal',
 
   setProjects: (projects) => set({ projects, loaded: true }),
-  setActive: (id) =>
+  setActive: (active) =>
     set((s) => {
+      const key = active ? compositeKey(active.projectId, active.worktreeId) : null;
       let tabs = s.tabs;
-      if (id && s.tabs[id]?.needsAttention) {
-        tabs = { ...s.tabs, [id]: { ...s.tabs[id], needsAttention: false } };
-        window.api.notify.attentionClear(id);
+      if (key && s.tabs[key]?.needsAttention) {
+        tabs = { ...s.tabs, [key]: { ...s.tabs[key], needsAttention: false } };
+        window.api.notify.attentionClear(key);
       }
       return {
-        activeId: id,
-        mountedIds: id && !s.mountedIds.includes(id) ? [...s.mountedIds, id] : s.mountedIds,
+        activeId: active,
+        mountedKeys:
+          key && !s.mountedKeys.includes(key) ? [...s.mountedKeys, key] : s.mountedKeys,
         tabs,
       };
     }),
-  ensureMounted: (id) =>
+  ensureMounted: (key) =>
     set((s) => ({
-      mountedIds: s.mountedIds.includes(id) ? s.mountedIds : [...s.mountedIds, id],
+      mountedKeys: s.mountedKeys.includes(key) ? s.mountedKeys : [...s.mountedKeys, key],
     })),
-  upsertTab: (id, patch) =>
+  upsertTab: (key, patch) =>
     set((s) => {
-      const prev: TabState = s.tabs[id] ?? { status: 'not-started' };
-      return { tabs: { ...s.tabs, [id]: { ...prev, ...patch } } };
+      const prev: TabState = s.tabs[key] ?? { status: 'not-started' };
+      return { tabs: { ...s.tabs, [key]: { ...prev, ...patch } } };
     }),
-  clearTab: (id) =>
+  clearTab: (key) =>
     set((s) => {
-      if (s.tabs[id]?.needsAttention) window.api.notify.attentionClear(id);
-      const { [id]: _omit, ...rest } = s.tabs;
-      return { tabs: rest, mountedIds: s.mountedIds.filter((m) => m !== id) };
+      if (s.tabs[key]?.needsAttention) window.api.notify.attentionClear(key);
+      const { [key]: _omit, ...rest } = s.tabs;
+      return { tabs: rest, mountedKeys: s.mountedKeys.filter((m) => m !== key) };
+    }),
+  clearProjectAndWorktrees: (projectId) =>
+    set((s) => {
+      const isMatch = (k: string) => k === projectId || k.startsWith(`${projectId}:`);
+      const tabs: Record<string, TabState> = {};
+      for (const [k, v] of Object.entries(s.tabs)) {
+        if (isMatch(k)) {
+          if (v.needsAttention) window.api.notify.attentionClear(k);
+          continue;
+        }
+        tabs[k] = v;
+      }
+      return {
+        tabs,
+        mountedKeys: s.mountedKeys.filter((k) => !isMatch(k)),
+      };
     }),
   setTerminalStyle: (s) => set({ terminalStyle: s }),
   setNotifications: (s) => set({ notifications: s }),
@@ -88,3 +109,7 @@ export const useStore = create<AppStore>((set) => ({
     set((s) => ({ settingsModalOpen: true, settingsModalTab: tab ?? s.settingsModalTab })),
   closeSettings: () => set({ settingsModalOpen: false }),
 }));
+
+export function worktreesByProject(projects: Project[], projectId: string): Worktree[] {
+  return projects.find((p) => p.id === projectId)?.worktrees ?? [];
+}

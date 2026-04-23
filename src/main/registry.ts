@@ -1,7 +1,8 @@
 import path from 'node:path';
 import { v4 as uuid } from 'uuid';
-import type { Project } from '@shared/types';
+import type { ActiveSelection, Project, Worktree } from '@shared/types';
 import type { JsonStore } from './store';
+import { isGitRepo } from './git';
 
 function normalizePath(p: string): string {
   return path.resolve(p);
@@ -19,7 +20,7 @@ export class ProjectRegistry {
     return this.store.get().projects.find((proj) => normalizePath(proj.path) === norm);
   }
 
-  add(inputPath: string, name?: string): Project {
+  async add(inputPath: string, name?: string): Promise<Project> {
     const resolvedPath = normalizePath(inputPath);
     const existing = this.findByPath(resolvedPath);
     if (existing) return existing;
@@ -36,16 +37,18 @@ export class ProjectRegistry {
         addedAt: now,
         lastOpenedAt: null,
         order: maxOrder + 1,
+        worktrees: [],
       };
       draft.projects.push(created);
     });
+    created.isGitRepo = await isGitRepo(created.path);
     return created;
   }
 
   remove(id: string): void {
     this.store.update((draft) => {
       draft.projects = draft.projects.filter((p) => p.id !== id);
-      if (draft.lastActiveProjectId === id) draft.lastActiveProjectId = null;
+      if (draft.lastActive?.projectId === id) draft.lastActive = null;
       // Re-pack order to keep it contiguous.
       draft.projects
         .sort((a, b) => a.order - b.order)
@@ -71,7 +74,6 @@ export class ProjectRegistry {
         const pos = positions.get(proj.id);
         if (pos !== undefined) proj.order = pos;
       }
-      // Any projects not in orderedIds keep their relative position at the end.
       const missing = draft.projects.filter((p) => !positions.has(p.id));
       missing
         .sort((a, b) => a.order - b.order)
@@ -81,21 +83,80 @@ export class ProjectRegistry {
     });
   }
 
-  setLastActive(id: string | null): void {
+  setLastActive(active: ActiveSelection | null): void {
     this.store.update((draft) => {
-      draft.lastActiveProjectId = id;
-      if (id) {
-        const proj = draft.projects.find((p) => p.id === id);
-        if (proj) proj.lastOpenedAt = new Date().toISOString();
+      draft.lastActive = active;
+      if (active) {
+        const proj = draft.projects.find((p) => p.id === active.projectId);
+        if (proj) {
+          const now = new Date().toISOString();
+          proj.lastOpenedAt = now;
+          if (active.worktreeId) {
+            const wt = proj.worktrees.find((w) => w.id === active.worktreeId);
+            if (wt) wt.lastOpenedAt = now;
+          }
+        }
       }
     });
   }
 
-  getLastActive(): string | null {
-    return this.store.get().lastActiveProjectId;
+  getLastActive(): ActiveSelection | null {
+    return this.store.get().lastActive;
   }
 
   getById(id: string): Project | undefined {
     return this.store.get().projects.find((p) => p.id === id);
+  }
+
+  async refreshGitMeta(): Promise<void> {
+    for (const proj of this.store.get().projects) {
+      proj.isGitRepo = await isGitRepo(proj.path);
+    }
+  }
+
+  addWorktree(projectId: string, opts: { branch: string; path: string }): Worktree {
+    let created!: Worktree;
+    this.store.update((draft) => {
+      const proj = draft.projects.find((p) => p.id === projectId);
+      if (!proj) throw new Error(`project ${projectId} not found`);
+      const maxOrder = proj.worktrees.reduce((m, w) => Math.max(m, w.order), -1);
+      created = {
+        id: uuid(),
+        branch: opts.branch,
+        path: opts.path,
+        addedAt: new Date().toISOString(),
+        lastOpenedAt: null,
+        order: maxOrder + 1,
+      };
+      proj.worktrees.push(created);
+    });
+    return created;
+  }
+
+  removeWorktreeFromRegistry(projectId: string, worktreeId: string): void {
+    this.store.update((draft) => {
+      const proj = draft.projects.find((p) => p.id === projectId);
+      if (!proj) return;
+      proj.worktrees = proj.worktrees.filter((w) => w.id !== worktreeId);
+      if (
+        draft.lastActive?.projectId === projectId &&
+        draft.lastActive?.worktreeId === worktreeId
+      ) {
+        draft.lastActive = { projectId, worktreeId: null };
+      }
+    });
+  }
+
+  findWorktree(projectId: string, worktreeId: string): Worktree | undefined {
+    return this.getById(projectId)?.worktrees.find((w) => w.id === worktreeId);
+  }
+
+  setWorktreeStatus(projectId: string, worktreeId: string, status: 'missing' | undefined): void {
+    const proj = this.getById(projectId);
+    if (!proj) return;
+    const wt = proj.worktrees.find((w) => w.id === worktreeId);
+    if (!wt) return;
+    if (status) wt.status = status;
+    else delete wt.status;
   }
 }

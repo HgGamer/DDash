@@ -1,6 +1,4 @@
-# Project Workspace
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Tabbed workspace layout
 
@@ -72,12 +70,3 @@ The sidebar SHALL indicate, for each project AND each worktree independently, wh
 
 - **WHEN** a tab's terminal process exits while that tab is not active
 - **THEN** the sidebar entry for that tab SHALL show an "exited" indication, independently of the status of any sibling worktrees or the parent project
-
-### Requirement: Close a tab's session without removing the project
-
-The application SHALL allow the user to close (terminate) a project's running terminal session without removing the project from the registry.
-
-#### Scenario: User closes the session
-
-- **WHEN** the user invokes "Close session" on a project tab with a running session
-- **THEN** the terminal process SHALL be terminated, the project SHALL remain in the registry and sidebar, and a subsequent activation SHALL spawn a fresh session

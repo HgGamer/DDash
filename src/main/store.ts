@@ -5,9 +5,12 @@ import {
   DEFAULT_NOTIFICATION_SETTINGS,
   DEFAULT_TERMINAL_STYLE,
   TERMINAL_STYLE_PRESET_IDS,
+  type ActiveSelection,
   type AppState,
   type NotificationSettings,
+  type Project,
   type TerminalStyleSettings,
+  type Worktree,
 } from '@shared/types';
 
 export interface StoreOptions {
@@ -33,8 +36,19 @@ export class JsonStore {
     if (this.loaded) return this.state;
     try {
       const raw = await fs.readFile(this.filePath, 'utf8');
-      const parsed = JSON.parse(raw) as AppState;
-      this.state = this.migrate(parsed);
+      const parsed = JSON.parse(raw) as unknown;
+      const migrated = this.migrate(parsed);
+      if (migrated) {
+        this.state = migrated;
+      } else {
+        // Unknown future version — back up and start fresh.
+        try {
+          await fs.rename(this.filePath, `${this.filePath}.corrupt-${Date.now()}`);
+        } catch {
+          /* ignore */
+        }
+        this.state = structuredClone(DEFAULT_APP_STATE);
+      }
     } catch (err) {
       const e = err as NodeJS.ErrnoException;
       if (e.code !== 'ENOENT') {
@@ -76,7 +90,7 @@ export class JsonStore {
     }
     // Serialize writes so concurrent flushes don't interleave.
     if (this.writeInFlight) await this.writeInFlight;
-    const snapshot = JSON.stringify(this.state, null, 2);
+    const snapshot = JSON.stringify(serializeForDisk(this.state), null, 2);
     this.writeInFlight = this.writeAtomic(snapshot).finally(() => {
       this.writeInFlight = null;
     });
@@ -96,19 +110,101 @@ export class JsonStore {
     await fs.rename(tmp, this.filePath);
   }
 
-  private migrate(raw: unknown): AppState {
+  private migrate(raw: unknown): AppState | null {
     const base = structuredClone(DEFAULT_APP_STATE);
     if (!raw || typeof raw !== 'object') return base;
-    const r = raw as Partial<AppState>;
+    const r = raw as Record<string, unknown>;
+    const version = typeof r.version === 'number' ? r.version : 1;
+    if (version > 2) return null;
+    const projects = Array.isArray(r.projects)
+      ? (r.projects as unknown[]).map(normalizeProject).filter((p): p is Project => p !== null)
+      : [];
+    const lastActive = normalizeActive(r.lastActive, r.lastActiveProjectId, projects);
     return {
-      version: 1,
-      projects: Array.isArray(r.projects) ? r.projects : [],
-      lastActiveProjectId: r.lastActiveProjectId ?? null,
-      window: { ...base.window, ...(r.window ?? {}) },
+      version: 2,
+      projects,
+      lastActive,
+      window: { ...base.window, ...((r.window as object) ?? {}) },
       terminalStyle: migrateTerminalStyle(r.terminalStyle),
       notifications: migrateNotifications(r.notifications),
     };
   }
+}
+
+function serializeForDisk(state: AppState): AppState {
+  return {
+    ...state,
+    projects: state.projects.map((p) => {
+      const { isGitRepo: _ig, ...rest } = p;
+      return {
+        ...rest,
+        worktrees: rest.worktrees.map((w) => {
+          const { status: _s, ...wrest } = w;
+          return wrest;
+        }),
+      };
+    }),
+  };
+}
+
+function normalizeProject(raw: unknown): Project | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+  if (typeof r.id !== 'string' || typeof r.path !== 'string') return null;
+  const worktrees = Array.isArray(r.worktrees)
+    ? (r.worktrees as unknown[]).map(normalizeWorktree).filter((w): w is Worktree => w !== null)
+    : [];
+  const proj: Project = {
+    id: r.id,
+    name: typeof r.name === 'string' ? r.name : r.id,
+    path: r.path,
+    addedAt: typeof r.addedAt === 'string' ? r.addedAt : new Date().toISOString(),
+    lastOpenedAt: typeof r.lastOpenedAt === 'string' ? r.lastOpenedAt : null,
+    order: typeof r.order === 'number' ? r.order : 0,
+    worktrees,
+  };
+  if (typeof r.worktreesRoot === 'string') proj.worktreesRoot = r.worktreesRoot;
+  return proj;
+}
+
+function normalizeWorktree(raw: unknown): Worktree | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+  if (typeof r.id !== 'string' || typeof r.branch !== 'string' || typeof r.path !== 'string') {
+    return null;
+  }
+  return {
+    id: r.id,
+    branch: r.branch,
+    path: r.path,
+    addedAt: typeof r.addedAt === 'string' ? r.addedAt : new Date().toISOString(),
+    lastOpenedAt: typeof r.lastOpenedAt === 'string' ? r.lastOpenedAt : null,
+    order: typeof r.order === 'number' ? r.order : 0,
+  };
+}
+
+function normalizeActive(
+  rawActive: unknown,
+  rawLegacyId: unknown,
+  projects: Project[],
+): ActiveSelection | null {
+  if (rawActive && typeof rawActive === 'object') {
+    const a = rawActive as Record<string, unknown>;
+    if (typeof a.projectId === 'string') {
+      const wid = typeof a.worktreeId === 'string' ? a.worktreeId : null;
+      const proj = projects.find((p) => p.id === a.projectId);
+      if (!proj) return null;
+      if (wid && !proj.worktrees.some((w) => w.id === wid)) {
+        return { projectId: proj.id, worktreeId: null };
+      }
+      return { projectId: proj.id, worktreeId: wid };
+    }
+  }
+  if (typeof rawLegacyId === 'string') {
+    const proj = projects.find((p) => p.id === rawLegacyId);
+    if (proj) return { projectId: proj.id, worktreeId: null };
+  }
+  return null;
 }
 
 function migrateTerminalStyle(raw: unknown): TerminalStyleSettings {

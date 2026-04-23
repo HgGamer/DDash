@@ -1,8 +1,11 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { Workspace } from './components/Workspace';
 import { SettingsModal } from './components/SettingsModal';
+import { NewWorktreeModal } from './components/NewWorktreeModal';
 import { useStore } from './store';
+import { compositeKey } from '@shared/ipc';
+import type { ActiveSelection, Project } from '@shared/types';
 
 export function App() {
   const {
@@ -12,12 +15,15 @@ export function App() {
     setActive,
     upsertTab,
     clearTab,
+    clearProjectAndWorktrees,
     setTerminalStyle,
     setNotifications,
     openSettings,
     closeSettings,
     settingsModalOpen,
   } = useStore();
+
+  const [newWorktreeFor, setNewWorktreeFor] = useState<Project | null>(null);
 
   const refreshProjects = useCallback(async () => {
     const list = await window.api.projects.list();
@@ -26,9 +32,9 @@ export function App() {
   }, [setProjects]);
 
   const activate = useCallback(
-    async (id: string | null) => {
-      setActive(id);
-      await window.api.projects.setActive(id);
+    async (active: ActiveSelection | null) => {
+      setActive(active);
+      await window.api.projects.setActive(active);
     },
     [setActive],
   );
@@ -40,27 +46,28 @@ export function App() {
     const list = await refreshProjects();
     if (proj) {
       const existing = list.find((p) => p.id === proj.id);
-      if (existing) await activate(existing.id);
+      if (existing) await activate({ projectId: existing.id, worktreeId: null });
     }
   }, [refreshProjects, activate]);
 
-  // Initial load + restore last-active.
+  // Initial load + restore last-active + reconcile worktrees.
   useEffect(() => {
     void (async () => {
       const list = await refreshProjects();
-      // Read last-active from the main process indirectly: main already
-      // persists it; we simply pick the most recently opened project as a
-      // fallback when available.
+      // Reconcile each project's worktrees so missing-on-disk ones are flagged.
+      for (const p of list) {
+        if (p.worktrees.length === 0) continue;
+        await window.api.worktrees.reconcile(p.id);
+      }
+      // Re-pull projects so reconcile-marked statuses propagate.
+      await refreshProjects();
       const lastActive = list
         .filter((p) => p.lastOpenedAt)
         .sort((a, b) => (b.lastOpenedAt ?? '').localeCompare(a.lastOpenedAt ?? ''))[0];
-      if (lastActive) setActive(lastActive.id);
+      if (lastActive) setActive({ projectId: lastActive.id, worktreeId: null });
     })();
   }, [refreshProjects, setActive]);
 
-  // Block the renderer's default "navigate to dropped file" behavior. The
-  // TerminalPane attaches its own drop handler that calls preventDefault;
-  // this is the safety net for drops anywhere else in the window.
   useEffect(() => {
     const swallow = (e: DragEvent) => e.preventDefault();
     window.addEventListener('dragover', swallow);
@@ -71,7 +78,6 @@ export function App() {
     };
   }, []);
 
-  // Terminal style: hydrate from persisted settings and subscribe to changes.
   useEffect(() => {
     void (async () => {
       const current = await window.api.settings.getTerminalStyle();
@@ -83,7 +89,6 @@ export function App() {
     return () => off();
   }, [setTerminalStyle]);
 
-  // Notification prefs: hydrate + subscribe.
   useEffect(() => {
     void (async () => {
       const current = await window.api.settings.getNotifications();
@@ -98,11 +103,11 @@ export function App() {
     const offData = window.api.pty.onData(() => {
       // xterm components handle their own data; nothing to do here.
     });
-    const offExit = window.api.pty.onExit(({ projectId, exitCode }) => {
-      upsertTab(projectId, { status: 'exited', exitCode });
+    const offExit = window.api.pty.onExit(({ projectId, worktreeId, exitCode }) => {
+      upsertTab(compositeKey(projectId, worktreeId ?? null), { status: 'exited', exitCode });
     });
-    const offErr = window.api.pty.onError(({ projectId, error }) => {
-      upsertTab(projectId, { status: 'exited', error });
+    const offErr = window.api.pty.onError(({ projectId, worktreeId, error }) => {
+      upsertTab(compositeKey(projectId, worktreeId ?? null), { status: 'exited', error });
     });
     return () => {
       offData();
@@ -111,6 +116,16 @@ export function App() {
     };
   }, [upsertTab]);
 
+  // Build a flat list of selectable tabs (projects + their worktrees) for cycling.
+  const flatTabs = useCallback((): ActiveSelection[] => {
+    const out: ActiveSelection[] = [];
+    for (const p of useStore.getState().projects) {
+      out.push({ projectId: p.id, worktreeId: null });
+      for (const w of p.worktrees) out.push({ projectId: p.id, worktreeId: w.id });
+    }
+    return out;
+  }, []);
+
   // Menu shortcuts.
   useEffect(() => {
     const offs = [
@@ -118,11 +133,32 @@ export function App() {
       window.api.menu.onRemoveActive(() =>
         (async () => {
           if (!activeId) return;
-          await window.api.projects.remove(activeId);
-          clearTab(activeId);
+          if (activeId.worktreeId) {
+            const r = await window.api.worktrees.remove({
+              projectId: activeId.projectId,
+              worktreeId: activeId.worktreeId,
+              force: false,
+            });
+            if (!r.ok) {
+              window.alert(`Failed to remove worktree:\n${r.error}`);
+              return;
+            }
+            clearTab(compositeKey(activeId.projectId, activeId.worktreeId));
+          } else {
+            const r = await window.api.projects.remove(activeId.projectId);
+            if (!r.ok) {
+              window.alert(
+                'Failed to remove project — some worktrees could not be removed:\n' +
+                  r.errors.map((e) => `• ${e.worktreeId}: ${e.message}`).join('\n'),
+              );
+              await refreshProjects();
+              return;
+            }
+            clearProjectAndWorktrees(activeId.projectId);
+          }
           const list = await refreshProjects();
-          const next = list[0]?.id ?? null;
-          await activate(next);
+          const next = list[0];
+          await activate(next ? { projectId: next.id, worktreeId: null } : null);
         })(),
       ),
       window.api.menu.onNextTab(() => cycleTab(1)),
@@ -130,22 +166,34 @@ export function App() {
       window.api.menu.onActivateIndex((i) => {
         const list = useStore.getState().projects;
         const target = list[i];
-        if (target) void activate(target.id);
+        if (target) void activate({ projectId: target.id, worktreeId: null });
       }),
       window.api.menu.onOpenSettings(() => openSettings()),
     ];
     return () => offs.forEach((o) => o());
 
     function cycleTab(delta: number) {
-      const list = useStore.getState().projects;
-      if (list.length === 0) return;
-      const currentIndex = list.findIndex((p) => p.id === useStore.getState().activeId);
-      const nextIndex = (currentIndex + delta + list.length) % list.length;
-      void activate(list[nextIndex].id);
+      const tabs = flatTabs();
+      if (tabs.length === 0) return;
+      const cur = useStore.getState().activeId;
+      const idx = cur
+        ? tabs.findIndex(
+            (t) => t.projectId === cur.projectId && t.worktreeId === cur.worktreeId,
+          )
+        : -1;
+      const nextIdx = (idx + delta + tabs.length) % tabs.length;
+      void activate(tabs[nextIdx]);
     }
-  }, [addProject, activeId, activate, clearTab, refreshProjects, openSettings]);
-
-  const activeProject = projects.find((p) => p.id === activeId) ?? null;
+  }, [
+    addProject,
+    activeId,
+    activate,
+    clearTab,
+    clearProjectAndWorktrees,
+    refreshProjects,
+    openSettings,
+    flatTabs,
+  ]);
 
   return (
     <div className="app">
@@ -154,9 +202,28 @@ export function App() {
         onActivate={activate}
         onAddProject={addProject}
         onRefresh={refreshProjects}
+        onNewWorktree={(projectId) => {
+          const p = projects.find((pp) => pp.id === projectId);
+          if (p) setNewWorktreeFor(p);
+        }}
       />
-      <Workspace project={activeProject} />
+      <Workspace activeId={activeId} />
       {settingsModalOpen && <SettingsModal onClose={closeSettings} />}
+      {newWorktreeFor && (
+        <NewWorktreeModal
+          projectId={newWorktreeFor.id}
+          projectPath={newWorktreeFor.path}
+          worktreesRoot={newWorktreeFor.worktreesRoot}
+          onClose={() => setNewWorktreeFor(null)}
+          onCreated={(wt) => {
+            setNewWorktreeFor(null);
+            void (async () => {
+              await refreshProjects();
+              await activate({ projectId: newWorktreeFor.id, worktreeId: wt.id });
+            })();
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -1,18 +1,30 @@
-import type { Project } from '@shared/types';
+import type { ActiveSelection } from '@shared/types';
+import { compositeKey, parseCompositeKey } from '@shared/ipc';
 import { useStore } from '../store';
 import { TerminalPane } from './TerminalPane';
 
 interface Props {
-  project: Project | null;
+  activeId: ActiveSelection | null;
 }
 
-export function Workspace({ project }: Props) {
-  const mountedIds = useStore((s) => s.mountedIds);
+export function Workspace({ activeId }: Props) {
+  const mountedKeys = useStore((s) => s.mountedKeys);
   const projects = useStore((s) => s.projects);
 
-  const validMounted = mountedIds.filter((id) => projects.some((p) => p.id === id));
+  const resolved = mountedKeys
+    .map((k) => {
+      const { projectId, worktreeId } = parseCompositeKey(k);
+      const proj = projects.find((p) => p.id === projectId);
+      if (!proj) return null;
+      const worktree = worktreeId ? proj.worktrees.find((w) => w.id === worktreeId) ?? null : null;
+      if (worktreeId && !worktree) return null;
+      return { key: k, proj, worktree };
+    })
+    .filter((x): x is { key: string; proj: typeof projects[number]; worktree: typeof projects[number]['worktrees'][number] | null } => x !== null);
 
-  if (!project && validMounted.length === 0) {
+  const activeKey = activeId ? compositeKey(activeId.projectId, activeId.worktreeId) : null;
+
+  if (!activeKey && resolved.length === 0) {
     return (
       <main className="workspace">
         <div className="empty-state">
@@ -27,12 +39,11 @@ export function Workspace({ project }: Props) {
 
   return (
     <main className="workspace">
-      {validMounted.map((id) => {
-        const proj = projects.find((p) => p.id === id)!;
-        const active = project?.id === id;
+      {resolved.map(({ key, proj, worktree }) => {
+        const active = key === activeKey;
         return (
           <div
-            key={id}
+            key={key}
             style={{
               position: 'absolute',
               inset: 0,
@@ -40,7 +51,7 @@ export function Workspace({ project }: Props) {
               pointerEvents: active ? 'auto' : 'none',
             }}
           >
-            <TerminalPane project={proj} active={active} />
+            <TerminalPane project={proj} worktree={worktree} active={active} />
           </div>
         );
       })}

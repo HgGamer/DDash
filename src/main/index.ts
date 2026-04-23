@@ -74,6 +74,7 @@ app.whenReady().then(async () => {
   store = new JsonStore({ dir: app.getPath('userData') });
   await store.load();
   registry = new ProjectRegistry(store);
+  await registry.refreshGitMeta();
   const settings = new SettingsManager(store);
 
   registerIpc({ store, registry, ptyManager, settings, getWindow: () => mainWindow });

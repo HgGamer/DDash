@@ -1,3 +1,15 @@
+export interface Worktree {
+  id: string;
+  branch: string;
+  path: string;
+  addedAt: string;
+  lastOpenedAt: string | null;
+  order: number;
+  /** Runtime-only flag set by reconcile when the worktree is registered but
+   * absent on disk / unknown to git. Never persisted. */
+  status?: 'missing';
+}
+
 export interface Project {
   id: string;
   name: string;
@@ -5,6 +17,12 @@ export interface Project {
   addedAt: string;
   lastOpenedAt: string | null;
   order: number;
+  worktrees: Worktree[];
+  /** Optional override for where this project's worktrees live on disk.
+   * When unset, defaults to `<project.path>.worktrees`. */
+  worktreesRoot?: string;
+  /** Runtime-only cache populated after launch. Never persisted. */
+  isGitRepo?: boolean;
 }
 
 export interface WindowState {
@@ -134,10 +152,15 @@ export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
   systemNotifications: true,
 };
 
+export interface ActiveSelection {
+  projectId: string;
+  worktreeId: string | null;
+}
+
 export interface AppState {
-  version: 1;
+  version: 2;
   projects: Project[];
-  lastActiveProjectId: string | null;
+  lastActive: ActiveSelection | null;
   window: WindowState;
   terminalStyle: TerminalStyleSettings;
   notifications: NotificationSettings;
@@ -152,9 +175,9 @@ export const DEFAULT_WINDOW_STATE: WindowState = {
 };
 
 export const DEFAULT_APP_STATE: AppState = {
-  version: 1,
+  version: 2,
   projects: [],
-  lastActiveProjectId: null,
+  lastActive: null,
   window: DEFAULT_WINDOW_STATE,
   terminalStyle: DEFAULT_TERMINAL_STYLE,
   notifications: DEFAULT_NOTIFICATION_SETTINGS,

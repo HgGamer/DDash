@@ -4,21 +4,31 @@
 
 ### Requirement: PTY-backed terminal
 
-The application SHALL provide an embedded terminal component backed by a real pseudo-terminal (PTY), capable of running interactive TUI programs including the `claude` CLI. Plain stdout/stderr piping SHALL NOT be used.
+The application SHALL provide an embedded terminal component backed by a real pseudo-terminal (PTY), capable of running interactive TUI programs including the `claude` CLI. Plain stdout/stderr piping SHALL NOT be used. The terminal's visual style (theme, font family, font size) SHALL be determined by the currently active terminal-style preset (see the `terminal-style-settings` capability) rather than by hard-coded values, and SHALL update live when that preset changes.
 
 #### Scenario: Interactive TUI renders correctly
 
 - **WHEN** an interactive program that uses cursor positioning, colors, and raw-mode input (such as `claude`) runs in the terminal
 - **THEN** the terminal SHALL render the program's full-screen UI, accept keystrokes as raw input, and display ANSI colors and cursor movements correctly
 
+#### Scenario: Style follows the active preset
+
+- **WHEN** the active terminal-style preset changes
+- **THEN** each open terminal pane SHALL update its theme, font family, and font size to match the new preset without restarting its PTY session
+
 ### Requirement: Launch `claude` in the project directory
 
-When a terminal session is spawned for a project, the application SHALL set the PTY's working directory to the project's path and SHALL automatically launch the `claude` CLI as the foreground process of that session.
+When a terminal session is spawned for a tab, the application SHALL set the PTY's working directory to that tab's filesystem path — the project's `path` for a project's primary tree, or the worktree's `path` for a worktree tab — and SHALL automatically launch the `claude` CLI as the foreground process of that session.
 
-#### Scenario: Session starts in project directory
+#### Scenario: Project session starts in project directory
 
-- **WHEN** a terminal session is spawned for a project whose path is `/path/to/project`
+- **WHEN** a terminal session is spawned for a project whose path is `/path/to/project` (no worktree selected)
 - **THEN** the PTY's initial working directory SHALL be `/path/to/project` and the `claude` CLI SHALL be invoked as its initial command
+
+#### Scenario: Worktree session starts in worktree directory
+
+- **WHEN** a terminal session is spawned for a worktree whose path is `/path/to/project.worktrees/feature-x`
+- **THEN** the PTY's initial working directory SHALL be `/path/to/project.worktrees/feature-x` and the `claude` CLI SHALL be invoked as its initial command
 
 #### Scenario: Environment is inherited from the user's shell
 
@@ -63,9 +73,14 @@ When the terminal's root process exits, the terminal pane SHALL remain visible w
 
 ### Requirement: Project path missing at spawn time
 
-If a project's path does not exist on disk at the moment a terminal session is spawned, the application SHALL NOT spawn the PTY and SHALL instead display an in-pane error with actions to locate the path or remove the project.
+If a tab's filesystem path does not exist on disk at the moment a terminal session is spawned — whether that is the project's `path` for a primary-tree tab or the worktree's `path` for a worktree tab — the application SHALL NOT spawn the PTY and SHALL instead display an in-pane error with actions appropriate to the tab type.
 
-#### Scenario: Path was moved or deleted between launches
+#### Scenario: Project path was moved or deleted between launches
 
-- **WHEN** the user activates a project whose `path` no longer exists on disk
+- **WHEN** the user activates a project's primary tree whose `path` no longer exists on disk
 - **THEN** no PTY SHALL be spawned and the pane SHALL show a "path not found" message offering "Locate…" and "Remove project" actions
+
+#### Scenario: Worktree path is missing at spawn time
+
+- **WHEN** the user activates a worktree whose `path` no longer exists on disk
+- **THEN** no PTY SHALL be spawned and the pane SHALL show a "worktree path not found" message offering "Locate…" and "Remove worktree" actions

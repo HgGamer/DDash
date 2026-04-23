@@ -13,8 +13,11 @@ import {
   type PtyResizeArgs,
   type PtyWriteArgs,
   type NotifyAttentionArgs,
+  type WorktreeCreateArgs,
+  type WorktreeRemoveArgs,
 } from '@shared/ipc';
 import type {
+  ActiveSelection,
   NotificationSettings,
   TerminalStyleOptions,
   TerminalStylePreset,
@@ -34,8 +37,19 @@ const api: DashApi = {
     remove: (id: string) => ipcRenderer.invoke(IPC.ProjectRemove, id),
     rename: (args: ProjectRenameArgs) => ipcRenderer.invoke(IPC.ProjectRename, args),
     reorder: (args: ProjectReorderArgs) => ipcRenderer.invoke(IPC.ProjectReorder, args),
-    setActive: (id: string | null) => ipcRenderer.invoke(IPC.ProjectSetActive, id),
+    setActive: (active: ActiveSelection | null) =>
+      ipcRenderer.invoke(IPC.ProjectSetActive, active),
     pickDirectory: () => ipcRenderer.invoke(IPC.ProjectPickDirectory),
+  },
+  worktrees: {
+    list: (projectId: string) => ipcRenderer.invoke(IPC.WorktreeList, projectId),
+    create: (args: WorktreeCreateArgs) => ipcRenderer.invoke(IPC.WorktreeCreate, args),
+    remove: (args: WorktreeRemoveArgs) => ipcRenderer.invoke(IPC.WorktreeRemove, args),
+    reconcile: (projectId: string) => ipcRenderer.invoke(IPC.WorktreeReconcile, projectId),
+    listLocalBranches: (projectId: string) =>
+      ipcRenderer.invoke(IPC.WorktreeListLocalBranches, projectId),
+    computeDefaultPath: (projectId: string, branch: string) =>
+      ipcRenderer.invoke(IPC.WorktreeComputeDefaultPath, projectId, branch),
   },
   pty: {
     open: (args: PtyOpenArgs) => ipcRenderer.invoke(IPC.PtyOpen, args),
@@ -63,7 +77,7 @@ const api: DashApi = {
   },
   notify: {
     attention: (args: NotifyAttentionArgs) => ipcRenderer.send(IPC.NotifyAttention, args),
-    attentionClear: (projectId: string) => ipcRenderer.send(IPC.NotifyAttentionClear, projectId),
+    attentionClear: (key: string) => ipcRenderer.send(IPC.NotifyAttentionClear, key),
   },
   menu: {
     onAddProject: (h) => subscribe<void>(IPC.MenuAddProject, () => h()),

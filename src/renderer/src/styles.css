@@ -103,6 +103,64 @@ button:hover {
   outline-offset: -3px;
 }
 
+.project-row .disclosure {
+  flex: 0 0 14px;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  border: none;
+  color: var(--fg-muted);
+  font-size: 9px;
+  line-height: 14px;
+  cursor: pointer;
+}
+.project-row .disclosure:hover {
+  color: var(--fg);
+  background: transparent;
+}
+.project-row .disclosure.invisible {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.project-row .row-action {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--fg-muted);
+  background: transparent;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+}
+.project-row:hover .row-action {
+  opacity: 1;
+}
+.project-row .row-action:hover {
+  color: var(--fg);
+  border-color: var(--accent);
+}
+
+.project-row.worktree-row {
+  padding-left: 28px;
+}
+.project-row.worktree-row .name .worktree-branch {
+  font-family: 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', monospace;
+  font-size: 12px;
+}
+.project-row.worktree-row .path.warn {
+  color: var(--warn);
+}
+.project-row.worktree-row.missing .status-dot {
+  background: var(--warn);
+}
+
 .project-row .name {
   flex: 1;
   min-width: 0;
@@ -331,6 +389,20 @@ button:hover {
   padding: 1px 4px;
   border-radius: 3px;
 }
+.link-btn {
+  background: transparent;
+  border: none;
+  color: var(--accent);
+  cursor: pointer;
+  padding: 0;
+  font: inherit;
+  text-decoration: underline;
+}
+.link-btn:hover {
+  background: transparent;
+  color: var(--fg);
+}
+
 .preset-error {
   margin-top: 10px;
   padding: 8px 10px;
