@@ -1,6 +1,12 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { DEFAULT_APP_STATE, type AppState } from '@shared/types';
+import {
+  DEFAULT_APP_STATE,
+  DEFAULT_TERMINAL_STYLE,
+  TERMINAL_STYLE_PRESET_IDS,
+  type AppState,
+  type TerminalStyleSettings,
+} from '@shared/types';
 
 export interface StoreOptions {
   dir: string;
@@ -97,6 +103,24 @@ export class JsonStore {
       projects: Array.isArray(r.projects) ? r.projects : [],
       lastActiveProjectId: r.lastActiveProjectId ?? null,
       window: { ...base.window, ...(r.window ?? {}) },
+      terminalStyle: migrateTerminalStyle(r.terminalStyle),
     };
   }
+}
+
+function migrateTerminalStyle(raw: unknown): TerminalStyleSettings {
+  if (!raw || typeof raw !== 'object') return { ...DEFAULT_TERMINAL_STYLE };
+  const r = raw as Partial<TerminalStyleSettings>;
+  const preset =
+    r.preset && TERMINAL_STYLE_PRESET_IDS.includes(r.preset)
+      ? r.preset
+      : DEFAULT_TERMINAL_STYLE.preset;
+  // A 'custom' preset is only valid if a customStyle payload accompanies it.
+  if (preset === 'custom' && (!r.customStyle || typeof r.customStyle !== 'object')) {
+    return { ...DEFAULT_TERMINAL_STYLE };
+  }
+  const out: TerminalStyleSettings = { version: 1, preset };
+  if (r.customStyle && typeof r.customStyle === 'object') out.customStyle = r.customStyle;
+  if (typeof r.customStyleName === 'string') out.customStyleName = r.customStyleName;
+  return out;
 }

@@ -1,10 +1,21 @@
 import { useCallback, useEffect } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { Workspace } from './components/Workspace';
+import { TerminalStyleSettingsModal } from './components/TerminalStyleSettings';
 import { useStore } from './store';
 
 export function App() {
-  const { projects, activeId, setProjects, setActive, upsertTab, clearTab } = useStore();
+  const {
+    projects,
+    activeId,
+    setProjects,
+    setActive,
+    upsertTab,
+    clearTab,
+    setTerminalStyle,
+    setTerminalStyleModalOpen,
+    terminalStyleModalOpen,
+  } = useStore();
 
   const refreshProjects = useCallback(async () => {
     const list = await window.api.projects.list();
@@ -45,6 +56,31 @@ export function App() {
     })();
   }, [refreshProjects, setActive]);
 
+  // Block the renderer's default "navigate to dropped file" behavior. The
+  // TerminalPane attaches its own drop handler that calls preventDefault;
+  // this is the safety net for drops anywhere else in the window.
+  useEffect(() => {
+    const swallow = (e: DragEvent) => e.preventDefault();
+    window.addEventListener('dragover', swallow);
+    window.addEventListener('drop', swallow);
+    return () => {
+      window.removeEventListener('dragover', swallow);
+      window.removeEventListener('drop', swallow);
+    };
+  }, []);
+
+  // Terminal style: hydrate from persisted settings and subscribe to changes.
+  useEffect(() => {
+    void (async () => {
+      const current = await window.api.settings.getTerminalStyle();
+      setTerminalStyle(current);
+    })();
+    const off = window.api.settings.onTerminalStyleChanged((s) => {
+      setTerminalStyle(s);
+    });
+    return () => off();
+  }, [setTerminalStyle]);
+
   // PTY events.
   useEffect(() => {
     const offData = window.api.pty.onData(() => {
@@ -84,6 +120,7 @@ export function App() {
         const target = list[i];
         if (target) void activate(target.id);
       }),
+      window.api.menu.onOpenTerminalStyle(() => setTerminalStyleModalOpen(true)),
     ];
     return () => offs.forEach((o) => o());
 
@@ -94,7 +131,7 @@ export function App() {
       const nextIndex = (currentIndex + delta + list.length) % list.length;
       void activate(list[nextIndex].id);
     }
-  }, [addProject, activeId, activate, clearTab, refreshProjects]);
+  }, [addProject, activeId, activate, clearTab, refreshProjects, setTerminalStyleModalOpen]);
 
   const activeProject = projects.find((p) => p.id === activeId) ?? null;
 
@@ -107,6 +144,9 @@ export function App() {
         onRefresh={refreshProjects}
       />
       <Workspace project={activeProject} />
+      {terminalStyleModalOpen && (
+        <TerminalStyleSettingsModal onClose={() => setTerminalStyleModalOpen(false)} />
+      )}
     </div>
   );
 }

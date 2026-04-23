@@ -3,6 +3,7 @@ import { IPC } from '@shared/ipc';
 
 export function installAppMenu(getWindow: () => BrowserWindow | null): void {
   const isMac = process.platform === 'darwin';
+  const isDev = !app.isPackaged;
 
   const send = (channel: string, payload?: unknown) => {
     const w = getWindow();
@@ -67,14 +68,20 @@ export function installAppMenu(getWindow: () => BrowserWindow | null): void {
     {
       label: 'View',
       submenu: [
-        { role: 'reload' },
-        { role: 'toggleDevTools' },
-        { type: 'separator' },
-        { role: 'resetZoom' },
-        { role: 'zoomIn' },
-        { role: 'zoomOut' },
+        {
+          label: 'Terminal Style…',
+          click: () => send(IPC.MenuOpenTerminalStyle),
+        },
         { type: 'separator' },
         { role: 'togglefullscreen' },
+        // Dev-only diagnostics — not shipped to end users.
+        ...(isDev
+          ? ([
+              { type: 'separator' },
+              { role: 'reload' },
+              { role: 'toggleDevTools' },
+            ] as MenuItemConstructorOptions[])
+          : []),
       ],
     },
     {
@@ -96,7 +103,7 @@ export function installAppMenu(getWindow: () => BrowserWindow | null): void {
     },
     {
       role: 'window',
-      submenu: [{ role: 'minimize' }, ...(isMac ? ([{ role: 'zoom' }, { role: 'front' }] as MenuItemConstructorOptions[]) : [])],
+      submenu: [{ role: 'minimize' }, ...(isMac ? ([{ role: 'zoom' }] as MenuItemConstructorOptions[]) : [])],
     },
   ];
 

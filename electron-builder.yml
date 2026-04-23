@@ -14,11 +14,11 @@ mac:
     - target: dmg
       arch:
         - arm64
-        - x64
   category: public.app-category.developer-tools
   artifactName: ${productName}-${version}-${arch}.${ext}
-  hardenedRuntime: true
+  hardenedRuntime: false
   gatekeeperAssess: false
+  identity: null
 win:
   target:
     - target: nsis

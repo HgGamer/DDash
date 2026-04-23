@@ -3,6 +3,7 @@ import { Terminal } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
 import { WebLinksAddon } from 'xterm-addon-web-links';
 import type { Project, PtySpawnError } from '@shared/types';
+import { resolveTerminalStyleOptions } from '@shared/types';
 import { useStore } from '../store';
 
 interface Props {
@@ -17,6 +18,7 @@ export function TerminalPane({ project, active }: Props) {
   const spawnedRef = useRef(false);
   const upsertTab = useStore((s) => s.upsertTab);
   const tab = useStore((s) => s.tabs[project.id]);
+  const termStyle = useStore((s) => s.terminalStyle);
   const [localError, setLocalError] = useState<PtySpawnError | null>(null);
 
   // Mount the xterm instance once per project. Even when this pane is hidden
@@ -26,14 +28,12 @@ export function TerminalPane({ project, active }: Props) {
     const host = hostRef.current;
     if (!host) return;
 
+    const initialStyle = resolveTerminalStyleOptions(useStore.getState().terminalStyle);
     const term = new Terminal({
       cursorBlink: true,
-      fontFamily:
-        '"SFMono-Regular", "Menlo", "Monaco", "Consolas", "Liberation Mono", "Courier New", monospace',
-      fontSize: 13,
-      theme: { background: '#000000' },
       allowProposedApi: true,
       scrollback: 10_000,
+      ...initialStyle,
     });
     const fit = new FitAddon();
     term.loadAddon(fit);
@@ -74,6 +74,29 @@ export function TerminalPane({ project, active }: Props) {
     });
 
     upsertTab(project.id, { status: 'not-started' });
+
+    // Drag-and-drop: mimic Terminal.app — writing the shell-quoted absolute
+    // path(s) of dropped files to the PTY, as if the user had typed them.
+    const onDragOver = (e: DragEvent) => {
+      const hasFiles =
+        e.dataTransfer?.types?.includes('Files') ||
+        Array.from(e.dataTransfer?.items ?? []).some((i) => i.kind === 'file');
+      if (!hasFiles) return;
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+    };
+    const onDrop = (e: DragEvent) => {
+      if (!e.dataTransfer) return;
+      const files = Array.from(e.dataTransfer.files) as Array<File & { path?: string }>;
+      const paths = files.map((f) => f.path).filter((p): p is string => !!p && p.length > 0);
+      if (paths.length === 0) return;
+      e.preventDefault();
+      const text = paths.map(shellQuote).join(' ') + ' ';
+      window.api.pty.write({ projectId: project.id, data: text });
+      term.focus();
+    };
+    host.addEventListener('dragover', onDragOver);
+    host.addEventListener('drop', onDrop);
 
     // Watch host size. Also used to know when we have real dimensions.
     const observer = new ResizeObserver(() => safeFit());
@@ -119,6 +142,8 @@ export function TerminalPane({ project, active }: Props) {
 
     return () => {
       observer.disconnect();
+      host.removeEventListener('dragover', onDragOver);
+      host.removeEventListener('drop', onDrop);
       disposeData.dispose();
       disposeResize.dispose();
       offPtyData();
@@ -131,6 +156,24 @@ export function TerminalPane({ project, active }: Props) {
     // Intentionally only depends on project.id — we mount exactly once per project.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project.id]);
+
+  // Live-apply terminal style preset changes to the existing xterm instance
+  // without tearing down the PTY. Any field not supplied by the preset resets
+  // to xterm's default (`undefined`).
+  useEffect(() => {
+    const term = termRef.current;
+    const fit = fitRef.current;
+    if (!term) return;
+    const opts = resolveTerminalStyleOptions(termStyle);
+    term.options.theme = opts.theme;
+    term.options.fontFamily = opts.fontFamily;
+    term.options.fontSize = opts.fontSize;
+    try {
+      fit?.fit();
+    } catch {
+      /* no-op */
+    }
+  }, [termStyle]);
 
   // Re-fit + focus whenever this pane becomes active.
   useEffect(() => {
@@ -204,6 +247,15 @@ export function TerminalPane({ project, active }: Props) {
       )}
     </div>
   );
+}
+
+// POSIX single-quote shell escape, matching how Terminal.app escapes paths
+// dragged from Finder. Paths made of "safe" characters are left as-is so the
+// common case reads cleanly; anything with a space or a shell metacharacter is
+// single-quoted, with embedded single quotes escaped as '\''.
+function shellQuote(p: string): string {
+  if (/^[A-Za-z0-9@%+=:,./_-]+$/.test(p)) return p;
+  return `'${p.replace(/'/g, "'\\''")}'`;
 }
 
 function ErrorOverlay(props: {

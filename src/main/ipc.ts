@@ -1,6 +1,7 @@
 import { BrowserWindow, dialog, ipcMain } from 'electron';
 import {
   IPC,
+  type BrowseTerminalStyleResult,
   type ProjectAddArgs,
   type ProjectPickDirectoryResult,
   type ProjectRenameArgs,
@@ -13,17 +14,21 @@ import {
   type PtyResizeArgs,
   type PtyWriteArgs,
 } from '@shared/ipc';
+import { loadStyleFromFile } from './terminal-style-file';
 import type { ProjectRegistry } from './registry';
 import type { JsonStore } from './store';
+import type { SettingsManager } from './settings';
+import type { TerminalStylePreset, TerminalStyleSettings } from '@shared/types';
 import { PtySessionManager } from './pty-session';
 
 export function registerIpc(args: {
   store: JsonStore;
   registry: ProjectRegistry;
   ptyManager: PtySessionManager;
+  settings: SettingsManager;
   getWindow: () => BrowserWindow | null;
 }): void {
-  const { store, registry, ptyManager, getWindow } = args;
+  const { store, registry, ptyManager, settings, getWindow } = args;
 
   const send = (channel: string, payload: unknown) => {
     const win = getWindow();
@@ -117,5 +122,47 @@ export function registerIpc(args: {
     if (!session) return;
     ptyManager.delete(args.projectId);
     await session.kill();
+  });
+
+  ipcMain.handle(IPC.SettingsGetTerminalStyle, async (): Promise<TerminalStyleSettings> => {
+    return settings.getTerminalStyle();
+  });
+
+  ipcMain.handle(
+    IPC.SettingsSetTerminalStyle,
+    async (_e, preset: TerminalStylePreset): Promise<TerminalStyleSettings> => {
+      const next = settings.setTerminalStyle(preset);
+      await store.flush();
+      return next;
+    },
+  );
+
+  ipcMain.handle(IPC.SettingsBrowseTerminalStyle, async (): Promise<BrowseTerminalStyleResult> => {
+    const win = getWindow();
+    const result = await dialog.showOpenDialog(win ?? undefined!, {
+      properties: ['openFile'],
+      title: 'Load Terminal Style',
+      filters: [
+        { name: 'Terminal Style', extensions: ['json', 'terminal'] },
+        { name: 'JSON', extensions: ['json'] },
+        { name: 'Apple Terminal Profile', extensions: ['terminal'] },
+        { name: 'All Files', extensions: ['*'] },
+      ],
+    });
+    if (result.canceled || result.filePaths.length === 0) {
+      return { ok: false, reason: 'canceled' };
+    }
+    try {
+      const loaded = await loadStyleFromFile(result.filePaths[0]);
+      const next = settings.setCustomTerminalStyle(loaded.style, loaded.name);
+      await store.flush();
+      return { ok: true, settings: next };
+    } catch (err) {
+      return { ok: false, reason: 'invalid', message: (err as Error).message };
+    }
+  });
+
+  settings.on('terminalStyleChanged', (next: TerminalStyleSettings) => {
+    send(IPC.SettingsTerminalStyleChanged, next);
   });
 }

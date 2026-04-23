@@ -13,6 +13,7 @@ import {
   type PtyResizeArgs,
   type PtyWriteArgs,
 } from '@shared/ipc';
+import type { TerminalStylePreset, TerminalStyleSettings } from '@shared/types';
 
 function subscribe<T>(channel: string, handler: (payload: T) => void): () => void {
   const listener = (_e: IpcRendererEvent, payload: T) => handler(payload);
@@ -39,12 +40,21 @@ const api: DashApi = {
     onExit: (h) => subscribe<PtyExitEvent>(IPC.PtyExit, h),
     onError: (h) => subscribe<PtyErrorEvent>(IPC.PtyError, h),
   },
+  settings: {
+    getTerminalStyle: () => ipcRenderer.invoke(IPC.SettingsGetTerminalStyle),
+    setTerminalStyle: (preset: TerminalStylePreset) =>
+      ipcRenderer.invoke(IPC.SettingsSetTerminalStyle, preset),
+    browseTerminalStyle: () => ipcRenderer.invoke(IPC.SettingsBrowseTerminalStyle),
+    onTerminalStyleChanged: (h) =>
+      subscribe<TerminalStyleSettings>(IPC.SettingsTerminalStyleChanged, h),
+  },
   menu: {
     onAddProject: (h) => subscribe<void>(IPC.MenuAddProject, () => h()),
     onRemoveActive: (h) => subscribe<void>(IPC.MenuRemoveActive, () => h()),
     onNextTab: (h) => subscribe<void>(IPC.MenuNextTab, () => h()),
     onPrevTab: (h) => subscribe<void>(IPC.MenuPrevTab, () => h()),
     onActivateIndex: (h) => subscribe<number>(IPC.MenuActivateIndex, (i) => h(i)),
+    onOpenTerminalStyle: (h) => subscribe<void>(IPC.MenuOpenTerminalStyle, () => h()),
   },
 };
 

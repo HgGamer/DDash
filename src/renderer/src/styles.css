@@ -233,3 +233,86 @@ button:hover {
   color: var(--fg);
   border-color: var(--accent);
 }
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+}
+.modal-card {
+  min-width: 420px;
+  max-width: 560px;
+  padding: 20px 24px;
+  background: var(--bg-sidebar);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.modal-card h3 {
+  margin: 0 0 8px;
+}
+.modal-card .fg-muted {
+  color: var(--fg-muted);
+  margin: 0 0 16px;
+  font-size: 13px;
+}
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+.preset-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.preset-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.preset-row:hover {
+  border-color: var(--accent);
+}
+.preset-row input[type='radio'] {
+  margin-top: 3px;
+}
+.preset-label {
+  font-weight: 500;
+}
+.preset-desc {
+  color: var(--fg-muted);
+  font-size: 12px;
+  margin-top: 2px;
+}
+
+.preset-browse-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+.preset-browse-row .preset-desc {
+  margin-top: 0;
+}
+.preset-browse-row code {
+  background: var(--bg);
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+.preset-error {
+  margin-top: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--danger);
+  border-radius: 4px;
+  color: var(--danger);
+  font-size: 12px;
+}

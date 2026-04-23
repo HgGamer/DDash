@@ -1,4 +1,4 @@
-import type { Project, PtySpawnResult } from './types';
+import type { Project, PtySpawnResult, TerminalStylePreset, TerminalStyleSettings } from './types';
 
 export const IPC = {
   // Project registry (renderer → main, request/response)
@@ -21,12 +21,19 @@ export const IPC = {
   PtyExit: 'pty:exit',
   PtyError: 'pty:error',
 
+  // Settings (renderer ↔ main)
+  SettingsGetTerminalStyle: 'settings:getTerminalStyle',
+  SettingsSetTerminalStyle: 'settings:setTerminalStyle',
+  SettingsBrowseTerminalStyle: 'settings:browseTerminalStyle',
+  SettingsTerminalStyleChanged: 'settings:terminalStyleChanged',
+
   // Menu/shortcut events (main → renderer)
   MenuAddProject: 'menu:addProject',
   MenuRemoveActive: 'menu:removeActive',
   MenuNextTab: 'menu:nextTab',
   MenuPrevTab: 'menu:prevTab',
   MenuActivateIndex: 'menu:activateIndex',
+  MenuOpenTerminalStyle: 'menu:openTerminalStyle',
 } as const;
 
 // Request/response payloads
@@ -44,6 +51,11 @@ export interface ProjectReorderArgs {
 export interface ProjectPickDirectoryResult {
   path: string | null;
 }
+
+export type BrowseTerminalStyleResult =
+  | { ok: true; settings: TerminalStyleSettings }
+  | { ok: false; reason: 'canceled' }
+  | { ok: false; reason: 'invalid'; message: string };
 
 export interface PtyOpenArgs {
   projectId: string;
@@ -98,12 +110,19 @@ export interface DashApi {
     onExit(handler: (ev: PtyExitEvent) => void): () => void;
     onError(handler: (ev: PtyErrorEvent) => void): () => void;
   };
+  settings: {
+    getTerminalStyle(): Promise<TerminalStyleSettings>;
+    setTerminalStyle(preset: TerminalStylePreset): Promise<TerminalStyleSettings>;
+    browseTerminalStyle(): Promise<BrowseTerminalStyleResult>;
+    onTerminalStyleChanged(handler: (s: TerminalStyleSettings) => void): () => void;
+  };
   menu: {
     onAddProject(handler: () => void): () => void;
     onRemoveActive(handler: () => void): () => void;
     onNextTab(handler: () => void): () => void;
     onPrevTab(handler: () => void): () => void;
     onActivateIndex(handler: (index: number) => void): () => void;
+    onOpenTerminalStyle(handler: () => void): () => void;
   };
 }
 

@@ -1,5 +1,10 @@
 import { create } from 'zustand';
-import type { Project, PtySessionStatus, PtySpawnError } from '@shared/types';
+import type {
+  Project,
+  PtySessionStatus,
+  PtySpawnError,
+  TerminalStyleSettings,
+} from '@shared/types';
 
 export interface TabState {
   status: PtySessionStatus;
@@ -14,12 +19,16 @@ interface AppStore {
   mountedIds: string[];
   tabs: Record<string, TabState>;
   loaded: boolean;
+  terminalStyle: TerminalStyleSettings;
+  terminalStyleModalOpen: boolean;
 
   setProjects: (projects: Project[]) => void;
   setActive: (id: string | null) => void;
   ensureMounted: (id: string) => void;
   upsertTab: (id: string, patch: Partial<TabState>) => void;
   clearTab: (id: string) => void;
+  setTerminalStyle: (s: TerminalStyleSettings) => void;
+  setTerminalStyleModalOpen: (open: boolean) => void;
 }
 
 export const useStore = create<AppStore>((set) => ({
@@ -28,6 +37,8 @@ export const useStore = create<AppStore>((set) => ({
   mountedIds: [],
   tabs: {},
   loaded: false,
+  terminalStyle: { version: 1, preset: 'dash-dark' },
+  terminalStyleModalOpen: false,
 
   setProjects: (projects) => set({ projects, loaded: true }),
   setActive: (id) =>
@@ -49,4 +60,6 @@ export const useStore = create<AppStore>((set) => ({
       const { [id]: _omit, ...rest } = s.tabs;
       return { tabs: rest, mountedIds: s.mountedIds.filter((m) => m !== id) };
     }),
+  setTerminalStyle: (s) => set({ terminalStyle: s }),
+  setTerminalStyleModalOpen: (open) => set({ terminalStyleModalOpen: open }),
 }));
