@@ -41,10 +41,15 @@ export interface TerminalStyleTheme {
   brightWhite?: string;
 }
 
+export type TerminalCursorStyle = 'block' | 'underline' | 'bar';
+
 export interface TerminalStyleOptions {
   theme?: TerminalStyleTheme;
   fontFamily?: string;
   fontSize?: number;
+  cursorStyle?: TerminalCursorStyle;
+  cursorBlink?: boolean;
+  scrollback?: number;
 }
 
 export interface TerminalStyleSettings {
@@ -54,6 +59,9 @@ export interface TerminalStyleSettings {
   customStyle?: TerminalStyleOptions;
   /** Display label for the loaded custom style (typically the filename). */
   customStyleName?: string;
+  /** User overrides layered on top of the resolved preset. Individual
+   * fields (e.g. fontSize, cursorStyle) set here win over the preset. */
+  overrides?: TerminalStyleOptions;
 }
 
 export const DEFAULT_TERMINAL_STYLE: TerminalStyleSettings = {
@@ -77,22 +85,54 @@ export const TERMINAL_STYLE_PRESETS: Record<'default' | 'dash-dark', TerminalSty
 export const TERMINAL_STYLE_PRESET_IDS: TerminalStylePreset[] = ['default', 'dash-dark', 'custom'];
 
 export function resolveTerminalStyleOptions(s: TerminalStyleSettings): TerminalStyleOptions {
+  let base: TerminalStyleOptions;
   if (s.preset === 'custom') {
     // Inherit the Dash-dark font family/size when the custom style doesn't
     // specify them. Leaving these undefined causes xterm.js to fall back to
     // its internal default ("courier-new, courier, monospace"), which on
     // macOS resolves to the serif-looking Courier and renders with huge
     // cell-gaps — see commit history for context.
-    const base = TERMINAL_STYLE_PRESETS['dash-dark'];
+    const fallback = TERMINAL_STYLE_PRESETS['dash-dark'];
     const custom = s.customStyle ?? {};
-    return {
-      theme: custom.theme ?? base.theme,
-      fontFamily: custom.fontFamily ?? base.fontFamily,
-      fontSize: custom.fontSize ?? base.fontSize,
+    base = {
+      theme: custom.theme ?? fallback.theme,
+      fontFamily: custom.fontFamily ?? fallback.fontFamily,
+      fontSize: custom.fontSize ?? fallback.fontSize,
+      cursorStyle: custom.cursorStyle,
+      cursorBlink: custom.cursorBlink,
+      scrollback: custom.scrollback,
     };
+  } else {
+    base = TERMINAL_STYLE_PRESETS[s.preset];
   }
-  return TERMINAL_STYLE_PRESETS[s.preset];
+  const o = s.overrides;
+  if (!o) return base;
+  // Shallow merge — `theme` is treated atomically so an override that
+  // provides a theme replaces the preset's theme entirely (users shouldn't
+  // need to think about which individual ANSI slot they're merging into).
+  return {
+    theme: o.theme ?? base.theme,
+    fontFamily: o.fontFamily ?? base.fontFamily,
+    fontSize: o.fontSize ?? base.fontSize,
+    cursorStyle: o.cursorStyle ?? base.cursorStyle,
+    cursorBlink: o.cursorBlink ?? base.cursorBlink,
+    scrollback: o.scrollback ?? base.scrollback,
+  };
 }
+
+export interface NotificationSettings {
+  version: 1;
+  /** Bounce the dock (macOS) when an inactive tab needs attention. */
+  dockBounce: boolean;
+  /** Show a system notification when an inactive tab needs attention. */
+  systemNotifications: boolean;
+}
+
+export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
+  version: 1,
+  dockBounce: true,
+  systemNotifications: true,
+};
 
 export interface AppState {
   version: 1;
@@ -100,6 +140,7 @@ export interface AppState {
   lastActiveProjectId: string | null;
   window: WindowState;
   terminalStyle: TerminalStyleSettings;
+  notifications: NotificationSettings;
 }
 
 export const DEFAULT_WINDOW_STATE: WindowState = {
@@ -116,6 +157,7 @@ export const DEFAULT_APP_STATE: AppState = {
   lastActiveProjectId: null,
   window: DEFAULT_WINDOW_STATE,
   terminalStyle: DEFAULT_TERMINAL_STYLE,
+  notifications: DEFAULT_NOTIFICATION_SETTINGS,
 };
 
 export type PtySessionStatus = 'not-started' | 'running' | 'exited';

@@ -2,9 +2,11 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import {
   DEFAULT_APP_STATE,
+  DEFAULT_NOTIFICATION_SETTINGS,
   DEFAULT_TERMINAL_STYLE,
   TERMINAL_STYLE_PRESET_IDS,
   type AppState,
+  type NotificationSettings,
   type TerminalStyleSettings,
 } from '@shared/types';
 
@@ -104,6 +106,7 @@ export class JsonStore {
       lastActiveProjectId: r.lastActiveProjectId ?? null,
       window: { ...base.window, ...(r.window ?? {}) },
       terminalStyle: migrateTerminalStyle(r.terminalStyle),
+      notifications: migrateNotifications(r.notifications),
     };
   }
 }
@@ -122,5 +125,19 @@ function migrateTerminalStyle(raw: unknown): TerminalStyleSettings {
   const out: TerminalStyleSettings = { version: 1, preset };
   if (r.customStyle && typeof r.customStyle === 'object') out.customStyle = r.customStyle;
   if (typeof r.customStyleName === 'string') out.customStyleName = r.customStyleName;
+  if (r.overrides && typeof r.overrides === 'object') out.overrides = r.overrides;
   return out;
+}
+
+function migrateNotifications(raw: unknown): NotificationSettings {
+  if (!raw || typeof raw !== 'object') return { ...DEFAULT_NOTIFICATION_SETTINGS };
+  const r = raw as Partial<NotificationSettings>;
+  return {
+    version: 1,
+    dockBounce: typeof r.dockBounce === 'boolean' ? r.dockBounce : DEFAULT_NOTIFICATION_SETTINGS.dockBounce,
+    systemNotifications:
+      typeof r.systemNotifications === 'boolean'
+        ? r.systemNotifications
+        : DEFAULT_NOTIFICATION_SETTINGS.systemNotifications,
+  };
 }

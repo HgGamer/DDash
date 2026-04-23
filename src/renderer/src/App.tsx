@@ -1,7 +1,7 @@
 import { useCallback, useEffect } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { Workspace } from './components/Workspace';
-import { TerminalStyleSettingsModal } from './components/TerminalStyleSettings';
+import { SettingsModal } from './components/SettingsModal';
 import { useStore } from './store';
 
 export function App() {
@@ -13,8 +13,10 @@ export function App() {
     upsertTab,
     clearTab,
     setTerminalStyle,
-    setTerminalStyleModalOpen,
-    terminalStyleModalOpen,
+    setNotifications,
+    openSettings,
+    closeSettings,
+    settingsModalOpen,
   } = useStore();
 
   const refreshProjects = useCallback(async () => {
@@ -81,6 +83,16 @@ export function App() {
     return () => off();
   }, [setTerminalStyle]);
 
+  // Notification prefs: hydrate + subscribe.
+  useEffect(() => {
+    void (async () => {
+      const current = await window.api.settings.getNotifications();
+      setNotifications(current);
+    })();
+    const off = window.api.settings.onNotificationsChanged((s) => setNotifications(s));
+    return () => off();
+  }, [setNotifications]);
+
   // PTY events.
   useEffect(() => {
     const offData = window.api.pty.onData(() => {
@@ -120,7 +132,7 @@ export function App() {
         const target = list[i];
         if (target) void activate(target.id);
       }),
-      window.api.menu.onOpenTerminalStyle(() => setTerminalStyleModalOpen(true)),
+      window.api.menu.onOpenSettings(() => openSettings()),
     ];
     return () => offs.forEach((o) => o());
 
@@ -131,7 +143,7 @@ export function App() {
       const nextIndex = (currentIndex + delta + list.length) % list.length;
       void activate(list[nextIndex].id);
     }
-  }, [addProject, activeId, activate, clearTab, refreshProjects, setTerminalStyleModalOpen]);
+  }, [addProject, activeId, activate, clearTab, refreshProjects, openSettings]);
 
   const activeProject = projects.find((p) => p.id === activeId) ?? null;
 
@@ -144,9 +156,7 @@ export function App() {
         onRefresh={refreshProjects}
       />
       <Workspace project={activeProject} />
-      {terminalStyleModalOpen && (
-        <TerminalStyleSettingsModal onClose={() => setTerminalStyleModalOpen(false)} />
-      )}
+      {settingsModalOpen && <SettingsModal onClose={closeSettings} />}
     </div>
   );
 }

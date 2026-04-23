@@ -25,6 +25,12 @@ export function installAppMenu(getWindow: () => BrowserWindow | null): void {
             submenu: [
               { role: 'about' },
               { type: 'separator' },
+              {
+                label: 'Settings…',
+                accelerator: 'Cmd+,',
+                click: () => send(IPC.MenuOpenSettings),
+              },
+              { type: 'separator' },
               { role: 'services' },
               { type: 'separator' },
               { role: 'hide' },
@@ -68,11 +74,16 @@ export function installAppMenu(getWindow: () => BrowserWindow | null): void {
     {
       label: 'View',
       submenu: [
-        {
-          label: 'Terminal Style…',
-          click: () => send(IPC.MenuOpenTerminalStyle),
-        },
-        { type: 'separator' },
+        ...(isMac
+          ? []
+          : ([
+              {
+                label: 'Settings…',
+                accelerator: 'Ctrl+,',
+                click: () => send(IPC.MenuOpenSettings),
+              },
+              { type: 'separator' },
+            ] as MenuItemConstructorOptions[])),
         { role: 'togglefullscreen' },
         // Dev-only diagnostics — not shipped to end users.
         ...(isDev

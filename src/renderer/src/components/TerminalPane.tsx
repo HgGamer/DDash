@@ -38,10 +38,13 @@ export function TerminalPane({ project, active }: Props) {
 
     const initialStyle = resolveTerminalStyleOptions(useStore.getState().terminalStyle);
     const term = new Terminal({
-      cursorBlink: true,
+      cursorBlink: initialStyle.cursorBlink ?? true,
+      cursorStyle: initialStyle.cursorStyle,
       allowProposedApi: true,
-      scrollback: 10_000,
-      ...initialStyle,
+      scrollback: initialStyle.scrollback ?? 10_000,
+      theme: initialStyle.theme,
+      fontFamily: initialStyle.fontFamily,
+      fontSize: initialStyle.fontSize,
     });
     const fit = new FitAddon();
     term.loadAddon(fit);
@@ -207,6 +210,9 @@ export function TerminalPane({ project, active }: Props) {
     term.options.theme = opts.theme;
     term.options.fontFamily = opts.fontFamily;
     term.options.fontSize = opts.fontSize;
+    term.options.cursorStyle = opts.cursorStyle;
+    term.options.cursorBlink = opts.cursorBlink ?? true;
+    if (typeof opts.scrollback === 'number') term.options.scrollback = opts.scrollback;
     try {
       fit?.fit();
     } catch {
@@ -255,10 +261,13 @@ export function TerminalPane({ project, active }: Props) {
 
   const exited = tab?.status === 'exited';
   const displayedError = localError ?? tab?.error ?? null;
+  // The left gutter sits outside xterm's own canvas, so xterm doesn't paint
+  // it. Mirror the active theme's background so the gutter blends in.
+  const bg = resolveTerminalStyleOptions(termStyle).theme?.background;
 
   return (
-    <div className="terminal-host">
-      <div ref={hostRef} style={{ position: 'absolute', inset: 0 }} />
+    <div className="terminal-host" style={bg ? { background: bg } : undefined}>
+      <div ref={hostRef} style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 12 }} />
       {displayedError && (
         <ErrorOverlay
           error={displayedError}

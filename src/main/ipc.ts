@@ -19,7 +19,12 @@ import { loadStyleFromFile } from './terminal-style-file';
 import type { ProjectRegistry } from './registry';
 import type { JsonStore } from './store';
 import type { SettingsManager } from './settings';
-import type { TerminalStylePreset, TerminalStyleSettings } from '@shared/types';
+import type {
+  NotificationSettings,
+  TerminalStyleOptions,
+  TerminalStylePreset,
+  TerminalStyleSettings,
+} from '@shared/types';
 import { PtySessionManager } from './pty-session';
 
 export function registerIpc(args: {
@@ -147,7 +152,8 @@ export function registerIpc(args: {
     attention.add(args.projectId);
     updateBadge();
     if (!firstTime) return;
-    if (Notification.isSupported()) {
+    const prefs = settings.getNotifications();
+    if (prefs.systemNotifications && Notification.isSupported()) {
       new Notification({
         title: args.projectName,
         body: 'Claude is waiting for input.',
@@ -156,7 +162,7 @@ export function registerIpc(args: {
     }
     // 'critical' bounces until the user activates the app; 'informational'
     // only bounces once. We want the former — that's the user's ask.
-    if (process.platform === 'darwin') app.dock?.bounce('critical');
+    if (prefs.dockBounce && process.platform === 'darwin') app.dock?.bounce('critical');
   });
 
   ipcMain.on(IPC.NotifyAttentionClear, (_e, projectId: string) => {
@@ -190,6 +196,32 @@ export function registerIpc(args: {
       return next;
     },
   );
+
+  ipcMain.handle(
+    IPC.SettingsSetTerminalStyleOverrides,
+    async (_e, overrides: TerminalStyleOptions | null): Promise<TerminalStyleSettings> => {
+      const next = settings.setTerminalStyleOverrides(overrides);
+      await store.flush();
+      return next;
+    },
+  );
+
+  ipcMain.handle(IPC.SettingsGetNotifications, async (): Promise<NotificationSettings> => {
+    return settings.getNotifications();
+  });
+
+  ipcMain.handle(
+    IPC.SettingsSetNotifications,
+    async (_e, patch: Partial<Omit<NotificationSettings, 'version'>>): Promise<NotificationSettings> => {
+      const next = settings.setNotifications(patch);
+      await store.flush();
+      return next;
+    },
+  );
+
+  settings.on('notificationsChanged', (s: NotificationSettings) => {
+    send(IPC.SettingsNotificationsChanged, s);
+  });
 
   ipcMain.handle(IPC.SettingsBrowseTerminalStyle, async (): Promise<BrowseTerminalStyleResult> => {
     const win = getWindow();

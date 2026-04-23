@@ -339,3 +339,101 @@ button:hover {
   color: var(--danger);
   font-size: 12px;
 }
+
+.settings-card {
+  display: flex;
+  width: 720px;
+  max-width: 92vw;
+  height: 520px;
+  max-height: 90vh;
+  background: var(--bg-sidebar);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.settings-nav {
+  width: 160px;
+  background: var(--bg);
+  border-right: 1px solid var(--border);
+  padding: 12px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.settings-nav-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--fg-muted);
+  padding: 4px 8px 8px;
+}
+.settings-nav-item {
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  padding: 6px 10px;
+  font: inherit;
+  color: var(--fg);
+  cursor: pointer;
+}
+.settings-nav-item:hover {
+  background: var(--bg-row-hover);
+}
+.settings-nav-item.active {
+  background: var(--bg-row-active);
+}
+.settings-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 20px 24px;
+  overflow: hidden;
+}
+.settings-panel {
+  flex: 1;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.settings-panel section {
+  margin-bottom: 18px;
+}
+.settings-panel section + section {
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+.settings-panel h4 {
+  margin: 0 0 10px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--fg-muted);
+  font-weight: 600;
+}
+.field-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 0;
+}
+.field-label {
+  flex: 1;
+  min-width: 0;
+}
+.field-input {
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 6px;
+  font: inherit;
+  min-width: 0;
+  flex: 2;
+}
+.field-input.field-narrow {
+  flex: 0 0 120px;
+}
+.field-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}

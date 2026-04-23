@@ -1,4 +1,11 @@
-import type { Project, PtySpawnResult, TerminalStylePreset, TerminalStyleSettings } from './types';
+import type {
+  NotificationSettings,
+  Project,
+  PtySpawnResult,
+  TerminalStyleOptions,
+  TerminalStylePreset,
+  TerminalStyleSettings,
+} from './types';
 
 export const IPC = {
   // Project registry (renderer → main, request/response)
@@ -24,8 +31,12 @@ export const IPC = {
   // Settings (renderer ↔ main)
   SettingsGetTerminalStyle: 'settings:getTerminalStyle',
   SettingsSetTerminalStyle: 'settings:setTerminalStyle',
+  SettingsSetTerminalStyleOverrides: 'settings:setTerminalStyleOverrides',
   SettingsBrowseTerminalStyle: 'settings:browseTerminalStyle',
   SettingsTerminalStyleChanged: 'settings:terminalStyleChanged',
+  SettingsGetNotifications: 'settings:getNotifications',
+  SettingsSetNotifications: 'settings:setNotifications',
+  SettingsNotificationsChanged: 'settings:notificationsChanged',
 
   // Attention / system notifications (renderer → main)
   NotifyAttention: 'notify:attention',
@@ -37,7 +48,7 @@ export const IPC = {
   MenuNextTab: 'menu:nextTab',
   MenuPrevTab: 'menu:prevTab',
   MenuActivateIndex: 'menu:activateIndex',
-  MenuOpenTerminalStyle: 'menu:openTerminalStyle',
+  MenuOpenSettings: 'menu:openSettings',
 } as const;
 
 // Request/response payloads
@@ -122,8 +133,16 @@ export interface DashApi {
   settings: {
     getTerminalStyle(): Promise<TerminalStyleSettings>;
     setTerminalStyle(preset: TerminalStylePreset): Promise<TerminalStyleSettings>;
+    setTerminalStyleOverrides(
+      overrides: TerminalStyleOptions | null,
+    ): Promise<TerminalStyleSettings>;
     browseTerminalStyle(): Promise<BrowseTerminalStyleResult>;
     onTerminalStyleChanged(handler: (s: TerminalStyleSettings) => void): () => void;
+    getNotifications(): Promise<NotificationSettings>;
+    setNotifications(
+      patch: Partial<Omit<NotificationSettings, 'version'>>,
+    ): Promise<NotificationSettings>;
+    onNotificationsChanged(handler: (s: NotificationSettings) => void): () => void;
   };
   notify: {
     attention(args: NotifyAttentionArgs): void;
@@ -135,7 +154,7 @@ export interface DashApi {
     onNextTab(handler: () => void): () => void;
     onPrevTab(handler: () => void): () => void;
     onActivateIndex(handler: (index: number) => void): () => void;
-    onOpenTerminalStyle(handler: () => void): () => void;
+    onOpenSettings(handler: () => void): () => void;
   };
 }
 

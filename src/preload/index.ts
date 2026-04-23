@@ -14,7 +14,12 @@ import {
   type PtyWriteArgs,
   type NotifyAttentionArgs,
 } from '@shared/ipc';
-import type { TerminalStylePreset, TerminalStyleSettings } from '@shared/types';
+import type {
+  NotificationSettings,
+  TerminalStyleOptions,
+  TerminalStylePreset,
+  TerminalStyleSettings,
+} from '@shared/types';
 
 function subscribe<T>(channel: string, handler: (payload: T) => void): () => void {
   const listener = (_e: IpcRendererEvent, payload: T) => handler(payload);
@@ -45,9 +50,16 @@ const api: DashApi = {
     getTerminalStyle: () => ipcRenderer.invoke(IPC.SettingsGetTerminalStyle),
     setTerminalStyle: (preset: TerminalStylePreset) =>
       ipcRenderer.invoke(IPC.SettingsSetTerminalStyle, preset),
+    setTerminalStyleOverrides: (overrides: TerminalStyleOptions | null) =>
+      ipcRenderer.invoke(IPC.SettingsSetTerminalStyleOverrides, overrides),
     browseTerminalStyle: () => ipcRenderer.invoke(IPC.SettingsBrowseTerminalStyle),
     onTerminalStyleChanged: (h) =>
       subscribe<TerminalStyleSettings>(IPC.SettingsTerminalStyleChanged, h),
+    getNotifications: () => ipcRenderer.invoke(IPC.SettingsGetNotifications),
+    setNotifications: (patch: Partial<Omit<NotificationSettings, 'version'>>) =>
+      ipcRenderer.invoke(IPC.SettingsSetNotifications, patch),
+    onNotificationsChanged: (h) =>
+      subscribe<NotificationSettings>(IPC.SettingsNotificationsChanged, h),
   },
   notify: {
     attention: (args: NotifyAttentionArgs) => ipcRenderer.send(IPC.NotifyAttention, args),
@@ -59,7 +71,7 @@ const api: DashApi = {
     onNextTab: (h) => subscribe<void>(IPC.MenuNextTab, () => h()),
     onPrevTab: (h) => subscribe<void>(IPC.MenuPrevTab, () => h()),
     onActivateIndex: (h) => subscribe<number>(IPC.MenuActivateIndex, (i) => h(i)),
-    onOpenTerminalStyle: (h) => subscribe<void>(IPC.MenuOpenTerminalStyle, () => h()),
+    onOpenSettings: (h) => subscribe<void>(IPC.MenuOpenSettings, () => h()),
   },
 };
 

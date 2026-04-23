@@ -1,10 +1,12 @@
 import { create } from 'zustand';
 import type {
+  NotificationSettings,
   Project,
   PtySessionStatus,
   PtySpawnError,
   TerminalStyleSettings,
 } from '@shared/types';
+import { DEFAULT_NOTIFICATION_SETTINGS } from '@shared/types';
 
 export interface TabState {
   status: PtySessionStatus;
@@ -24,7 +26,10 @@ interface AppStore {
   tabs: Record<string, TabState>;
   loaded: boolean;
   terminalStyle: TerminalStyleSettings;
-  terminalStyleModalOpen: boolean;
+  notifications: NotificationSettings;
+  settingsModalOpen: boolean;
+  /** Which settings tab is currently showing. */
+  settingsModalTab: 'terminal' | 'notifications';
 
   setProjects: (projects: Project[]) => void;
   setActive: (id: string | null) => void;
@@ -32,7 +37,9 @@ interface AppStore {
   upsertTab: (id: string, patch: Partial<TabState>) => void;
   clearTab: (id: string) => void;
   setTerminalStyle: (s: TerminalStyleSettings) => void;
-  setTerminalStyleModalOpen: (open: boolean) => void;
+  setNotifications: (s: NotificationSettings) => void;
+  openSettings: (tab?: 'terminal' | 'notifications') => void;
+  closeSettings: () => void;
 }
 
 export const useStore = create<AppStore>((set) => ({
@@ -42,7 +49,9 @@ export const useStore = create<AppStore>((set) => ({
   tabs: {},
   loaded: false,
   terminalStyle: { version: 1, preset: 'dash-dark' },
-  terminalStyleModalOpen: false,
+  notifications: { ...DEFAULT_NOTIFICATION_SETTINGS },
+  settingsModalOpen: false,
+  settingsModalTab: 'terminal',
 
   setProjects: (projects) => set({ projects, loaded: true }),
   setActive: (id) =>
@@ -74,5 +83,8 @@ export const useStore = create<AppStore>((set) => ({
       return { tabs: rest, mountedIds: s.mountedIds.filter((m) => m !== id) };
     }),
   setTerminalStyle: (s) => set({ terminalStyle: s }),
-  setTerminalStyleModalOpen: (open) => set({ terminalStyleModalOpen: open }),
+  setNotifications: (s) => set({ notifications: s }),
+  openSettings: (tab) =>
+    set((s) => ({ settingsModalOpen: true, settingsModalTab: tab ?? s.settingsModalTab })),
+  closeSettings: () => set({ settingsModalOpen: false }),
 }));

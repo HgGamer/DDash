@@ -1,14 +1,20 @@
 import { EventEmitter } from 'node:events';
 import type {
+  NotificationSettings,
   TerminalStyleOptions,
   TerminalStylePreset,
   TerminalStyleSettings,
 } from '@shared/types';
-import { DEFAULT_TERMINAL_STYLE, TERMINAL_STYLE_PRESET_IDS } from '@shared/types';
+import {
+  DEFAULT_NOTIFICATION_SETTINGS,
+  DEFAULT_TERMINAL_STYLE,
+  TERMINAL_STYLE_PRESET_IDS,
+} from '@shared/types';
 import type { JsonStore } from './store';
 
 export interface SettingsManagerEvents {
   terminalStyleChanged: (settings: TerminalStyleSettings) => void;
+  notificationsChanged: (settings: NotificationSettings) => void;
 }
 
 export class SettingsManager extends EventEmitter {
@@ -62,16 +68,50 @@ export class SettingsManager extends EventEmitter {
   }
 
   setCustomTerminalStyle(style: TerminalStyleOptions, name: string): TerminalStyleSettings {
+    const current = this.store.get().terminalStyle;
     const next: TerminalStyleSettings = {
       version: 1,
       preset: 'custom',
       customStyle: style,
       customStyleName: name,
+      ...(current.overrides ? { overrides: current.overrides } : {}),
     };
     this.store.update((draft) => {
       draft.terminalStyle = next;
     });
     this.emit('terminalStyleChanged', next);
+    return next;
+  }
+
+  setTerminalStyleOverrides(overrides: TerminalStyleOptions | null): TerminalStyleSettings {
+    const current = this.store.get().terminalStyle;
+    const next: TerminalStyleSettings = {
+      version: 1,
+      preset: current.preset,
+      ...(current.customStyle ? { customStyle: current.customStyle } : {}),
+      ...(current.customStyleName ? { customStyleName: current.customStyleName } : {}),
+      ...(overrides && Object.keys(overrides).length > 0 ? { overrides } : {}),
+    };
+    this.store.update((draft) => {
+      draft.terminalStyle = next;
+    });
+    this.emit('terminalStyleChanged', next);
+    return next;
+  }
+
+  getNotifications(): NotificationSettings {
+    const raw = this.store.get().notifications;
+    if (!raw) return { ...DEFAULT_NOTIFICATION_SETTINGS };
+    return { ...raw };
+  }
+
+  setNotifications(patch: Partial<Omit<NotificationSettings, 'version'>>): NotificationSettings {
+    const current = this.getNotifications();
+    const next: NotificationSettings = { ...current, ...patch, version: 1 };
+    this.store.update((draft) => {
+      draft.notifications = next;
+    });
+    this.emit('notificationsChanged', next);
     return next;
   }
 }
