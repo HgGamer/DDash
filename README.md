@@ -1,104 +1,78 @@
+<div align="center">
+
+<img src="build/icon.png" alt="Dash" width="160" height="160" />
+
 # Dash
 
-Cross-platform desktop app for running [Claude Code](https://docs.claude.com/en/docs/claude-code/overview) across multiple projects in tabs.
+**Run Claude Code across every project, in one window.**
 
-Each tab hosts a real PTY-backed terminal running `claude` in the project's directory. Add a project once and Dash remembers it; on next launch, opening the tab spawns a fresh `claude` session in that directory.
+Dash is a cross-platform desktop app that gives each of your projects its own tab — complete with a real terminal running [Claude Code](https://docs.claude.com/en/docs/claude-code/overview), a git panel, and a bottom-docked shell for your dev servers and scripts.
+
+[Download](https://github.com/HgGamer/DDash/releases/latest) · [Report a bug](https://github.com/HgGamer/DDash/issues) · [Claude Code docs](https://docs.claude.com/en/docs/claude-code/overview)
+
+</div>
+
+---
+
+## Features
+
+- **Tabs per project.** Add a folder once; Dash remembers it and spawns a fresh `claude` session in that directory every time you open the tab.
+- **Real terminals.** PTY-backed, not a fake web shell — colors, prompts, TUIs, and interactive flows all work as they do in your normal terminal.
+- **Git panel.** Stage, unstage, discard, commit, switch branches, create branches, push, and browse history (~500 commits) without leaving the tab.
+- **Integrated terminal dock.** A bottom-docked shell for dev servers, tests, and scripts — per-project tabs, backgrounded processes survive collapsing the panel.
+- **Worktree-aware.** Worktree tabs pin to their branch so you don't accidentally switch them out from under your work.
+- **Your shell, your PATH.** Dash resolves `claude` against your login shell, so whatever works in your terminal works here.
+- **Cross-platform.** macOS (arm64 + x64), Windows, and Linux.
+
+## Install
+
+Grab the latest build for your platform from the [releases page](https://github.com/HgGamer/DDash/releases/latest):
+
+- **macOS** — `.dmg` (Apple Silicon and Intel)
+- **Windows** — NSIS installer (`.exe`)
+- **Linux** — `.AppImage` or `.deb`
+
+Builds are currently unsigned, so your OS may warn you on first launch. On macOS, right-click the app and choose **Open** once to allow it.
 
 ## Prerequisites
 
-- **Node.js 20+** (for development)
-- **Claude Code CLI** installed and available on your `PATH`
-  - Install instructions: <https://docs.claude.com/en/docs/claude-code/quickstart>
-  - Verify with `claude --version` in your normal terminal.
+Dash runs Claude Code — it does not bundle it. You need the **Claude Code CLI** installed and available on your `PATH`:
 
-## Development
+- Install: <https://docs.claude.com/en/docs/claude-code/quickstart>
+- Verify: run `claude --version` in your normal terminal.
 
-```bash
-npm install
-npm run dev
-```
+## Getting started
 
-The dev command launches Electron with hot-reload for main / preload / renderer.
-
-## Build & distribute
-
-```bash
-npm run dist          # current platform
-npm run dist:mac      # macOS dmg (arm64 + x64)
-npm run dist:win      # Windows NSIS installer
-npm run dist:linux    # Linux AppImage + deb
-```
-
-Output lands in `release/<version>/`. Builds are unsigned in v0.1.
-
-## Tests
-
-```bash
-npm test
-```
-
-## Troubleshooting
-
-### "Claude not found"
-
-Dash resolves `claude` against your **login shell**'s `PATH` (not Electron's sanitized environment). If you see a "Claude not found" banner:
-
-1. Open your normal terminal and run `command -v claude` (macOS/Linux) or `where claude` (Windows). If that fails, Claude Code is not installed — follow the [quickstart](https://docs.claude.com/en/docs/claude-code/quickstart).
-2. If `claude` resolves in your terminal but not in Dash, ensure the `PATH` export is in your login-shell rc (`.zprofile`, `.bash_profile`, `.profile`) and not only in `.bashrc`/`.zshrc`'s non-login branch. Quit and relaunch Dash after fixing.
-
-### "Project path not found"
-
-The project directory was moved, renamed, or deleted after you added it. Click **Remove project** and re-add it, or restore the directory.
-
-## Project layout
-
-```
-src/
-  main/         Electron main process (IPC, PTY, persistence, window, menu)
-  preload/      Context-bridge API exposed as window.api
-  renderer/     React + xterm.js UI
-  shared/       Types and IPC channel constants shared by main + renderer
-test/           Vitest unit tests
-openspec/       Specification and change history
-```
-
-## Git view
-
-Each tab has a collapsible **Git view** panel on the right that reflects the active project's (or worktree's) repository:
-
-- Status: staged / unstaged / untracked files with click-to-stage and per-file diff preview.
-- Commit: subject + optional description.
-- Branches: switch, create new from HEAD (disabled on worktree tabs — each worktree is pinned to its branch).
-- Push to the tracked upstream; errors surface inline, including the "no upstream" case.
-- Commit history (up to ~500 commits) with HEAD and branch-tip markers.
-
-Toggle with the **Git** button in the terminal's top-right. Turn the whole feature off under **Settings → Git** if you want to reclaim the window width. The view relies on the system `git` binary being on `PATH`.
-
-## Integrated terminal
-
-A bottom-docked **terminal panel** sits underneath the Claude pane for running dev servers, tests, scripts, and anything else you'd normally open an external terminal for:
-
-- **Per project/worktree** — switching projects swaps the tab set; backgrounded shells keep running.
-- **Multiple tabs** per selection (`+` to add, `×` to close, double-click a tab to rename).
-- **Resizable**; height and expanded/collapsed state persist across restarts.
-- **Process survives panel collapse** — hiding the dock does not kill shells.
-- Uses your login shell (`$SHELL` on macOS/Linux, `%COMSPEC%` on Windows). Override under **Settings → Integrated terminal**.
-- Shares the terminal style (font/cursor/palette) with the Claude pane.
-
-Toggle with the **Terminal** button in the bottom statusbar or with `Ctrl/Cmd+\``. `Ctrl/Cmd+Shift+\`` opens a new tab in the active project/worktree.
+1. Launch Dash.
+2. Press **Cmd+O** (macOS) / **Ctrl+O** (Windows/Linux) or click **Add Project** and pick a folder.
+3. The tab opens and `claude` starts in that directory. Talk to it like you would in any terminal.
+4. Add more projects — switch between them with **Cmd/Ctrl+1..9** or **Cmd+Alt+←/→** (Ctrl+Tab on Win/Linux).
+5. Toggle the **Git** panel on the right, or the bottom **Terminal** dock with **Cmd/Ctrl+`**.
 
 ## Keyboard shortcuts
 
-| Action             | macOS              | Win/Linux          |
-| ------------------ | ------------------ | ------------------ |
-| Add Project        | Cmd+O              | Ctrl+O             |
-| Remove Active      | Cmd+Backspace      | Ctrl+Delete        |
-| Next Tab           | Cmd+Alt+Right      | Ctrl+Tab           |
-| Previous Tab       | Cmd+Alt+Left       | Ctrl+Shift+Tab     |
-| Activate Tab 1..9  | Cmd+1..9           | Ctrl+1..9          |
-| Toggle terminal    | Cmd+`              | Ctrl+`             |
-| New terminal tab   | Cmd+Shift+`        | Ctrl+Shift+`       |
+| Action             | macOS           | Windows / Linux    |
+| ------------------ | --------------- | ------------------ |
+| Add project        | Cmd+O           | Ctrl+O             |
+| Remove active tab  | Cmd+Backspace   | Ctrl+Delete        |
+| Next tab           | Cmd+Alt+Right   | Ctrl+Tab           |
+| Previous tab       | Cmd+Alt+Left    | Ctrl+Shift+Tab     |
+| Go to tab 1..9     | Cmd+1..9        | Ctrl+1..9          |
+| Toggle terminal    | Cmd+`           | Ctrl+`             |
+| New terminal tab   | Cmd+Shift+`     | Ctrl+Shift+`       |
+
+## Troubleshooting
+
+**"Claude not found"** — Dash uses your login shell's `PATH`. If `claude` works in your terminal but Dash can't find it, make sure the `PATH` export is in your login-shell rc file (`.zprofile`, `.bash_profile`, `.profile`) — not only in `.bashrc` / `.zshrc`'s non-login branch. Quit and relaunch Dash after fixing.
+
+**"Project path not found"** — The folder was moved, renamed, or deleted after you added it. Click **Remove project** and re-add it, or restore the folder.
+
+**Git panel is blank** — Dash uses the system `git` binary. Make sure `git` is on your `PATH`. You can also turn the panel off entirely under **Settings → Git**.
 
 ## Status
 
-v0.1.0 — alpha. Unsigned builds. Local projects only (no SSH/remote).
+Alpha. Local projects only — no SSH / remote directories yet. Builds are unsigned.
+
+## License
+
+MIT. See [LICENSE](LICENSE) if present, or the `license` field in `package.json`.
