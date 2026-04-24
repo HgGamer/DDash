@@ -4,7 +4,7 @@ import { GIT_VIEW_MAX_WIDTH, GIT_VIEW_MIN_WIDTH } from '@shared/types';
 import { compositeKey, parseCompositeKey } from '@shared/ipc';
 import { useStore } from '../store';
 import { TerminalPane } from './TerminalPane';
-import { DiffView, GitView } from './GitView';
+import { CommitView, DiffView, GitView } from './GitView';
 import { IntegratedTerminalDock, useWorkspaceHeight } from './IntegratedTerminalDock';
 import { useShellTabs } from '../hooks/useShellTabs';
 
@@ -19,6 +19,8 @@ export function Workspace({ activeId }: Props) {
   const integratedTerminal = useStore((s) => s.integratedTerminal);
   const gitDiff = useStore((s) => s.gitDiff);
   const closeDiff = useStore((s) => s.closeDiff);
+  const gitCommit = useStore((s) => s.gitCommit);
+  const closeCommit = useStore((s) => s.closeCommit);
   const workspaceRef = useRef<HTMLElement>(null);
   const workspaceHeight = useWorkspaceHeight(workspaceRef);
 
@@ -80,6 +82,11 @@ export function Workspace({ activeId }: Props) {
                 file={{ path: gitDiff.path, stage: gitDiff.stage }}
                 onClose={closeDiff}
               />
+            </div>
+          )}
+          {gitCommit && activeId && gitCommit.projectId === activeId.projectId && (
+            <div className="workspace-diff-overlay">
+              <CommitView active={activeId} commit={gitCommit.hash} onClose={closeCommit} />
             </div>
           )}
         </div>

@@ -5,6 +5,7 @@ import {
   type GitChangedEvent,
   type GitCheckoutArgs,
   type GitCommitArgs,
+  type GitCommitFile,
   type GitCreateBranchArgs,
   type GitDiffArgs,
   type GitDiffResult,
@@ -13,6 +14,8 @@ import {
   type GitLogArgs,
   type GitLogResult,
   type GitOperationResult,
+  type GitShowCommitArgs,
+  type GitShowCommitResult,
   type GitStagePathsArgs,
   type GitStatusResult,
   type GitTabRef,
@@ -180,7 +183,13 @@ export function registerGitIpc(args: {
     const r = resolveCwd(registry, a);
     if (!r.ok) return { ok: false, reason: 'tab-missing' };
     let args: string[];
-    if (a.stage === 'untracked') {
+    if (a.commit) {
+      // Per-file diff introduced by a specific commit. `show` emits the full
+      // commit header otherwise; `--format=` suppresses it. For the root
+      // commit (no parent) `show` with `--root` emits the initial contents as
+      // an addition.
+      args = ['show', '--no-color', '--format=', '--root', a.commit, '--', a.path];
+    } else if (a.stage === 'untracked') {
       // `diff --no-index` treats the file as all-new. It exits with 1 when
       // there are differences (which is the expected case) — we accept that
       // as success and only treat other failures as errors.
@@ -191,7 +200,7 @@ export function registerGitIpc(args: {
       args.push('--', a.path);
     }
     const res = await runGit(r.cwd, args);
-    const acceptableExit = a.stage === 'untracked' && res.exitCode === 1;
+    const acceptableExit = !a.commit && a.stage === 'untracked' && res.exitCode === 1;
     if (!res.ok && !acceptableExit) {
       if (res.failure === 'git-missing') return { ok: false, reason: 'git-missing' };
       return { ok: false, reason: 'not-a-repo', stderr: res.stderr };
@@ -200,6 +209,77 @@ export function registerGitIpc(args: {
     const binary = /^Binary files .* differ$/m.test(res.stdout);
     return { ok: true, diff: res.stdout, binary };
   });
+
+  ipcMain.handle(
+    IPC.GitShowCommit,
+    async (_e, a: GitShowCommitArgs): Promise<GitShowCommitResult> => {
+      if (!(await isGitAvailable())) return { ok: false, reason: 'git-missing' };
+      const r = resolveCwd(registry, a);
+      if (!r.ok) return { ok: false, reason: 'tab-missing' };
+      // ASCII unit separator + record separator as field/record delimiters,
+      // so commit messages containing any printable text survive parsing.
+      const FS = '\x1f';
+      const RS = '\x1e';
+      const format = ['%H', '%an', '%ae', '%aI', '%B'].join(FS) + RS;
+      const res = await runGit(r.cwd, [
+        'show',
+        '--no-color',
+        '--name-status',
+        '--root',
+        `--format=${format}`,
+        a.commit,
+      ]);
+      if (!res.ok) {
+        if (res.failure === 'git-missing') return { ok: false, reason: 'git-missing' };
+        if (/unknown revision|bad revision|ambiguous argument/i.test(res.stderr)) {
+          return { ok: false, reason: 'unknown-commit', stderr: res.stderr };
+        }
+        return { ok: false, reason: 'not-a-repo', stderr: res.stderr };
+      }
+      const rsIdx = res.stdout.indexOf(RS);
+      if (rsIdx < 0) {
+        return { ok: false, reason: 'unknown-commit', stderr: 'unparseable git show output' };
+      }
+      const header = res.stdout.slice(0, rsIdx);
+      const rest = res.stdout.slice(rsIdx + 1);
+      const [hash, authorName, authorEmail, authorDate, message] = header.split(FS);
+      const files: GitCommitFile[] = [];
+      for (const rawLine of rest.split('\n')) {
+        const line = rawLine.replace(/\r$/, '');
+        if (!line) continue;
+        // Lines: "M\tpath", "A\tpath", "D\tpath", "R<score>\told\tnew", "C<score>\told\tnew"
+        const parts = line.split('\t');
+        const code = parts[0] ?? '';
+        if (!code) continue;
+        const first = code[0];
+        if (first === 'R' && parts.length >= 3) {
+          files.push({ kind: 'renamed', oldPath: parts[1]!, path: parts[2]! });
+        } else if (first === 'C' && parts.length >= 3) {
+          // Copies render as additions of the new path (old path preserved for reference).
+          files.push({ kind: 'added', oldPath: parts[1]!, path: parts[2]! });
+        } else if (first === 'A' && parts.length >= 2) {
+          files.push({ kind: 'added', path: parts[1]! });
+        } else if (first === 'D' && parts.length >= 2) {
+          files.push({ kind: 'deleted', path: parts[1]! });
+        } else if (first === 'M' && parts.length >= 2) {
+          files.push({ kind: 'modified', path: parts[1]! });
+        } else if (first === 'T' && parts.length >= 2) {
+          files.push({ kind: 'modified', path: parts[1]! });
+        }
+      }
+      return {
+        ok: true,
+        commit: {
+          hash: hash ?? '',
+          authorName: authorName ?? '',
+          authorEmail: authorEmail ?? '',
+          authorDate: authorDate ?? '',
+          message: (message ?? '').replace(/\n+$/, ''),
+        },
+        files,
+      };
+    },
+  );
 
   ipcMain.handle(IPC.GitDiscard, async (_e, a: GitDiscardArgs): Promise<GitOperationResult> => {
     const r = resolveCwd(registry, a);
@@ -246,6 +326,7 @@ export function registerGitIpc(args: {
         IPC.GitCheckout,
         IPC.GitCreateBranch,
         IPC.GitDiff,
+        IPC.GitShowCommit,
         IPC.GitDiscard,
         IPC.GitSubscribe,
         IPC.GitUnsubscribe,

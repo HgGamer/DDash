@@ -719,6 +719,13 @@ button:hover {
   white-space: nowrap;
   overflow: hidden;
   min-height: 22px;
+  cursor: pointer;
+}
+.git-commit-row:hover {
+  background: var(--bg-row-hover, var(--bg-row-active));
+}
+.git-commit-row.selected {
+  background: var(--bg-row-active);
 }
 .git-commit-row.head .git-commit-hash {
   color: var(--accent);
@@ -797,6 +804,63 @@ button:hover {
 .git-diff-close:hover {
   background: var(--danger);
   color: var(--bg);
+}
+
+/* Commit detail view (commit metadata + file list + per-file diff). */
+.git-commit-view .git-commit-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.git-commit-meta-block {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  flex: 0 0 auto;
+  max-height: 30%;
+  overflow: auto;
+}
+.git-commit-hash-full {
+  font-family: 'SFMono-Regular', Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  color: var(--fg-muted);
+  word-break: break-all;
+}
+.git-commit-author {
+  font-size: 12px;
+  margin-top: 2px;
+}
+.git-commit-date {
+  white-space: nowrap;
+}
+.git-commit-subject-full {
+  margin-top: 6px;
+  font-weight: 600;
+  font-size: 13px;
+}
+.git-commit-message-body {
+  margin: 6px 0 0;
+  font-family: 'SFMono-Regular', Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+  color: var(--fg);
+}
+.git-commit-files {
+  flex: 0 1 auto;
+  max-height: 35%;
+  overflow: auto;
+  border-bottom: 1px solid var(--border);
+}
+.git-commit-diff-region {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+}
+.git-commit-diff-region .git-diff-view {
+  border: 0;
 }
 
 .git-diff-pane {

@@ -37,6 +37,15 @@ export interface GitDiffSelection {
   stage: 'staged' | 'unstaged' | 'untracked';
 }
 
+/** When set, the main workspace area shows a commit detail/diff view instead
+ *  of the terminal. Mutually exclusive with `gitDiff` — opening one clears
+ *  the other. Cleared on active-tab change. */
+export interface GitCommitSelection {
+  projectId: string;
+  worktreeId: string | null;
+  hash: string;
+}
+
 export interface ShellTabsEntry {
   tabs: ShellTab[];
   activeTabId: string | null;
@@ -56,6 +65,7 @@ interface AppStore {
   /** Per-selection shell tab state, keyed by compositeKey(projectId, worktreeId). */
   shellTabs: Record<string, ShellTabsEntry>;
   gitDiff: GitDiffSelection | null;
+  gitCommit: GitCommitSelection | null;
   settingsModalOpen: boolean;
   settingsModalTab: 'terminal' | 'notifications' | 'git' | 'integrated-terminal';
 
@@ -77,6 +87,8 @@ interface AppStore {
   recordShellExit: (selectionKey: string, tabId: string, code: number | null) => void;
   openDiff: (sel: GitDiffSelection) => void;
   closeDiff: () => void;
+  openCommit: (sel: GitCommitSelection) => void;
+  closeCommit: () => void;
   openSettings: (tab?: 'terminal' | 'notifications' | 'git' | 'integrated-terminal') => void;
   closeSettings: () => void;
 }
@@ -93,6 +105,7 @@ export const useStore = create<AppStore>((set) => ({
   integratedTerminal: { ...DEFAULT_INTEGRATED_TERMINAL_SETTINGS },
   shellTabs: {},
   gitDiff: null,
+  gitCommit: null,
   settingsModalOpen: false,
   settingsModalTab: 'terminal',
 
@@ -110,8 +123,10 @@ export const useStore = create<AppStore>((set) => ({
         mountedKeys:
           key && !s.mountedKeys.includes(key) ? [...s.mountedKeys, key] : s.mountedKeys,
         tabs,
-        // Any open diff belongs to the previously active tab; discard it.
+        // Any open diff / commit selection belongs to the previously active
+        // tab; discard both.
         gitDiff: null,
+        gitCommit: null,
       };
     }),
   ensureMounted: (key) =>
@@ -233,8 +248,10 @@ export const useStore = create<AppStore>((set) => ({
         },
       };
     }),
-  openDiff: (sel) => set({ gitDiff: sel }),
+  openDiff: (sel) => set({ gitDiff: sel, gitCommit: null }),
   closeDiff: () => set({ gitDiff: null }),
+  openCommit: (sel) => set({ gitCommit: sel, gitDiff: null }),
+  closeCommit: () => set({ gitCommit: null }),
   openSettings: (tab) =>
     set((s) => ({ settingsModalOpen: true, settingsModalTab: tab ?? s.settingsModalTab })),
   closeSettings: () => set({ settingsModalOpen: false }),

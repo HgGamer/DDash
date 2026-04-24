@@ -7,6 +7,7 @@ import type {
   GitError,
   GitStatusFile,
 } from '@shared/git';
+import type { GitCommitDetail, GitCommitFile } from '@shared/ipc';
 import { useGitView, type GitViewState } from '../hooks/useGitView';
 import { useStore } from '../store';
 import { laneColor, layoutCommitGraph, maxLane, type GraphRow } from '@shared/graph-layout';
@@ -28,6 +29,9 @@ export function GitView({ active, isWorktreeTab }: Props) {
   const gitDiff = useStore((s) => s.gitDiff);
   const openDiff = useStore((s) => s.openDiff);
   const closeDiff = useStore((s) => s.closeDiff);
+  const gitCommit = useStore((s) => s.gitCommit);
+  const openCommit = useStore((s) => s.openCommit);
+  const closeCommit = useStore((s) => s.closeCommit);
 
   // Clear transient UI state when the active tab changes. The store already
   // clears `gitDiff` on active-tab change.
@@ -52,6 +56,7 @@ export function GitView({ active, isWorktreeTab }: Props) {
       closeDiff();
       return;
     }
+    // openDiff clears any selected commit in the store.
     openDiff({
       projectId: active.projectId,
       worktreeId: active.worktreeId ?? null,
@@ -59,6 +64,37 @@ export function GitView({ active, isWorktreeTab }: Props) {
       stage: f.stage,
     });
   };
+
+  const selectedCommit =
+    gitCommit &&
+    active &&
+    gitCommit.projectId === active.projectId &&
+    (gitCommit.worktreeId ?? null) === (active.worktreeId ?? null)
+      ? gitCommit.hash
+      : null;
+  const toggleCommit = (hash: string) => {
+    if (!active) return;
+    if (selectedCommit === hash) {
+      closeCommit();
+      return;
+    }
+    // openCommit clears any selected working-tree file in the store.
+    openCommit({
+      projectId: active.projectId,
+      worktreeId: active.worktreeId ?? null,
+      hash,
+    });
+  };
+
+  // If the commit graph refreshes and the selected commit is no longer
+  // present (force-push, history rewrite), clear the selection silently.
+  const commitsForCleanup = state.kind === 'ready' ? state.commits : null;
+  useEffect(() => {
+    if (!selectedCommit || !commitsForCleanup) return;
+    if (!commitsForCleanup.some((c) => c.hash === selectedCommit)) {
+      closeCommit();
+    }
+  }, [selectedCommit, commitsForCleanup, closeCommit]);
 
   if (!active) {
     return <EmptyPanel message="No tab selected." />;
@@ -85,6 +121,8 @@ export function GitView({ active, isWorktreeTab }: Props) {
         setError={setError}
         selectedFile={selectedFile}
         setSelectedFile={setSelectedFile}
+        selectedCommit={selectedCommit}
+        toggleCommit={toggleCommit}
         commitLimit={commitLimit}
         onLoadMoreCommits={loadMoreCommits}
       />
@@ -144,6 +182,8 @@ interface BodyProps {
   setError: (e: GitError | null) => void;
   selectedFile: { path: string; stage: 'staged' | 'unstaged' | 'untracked' } | null;
   setSelectedFile: (f: { path: string; stage: 'staged' | 'unstaged' | 'untracked' } | null) => void;
+  selectedCommit: string | null;
+  toggleCommit: (hash: string) => void;
   commitLimit: number;
   onLoadMoreCommits: () => void;
 }
@@ -183,6 +223,8 @@ function ReadyBody({
   setError,
   selectedFile,
   setSelectedFile,
+  selectedCommit,
+  toggleCommit,
   commitLimit,
   onLoadMoreCommits,
 }: BodyProps & { state: Extract<GitViewState, { kind: 'ready' }> }) {
@@ -272,6 +314,8 @@ function ReadyBody({
         head={status.head}
         commitLimit={commitLimit}
         onLoadMore={onLoadMoreCommits}
+        selectedCommit={selectedCommit}
+        onToggleCommit={toggleCommit}
       />
     </div>
   );
@@ -634,11 +678,15 @@ function CommitList({
   head,
   commitLimit,
   onLoadMore,
+  selectedCommit,
+  onToggleCommit,
 }: {
   commits: GitCommit[];
   head: string | null;
   commitLimit: number;
   onLoadMore: () => void;
+  selectedCommit: string | null;
+  onToggleCommit: (hash: string) => void;
 }) {
   const refsByCommit = useMemo(() => {
     const m = new Map<string, string[]>();
@@ -672,8 +720,14 @@ function CommitList({
         {commits.map((c, i) => {
           const refs = refsByCommit.get(c.hash) ?? [];
           const isHead = head !== null && c.hash.startsWith(head);
+          const selected = selectedCommit === c.hash;
           return (
-            <li key={c.hash} className={`git-commit-row${isHead ? ' head' : ''}`} title={c.hash}>
+            <li
+              key={c.hash}
+              className={`git-commit-row${isHead ? ' head' : ''}${selected ? ' selected' : ''}`}
+              title={c.hash}
+              onClick={() => onToggleCommit(c.hash)}
+            >
               <GraphCell row={graphRows[i]} width={graphWidth} isHead={isHead} />
               <span className="git-commit-hash">{c.shortHash}</span>
               {refs.map((r) => (
@@ -825,10 +879,14 @@ function relativeTime(epochSeconds: number): string {
 export function DiffView({
   active,
   file,
+  commit,
   onClose,
 }: {
   active: ActiveSelection;
   file: { path: string; stage: 'staged' | 'unstaged' | 'untracked' };
+  /** When set, fetch the per-file diff introduced by this commit instead of
+   *  the working-tree diff. The `stage` on `file` is ignored. */
+  commit?: string;
   onClose?: () => void;
 }) {
   const [diff, setDiff] = useState<string | null>(null);
@@ -843,7 +901,7 @@ export function DiffView({
     setBinary(false);
     setErr(null);
     void window.api.git
-      .diff({ projectId, worktreeId, path: file.path, stage: file.stage })
+      .diff({ projectId, worktreeId, path: file.path, stage: file.stage, commit })
       .then((r) => {
         if (cancelled) return;
         if (r.ok) {
@@ -856,7 +914,7 @@ export function DiffView({
     return () => {
       cancelled = true;
     };
-  }, [projectId, worktreeId, file.path, file.stage]);
+  }, [projectId, worktreeId, file.path, file.stage, commit]);
 
   // Close on Escape.
   useEffect(() => {
@@ -874,7 +932,7 @@ export function DiffView({
     <div className="git-diff-view">
       <div className="git-diff-pane-header">
         <span className="git-diff-path">{file.path}</span>
-        <span className="fg-muted">({file.stage})</span>
+        <span className="fg-muted">({commit ? `@ ${commit.slice(0, 7)}` : file.stage})</span>
         {onClose && (
           <button className="git-diff-close" onClick={onClose} title="Close diff (Esc)">
             ×
@@ -973,5 +1031,170 @@ function DiffRow({ row }: { row: DiffLineRow }) {
       <span className="diff-content">{row.content || ' '}</span>
     </div>
   );
+}
+
+// ---------------------------------------------------------------------------
+// Commit view (commit detail + per-file diff)
+// ---------------------------------------------------------------------------
+
+export function CommitView({
+  active,
+  commit,
+  onClose,
+}: {
+  active: ActiveSelection;
+  commit: string;
+  onClose?: () => void;
+}) {
+  const [detail, setDetail] = useState<GitCommitDetail | null>(null);
+  const [files, setFiles] = useState<GitCommitFile[] | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [selectedPath, setSelectedPath] = useState<string | null>(null);
+
+  const projectId = active.projectId;
+  const worktreeId = active.worktreeId ?? null;
+
+  // Reset the in-pane file selection whenever the commit or tab changes.
+  useEffect(() => {
+    setSelectedPath(null);
+  }, [projectId, worktreeId, commit]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setDetail(null);
+    setFiles(null);
+    setErr(null);
+    void window.api.git
+      .showCommit({ projectId, worktreeId, commit })
+      .then((r) => {
+        if (cancelled) return;
+        if (r.ok) {
+          setDetail(r.commit);
+          setFiles(r.files);
+        } else {
+          setErr(r.stderr ?? r.reason);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, worktreeId, commit]);
+
+  // Close on Escape.
+  useEffect(() => {
+    if (!onClose) return;
+    const h = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  }, [onClose]);
+
+  const selectedFile = useMemo(
+    () => (selectedPath && files ? files.find((f) => f.path === selectedPath) ?? null : null),
+    [selectedPath, files],
+  );
+
+  const firstLine = detail?.message.split('\n', 1)[0] ?? '';
+  const bodyLines = detail?.message.split('\n').slice(1) ?? [];
+  // Trim leading blank line that sits between subject and body.
+  const body = bodyLines.join('\n').replace(/^\n+/, '');
+
+  return (
+    <div className="git-diff-view git-commit-view">
+      <div className="git-diff-pane-header">
+        <span className="git-diff-path">
+          commit {detail ? detail.hash.slice(0, 7) : commit.slice(0, 7)}
+        </span>
+        {detail && <span className="fg-muted">· {detail.authorName}</span>}
+        {onClose && (
+          <button className="git-diff-close" onClick={onClose} title="Close (Esc)">
+            ×
+          </button>
+        )}
+      </div>
+      {err ? (
+        <div className="fg-muted" style={{ padding: 8 }}>
+          commit unavailable: {err}
+        </div>
+      ) : !detail || !files ? (
+        <div className="fg-muted" style={{ padding: 8 }}>
+          Loading commit…
+        </div>
+      ) : (
+        <div className="git-commit-body">
+          <div className="git-commit-meta-block">
+            <div className="git-commit-hash-full" title={detail.hash}>
+              {detail.hash}
+            </div>
+            <div className="git-commit-author">
+              <span>{detail.authorName}</span>
+              {detail.authorEmail && <span className="fg-muted"> &lt;{detail.authorEmail}&gt;</span>}
+              {detail.authorDate && (
+                <span className="fg-muted git-commit-date">
+                  {' · '}
+                  {formatCommitDate(detail.authorDate)}
+                </span>
+              )}
+            </div>
+            <div className="git-commit-subject-full">{firstLine}</div>
+            {body && <pre className="git-commit-message-body">{body}</pre>}
+          </div>
+          <div className="git-commit-files">
+            <div className="git-section-header">
+              <span className="git-section-title">Files</span>
+              <span className="git-section-count">{files.length}</span>
+            </div>
+            {files.length === 0 ? (
+              <div className="git-section-empty fg-muted">No files changed.</div>
+            ) : (
+              <ul className="git-file-list">
+                {files.map((f) => {
+                  const key = f.path;
+                  const sel = selectedPath === f.path;
+                  return (
+                    <li
+                      key={key}
+                      className={`git-file-row${sel ? ' selected' : ''}`}
+                      onClick={() => setSelectedPath(sel ? null : f.path)}
+                      title={f.oldPath ? `${f.oldPath} → ${f.path}` : f.path}
+                    >
+                      <span
+                        className={`git-change-badge change-${f.kind}`}
+                        title={f.kind}
+                      ></span>
+                      <span className="git-file-path">
+                        {f.oldPath ? `${f.oldPath} → ${f.path}` : f.path}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+          {selectedFile && (
+            <div className="git-commit-diff-region">
+              <DiffView
+                active={active}
+                file={{
+                  path: selectedFile.path,
+                  // `stage` is ignored when `commit` is set, but the type
+                  // requires a value. 'staged' is a harmless placeholder.
+                  stage: 'staged',
+                }}
+                commit={detail.hash}
+              />
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function formatCommitDate(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleString();
 }
 

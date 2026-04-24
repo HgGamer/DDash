@@ -74,6 +74,7 @@ export const IPC = {
   GitCheckout: 'git:checkout',
   GitCreateBranch: 'git:createBranch',
   GitDiff: 'git:diff',
+  GitShowCommit: 'git:showCommit',
   GitDiscard: 'git:discard',
   GitSubscribe: 'git:subscribe',
   GitUnsubscribe: 'git:unsubscribe',
@@ -270,7 +271,42 @@ export interface GitDiffArgs extends GitTabRef {
    * 'untracked' — treats the file as all-new (diff vs /dev/null)
    */
   stage: 'staged' | 'unstaged' | 'untracked';
+  /**
+   * When set, ignore `stage` and return the patch introduced by this commit
+   * for `path` (i.e. commit^..commit). Used by the commit-browser UI. For the
+   * repository's root commit (no parent), returns the full initial content as
+   * an addition.
+   */
+  commit?: string;
 }
+
+export interface GitShowCommitArgs extends GitTabRef {
+  /** Full SHA (or any ref resolvable by git) of the commit to inspect. */
+  commit: string;
+}
+
+export interface GitCommitFile {
+  /** Path at the commit (or the new path for a rename). */
+  path: string;
+  /** For renames, the previous path. */
+  oldPath?: string;
+  /** Narrowed subset of GitChangeKind that commit diffs actually produce. */
+  kind: 'added' | 'modified' | 'deleted' | 'renamed';
+}
+
+export interface GitCommitDetail {
+  hash: string;
+  authorName: string;
+  authorEmail: string;
+  /** ISO 8601 author date (git's %aI). */
+  authorDate: string;
+  /** Full commit message (subject + body). */
+  message: string;
+}
+
+export type GitShowCommitResult =
+  | { ok: true; commit: GitCommitDetail; files: GitCommitFile[] }
+  | { ok: false; reason: 'not-a-repo' | 'git-missing' | 'tab-missing' | 'unknown-commit'; stderr?: string };
 
 export interface GitDiscardArgs extends GitTabRef {
   paths: string[];
@@ -411,6 +447,7 @@ export interface DashApi {
     checkout(args: GitCheckoutArgs): Promise<GitOperationResult>;
     createBranch(args: GitCreateBranchArgs): Promise<GitOperationResult>;
     diff(args: GitDiffArgs): Promise<GitDiffResult>;
+    showCommit(args: GitShowCommitArgs): Promise<GitShowCommitResult>;
     discard(args: GitDiscardArgs): Promise<GitOperationResult>;
     subscribe(args: GitTabRef): Promise<void>;
     unsubscribe(args: GitTabRef): Promise<void>;
