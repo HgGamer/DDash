@@ -18,7 +18,7 @@ mac:
       arch:
         - arm64
   category: public.app-category.developer-tools
-  artifactName: ${productName}-${version}-${arch}.${ext}
+  artifactName: ${productName}-${version}-mac-${arch}.${ext}
   hardenedRuntime: false
   gatekeeperAssess: false
   identity: null
@@ -27,7 +27,7 @@ win:
     - target: nsis
       arch:
         - x64
-  artifactName: ${productName}-${version}-setup.${ext}
+  artifactName: ${productName}-${version}-win-${arch}-setup.${ext}
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
@@ -41,7 +41,7 @@ linux:
       arch:
         - x64
   category: Development
-  artifactName: ${productName}-${version}-${arch}.${ext}
+  artifactName: ${productName}-${version}-linux-${arch}.${ext}
 publish:
   - provider: github
     owner: HgGamer

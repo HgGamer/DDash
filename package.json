@@ -1,9 +1,12 @@
 {
   "name": "dash",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "description": "Cross-platform desktop app for running Claude Code across multiple projects in tabs.",
   "main": "./out/main/index.js",
-  "author": "dash",
+  "author": {
+    "name": "dash",
+    "email": "noreply@dash.app"
+  },
   "license": "MIT",
   "type": "module",
   "scripts": {
