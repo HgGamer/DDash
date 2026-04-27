@@ -1,6 +1,6 @@
 {
   "name": "dash",
-  "version": "0.6.1",
+  "version": "0.7.0",
   "description": "Cross-platform desktop app for running Claude Code across multiple projects in tabs.",
   "main": "./out/main/index.js",
   "author": "dash",
