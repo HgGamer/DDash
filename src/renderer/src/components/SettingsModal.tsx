@@ -360,7 +360,9 @@ function describeState(state: AutoUpdateState): string {
     case 'downloading':
       return `Downloading ${state.version} (${state.percent}%)`;
     case 'downloaded':
-      return `Update ready: ${state.version} — restart to install`;
+      return state.manualInstall
+        ? `Update ready: ${state.version} — open installer to finish`
+        : `Update ready: ${state.version} — restart to install`;
     case 'error':
       return `Update error: ${state.message}`;
   }
@@ -439,7 +441,11 @@ function UpdatesPanel() {
             Check for updates…
           </button>
           {canInstall && (
-            <button onClick={() => void onInstall()}>Restart and update</button>
+            <button onClick={() => void onInstall()}>
+              {state.kind === 'downloaded' && state.manualInstall
+                ? 'Open installer'
+                : 'Restart and update'}
+            </button>
           )}
         </div>
       </section>

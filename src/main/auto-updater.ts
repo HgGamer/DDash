@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, shell } from 'electron';
 import { EventEmitter } from 'node:events';
 import electronUpdater from 'electron-updater';
 import type {
@@ -13,6 +13,30 @@ import type { JsonStore } from './store';
 
 const STARTUP_DELAY_MS = 30_000;
 const RECHECK_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6h
+
+/** Strict semver "remote > current" comparator. We can't trust electron-updater's
+ *  built-in downgrade guard alone: a previously-downloaded installer cached on
+ *  disk can re-emit `update-downloaded` on startup even when its version is now
+ *  older than the running app (e.g. user side-loaded a newer local build). */
+function isNewerVersion(remote: string, current: string): boolean {
+  const parse = (v: string): { core: number[]; pre: string | null } => {
+    const [coreStr, pre = null] = v.split('-', 2);
+    const core = coreStr.split('.').map((n) => Number.parseInt(n, 10) || 0);
+    while (core.length < 3) core.push(0);
+    return { core, pre };
+  };
+  const a = parse(remote);
+  const b = parse(current);
+  for (let i = 0; i < 3; i++) {
+    if (a.core[i] !== b.core[i]) return a.core[i] > b.core[i];
+  }
+  // Equal core: a release outranks a prerelease; otherwise compare prerelease
+  // tags lexically. Identical prereleases are not "newer".
+  if (a.pre === b.pre) return false;
+  if (a.pre === null) return true;
+  if (b.pre === null) return false;
+  return a.pre > b.pre;
+}
 
 /** Detect whether this Linux install came from a deb (or any non-AppImage path
  *  that electron-updater can't update). AppImage sets APPIMAGE; without it we
@@ -76,6 +100,10 @@ class RealAutoUpdater extends EventEmitter implements AutoUpdater {
   private startupTimer: NodeJS.Timeout | null = null;
   private intervalTimer: NodeJS.Timeout | null = null;
   private readonly nativeUpdater: import('electron-updater').AppUpdater;
+  /** macOS-only: path to the downloaded artifact. Squirrel rejects our
+   *  ad-hoc-signed builds during validation, so we reveal this in Finder
+   *  on installNow() instead of calling quitAndInstall. */
+  private downloadedFile: string | null = null;
 
   constructor(private readonly deps: RealAutoUpdaterDeps) {
     super();
@@ -95,6 +123,10 @@ class RealAutoUpdater extends EventEmitter implements AutoUpdater {
       this.setState({ kind: 'checking' });
     });
     this.nativeUpdater.on('update-available', (info) => {
+      if (!isNewerVersion(info.version, app.getVersion())) {
+        this.discardStaleUpdate(info.version);
+        return;
+      }
       this.setState({ kind: 'downloading', version: info.version, percent: 0 });
       this.markChecked();
     });
@@ -108,7 +140,21 @@ class RealAutoUpdater extends EventEmitter implements AutoUpdater {
       this.setState({ kind: 'downloading', version, percent: Math.round(p.percent) });
     });
     this.nativeUpdater.on('update-downloaded', (info) => {
-      this.setState({ kind: 'downloaded', version: info.version });
+      // Guard against a stale cached installer for a version <= the running
+      // app — e.g. when a user side-loads a newer local build over an
+      // electron-updater-managed install. Without this, the prior download
+      // would resurface as "Update ready" and silently downgrade the user.
+      if (!isNewerVersion(info.version, app.getVersion())) {
+        this.discardStaleUpdate(info.version);
+        return;
+      }
+      const manualInstall = process.platform === 'darwin';
+      this.downloadedFile = manualInstall ? (info.downloadedFile ?? null) : null;
+      this.setState({
+        kind: 'downloaded',
+        version: info.version,
+        ...(manualInstall ? { manualInstall: true } : {}),
+      });
     });
     this.nativeUpdater.on('error', (err) => {
       this.setState({ kind: 'error', message: err?.message ?? String(err) });
@@ -150,6 +196,10 @@ class RealAutoUpdater extends EventEmitter implements AutoUpdater {
 
   async installNow(): Promise<void> {
     if (this.state.kind !== 'downloaded') return;
+    if (this.state.manualInstall) {
+      if (this.downloadedFile) shell.showItemInFolder(this.downloadedFile);
+      return;
+    }
     // `quitAndInstall(isSilent, isForceRunAfter)` — silent on Windows, relaunch
     // after install on all platforms.
     this.nativeUpdater.quitAndInstall(true, true);
@@ -187,6 +237,19 @@ class RealAutoUpdater extends EventEmitter implements AutoUpdater {
     this.intervalTimer = setInterval(() => {
       void this.check();
     }, RECHECK_INTERVAL_MS);
+  }
+
+  private discardStaleUpdate(remoteVersion: string): void {
+    // Drop electron-updater's on-disk pending-update cache so the stale
+    // installer doesn't resurface on the next check or restart.
+    const helper = (this.nativeUpdater as unknown as { downloadedUpdateHelper?: { clear(): Promise<void> } })
+      .downloadedUpdateHelper;
+    void helper?.clear().catch(() => { /* best-effort */ });
+    console.warn(
+      `[auto-updater] feed advertises ${remoteVersion} <= running ${app.getVersion()}; ignoring.`,
+    );
+    this.setState({ kind: 'idle' });
+    this.markChecked();
   }
 
   private clearTimers(): void {

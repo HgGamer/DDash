@@ -19,8 +19,10 @@ export function UpdateBanner() {
     return Object.values(tabs).some((t) => t.status === 'running');
   })();
 
+  const manual = state.kind === 'downloaded' && state.manualInstall === true;
+
   const onInstall = async () => {
-    if (hasActiveSessions && !confirming) {
+    if (!manual && hasActiveSessions && !confirming) {
       setConfirming(true);
       return;
     }
@@ -37,15 +39,17 @@ export function UpdateBanner() {
         <>
           <span>
             Update {state.version} is ready.{' '}
-            {confirming
-              ? 'Restart now? This will close all running terminal sessions.'
-              : 'It will install when you quit, or restart now.'}
+            {manual
+              ? 'Open the installer and drag Dash into Applications to finish updating.'
+              : confirming
+                ? 'Restart now? This will close all running terminal sessions.'
+                : 'It will install when you quit, or restart now.'}
           </span>
           <div className="update-banner-actions">
             <button onClick={() => void onInstall()}>
-              {confirming ? 'Restart and update' : 'Restart and update'}
+              {manual ? 'Open installer' : 'Restart and update'}
             </button>
-            {confirming ? (
+            {!manual && confirming ? (
               <button onClick={() => setConfirming(false)}>Cancel</button>
             ) : (
               <button onClick={() => openSettings('updates')}>Details</button>
