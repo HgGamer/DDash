@@ -1,5 +1,7 @@
 import type {
   ActiveSelection,
+  AutoUpdateInfo,
+  AutoUpdateSettings,
   GitViewSettings,
   IntegratedTerminalSettings,
   NotificationSettings,
@@ -112,6 +114,15 @@ export const IPC = {
   ShellRename: 'shell:rename',
   ShellData: 'shell:data',
   ShellExit: 'shell:exit',
+
+  // Auto-update (renderer ↔ main)
+  AutoUpdateGetInfo: 'autoUpdate:getInfo',
+  AutoUpdateGetSettings: 'autoUpdate:getSettings',
+  AutoUpdateSetSettings: 'autoUpdate:setSettings',
+  AutoUpdateCheck: 'autoUpdate:check',
+  AutoUpdateInstallNow: 'autoUpdate:installNow',
+  AutoUpdateInfoChanged: 'autoUpdate:infoChanged',
+  AutoUpdateSettingsChanged: 'autoUpdate:settingsChanged',
 
   // Menu/shortcut events (main → renderer)
   MenuAddProject: 'menu:addProject',
@@ -490,6 +501,20 @@ export interface DashApi {
     add(args: TodoAddArgs): Promise<Todo>;
     update(args: TodoUpdateArgs): Promise<Todo | null>;
     remove(args: TodoRemoveArgs): Promise<void>;
+  };
+  autoUpdate: {
+    getInfo(): Promise<AutoUpdateInfo>;
+    getSettings(): Promise<AutoUpdateSettings>;
+    setSettings(patch: Partial<Omit<AutoUpdateSettings, 'version'>>): Promise<AutoUpdateSettings>;
+    /** Trigger a manual check. Returns the resulting info. No-op (resolves with
+     *  the current info) if a check/download is already in progress, or if the
+     *  updater is disabled on this build. */
+    check(): Promise<AutoUpdateInfo>;
+    /** Quit and install the downloaded update immediately. No-op if state is
+     *  not 'downloaded'. */
+    installNow(): Promise<void>;
+    onInfoChanged(handler: (info: AutoUpdateInfo) => void): () => void;
+    onSettingsChanged(handler: (settings: AutoUpdateSettings) => void): () => void;
   };
   menu: {
     onAddProject(handler: () => void): () => void;

@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import {
   DEFAULT_APP_STATE,
+  DEFAULT_AUTO_UPDATE_SETTINGS,
   DEFAULT_GIT_VIEW_SETTINGS,
   DEFAULT_INTEGRATED_TERMINAL_SETTINGS,
   DEFAULT_NOTIFICATION_SETTINGS,
@@ -15,6 +16,7 @@ import {
   TODO_VIEW_MIN_WIDTH,
   type ActiveSelection,
   type AppState,
+  type AutoUpdateSettings,
   type GitViewSettings,
   type IntegratedTerminalSettings,
   type NotificationSettings,
@@ -142,6 +144,7 @@ export class JsonStore {
       gitView: migrateGitView(r.gitView),
       todoView: migrateTodoView(r.todoView),
       integratedTerminal: migrateIntegratedTerminal(r.integratedTerminal),
+      autoUpdate: migrateAutoUpdate(r.autoUpdate),
     };
   }
 }
@@ -304,6 +307,19 @@ function migrateIntegratedTerminal(raw: unknown): IntegratedTerminalSettings {
     out.defaultShell = r.defaultShell;
   }
   return out;
+}
+
+function migrateAutoUpdate(raw: unknown): AutoUpdateSettings {
+  if (!raw || typeof raw !== 'object') return { ...DEFAULT_AUTO_UPDATE_SETTINGS };
+  const r = raw as Partial<AutoUpdateSettings>;
+  const channel: AutoUpdateSettings['channel'] =
+    r.channel === 'beta' || r.channel === 'stable' ? r.channel : DEFAULT_AUTO_UPDATE_SETTINGS.channel;
+  return {
+    version: 1,
+    enabled: typeof r.enabled === 'boolean' ? r.enabled : DEFAULT_AUTO_UPDATE_SETTINGS.enabled,
+    channel,
+    lastCheckedAt: typeof r.lastCheckedAt === 'string' ? r.lastCheckedAt : null,
+  };
 }
 
 function migrateNotifications(raw: unknown): NotificationSettings {

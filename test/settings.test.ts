@@ -79,3 +79,106 @@ describe('SettingsManager.terminalStyle', () => {
     expect(() => settings.setTerminalStyle('bogus')).toThrow();
   });
 });
+
+describe('SettingsManager.autoUpdate', () => {
+  it('returns defaults on a fresh install', () => {
+    expect(settings.getAutoUpdate()).toEqual({
+      version: 1,
+      enabled: true,
+      channel: 'stable',
+      lastCheckedAt: null,
+    });
+  });
+
+  it('round-trips channel and timestamp across reload', async () => {
+    settings.setAutoUpdate({ channel: 'beta', lastCheckedAt: '2026-04-27T12:00:00.000Z' });
+    await store.flush();
+
+    const reloaded = new JsonStore({ dir: tmpDir, debounceMs: 0 });
+    await reloaded.load();
+    const s2 = new SettingsManager(reloaded);
+    expect(s2.getAutoUpdate()).toEqual({
+      version: 1,
+      enabled: true,
+      channel: 'beta',
+      lastCheckedAt: '2026-04-27T12:00:00.000Z',
+    });
+  });
+
+  it('migrates a store that has no autoUpdate block to defaults', async () => {
+    const filePath = path.join(tmpDir, 'app-state.json');
+    await fs.writeFile(
+      filePath,
+      JSON.stringify({
+        version: 2,
+        projects: [],
+        lastActive: null,
+        window: { width: 1280, height: 800, x: null, y: null, maximized: false },
+      }),
+      'utf8',
+    );
+    const reloaded = new JsonStore({ dir: tmpDir, debounceMs: 0 });
+    await reloaded.load();
+    const s = new SettingsManager(reloaded);
+    expect(s.getAutoUpdate()).toEqual({
+      version: 1,
+      enabled: true,
+      channel: 'stable',
+      lastCheckedAt: null,
+    });
+  });
+
+  it('coerces an unknown channel back to stable', async () => {
+    const filePath = path.join(tmpDir, 'app-state.json');
+    await fs.writeFile(
+      filePath,
+      JSON.stringify({
+        version: 2,
+        projects: [],
+        lastActive: null,
+        window: { width: 1280, height: 800, x: null, y: null, maximized: false },
+        autoUpdate: { version: 1, enabled: false, channel: 'nightly', lastCheckedAt: null },
+      }),
+      'utf8',
+    );
+    const reloaded = new JsonStore({ dir: tmpDir, debounceMs: 0 });
+    await reloaded.load();
+    const s = new SettingsManager(reloaded);
+    const got = s.getAutoUpdate();
+    expect(got.channel).toBe('stable');
+    expect(got.enabled).toBe(false);
+  });
+
+  it('emits autoUpdateChanged on set', () => {
+    const events: string[] = [];
+    settings.on('autoUpdateChanged', (n) => events.push(n.channel));
+    settings.setAutoUpdate({ channel: 'beta' });
+    settings.setAutoUpdate({ channel: 'stable' });
+    expect(events).toEqual(['beta', 'stable']);
+  });
+});
+
+describe('auto-update channel mapping', () => {
+  it('maps stable→latest and beta→beta', async () => {
+    const { autoUpdateChannelToFeed } = await import('../src/shared/types');
+    expect(autoUpdateChannelToFeed('stable')).toBe('latest');
+    expect(autoUpdateChannelToFeed('beta')).toBe('beta');
+  });
+});
+
+describe('AutoUpdateState shape', () => {
+  it('idle states can carry a disabledReason for non-packaged builds', () => {
+    const dev: import('@shared/types').AutoUpdateState = {
+      kind: 'idle',
+      disabledReason: 'development',
+    };
+    const deb: import('@shared/types').AutoUpdateState = {
+      kind: 'idle',
+      disabledReason: 'unsupported-platform',
+    };
+    expect(dev.kind).toBe('idle');
+    expect(deb.kind).toBe('idle');
+    if (dev.kind === 'idle') expect(dev.disabledReason).toBe('development');
+    if (deb.kind === 'idle') expect(deb.disabledReason).toBe('unsupported-platform');
+  });
+});

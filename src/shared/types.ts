@@ -219,6 +219,54 @@ export const DEFAULT_INTEGRATED_TERMINAL_SETTINGS: IntegratedTerminalSettings = 
 export const INTEGRATED_TERMINAL_MIN_HEIGHT = 120;
 export const INTEGRATED_TERMINAL_MAX_HEIGHT_RATIO = 0.8;
 
+export type AutoUpdateChannel = 'stable' | 'beta';
+
+export interface AutoUpdateSettings {
+  version: 1;
+  /** Master switch for background checks and downloads. */
+  enabled: boolean;
+  channel: AutoUpdateChannel;
+  /** ISO timestamp of the last successful check (success = no error from the
+   * release feed; "no update available" still counts). Null if never checked. */
+  lastCheckedAt: string | null;
+}
+
+export const DEFAULT_AUTO_UPDATE_SETTINGS: AutoUpdateSettings = {
+  version: 1,
+  enabled: true,
+  channel: 'stable',
+  lastCheckedAt: null,
+};
+
+/** Translate the user-facing channel name to electron-updater's wire name.
+ *  electron-updater calls the stable channel "latest". */
+export function autoUpdateChannelToFeed(channel: AutoUpdateChannel): string {
+  return channel === 'beta' ? 'beta' : 'latest';
+}
+
+/** Why the updater is not running on this build. Surfaced to the renderer so
+ * the UI can show "Updates managed by your package manager" / "Updates
+ * disabled in development" instead of the live controls. */
+export type AutoUpdateDisabledReason =
+  | 'development'
+  | 'unsupported-platform'
+  | 'auto-disabled';
+
+export type AutoUpdateState =
+  | { kind: 'idle'; disabledReason?: AutoUpdateDisabledReason }
+  | { kind: 'checking' }
+  | { kind: 'available'; version: string }
+  | { kind: 'downloading'; version: string; percent: number }
+  | { kind: 'downloaded'; version: string }
+  | { kind: 'error'; message: string };
+
+export interface AutoUpdateInfo {
+  /** Version of the running application. */
+  currentVersion: string;
+  state: AutoUpdateState;
+  lastCheckedAt: string | null;
+}
+
 export interface ShellTab {
   tabId: string;
   projectId: string;
@@ -245,6 +293,7 @@ export interface AppState {
   gitView: GitViewSettings;
   todoView: TodoViewSettings;
   integratedTerminal: IntegratedTerminalSettings;
+  autoUpdate: AutoUpdateSettings;
 }
 
 export const DEFAULT_WINDOW_STATE: WindowState = {
@@ -265,6 +314,7 @@ export const DEFAULT_APP_STATE: AppState = {
   gitView: DEFAULT_GIT_VIEW_SETTINGS,
   todoView: DEFAULT_TODO_VIEW_SETTINGS,
   integratedTerminal: DEFAULT_INTEGRATED_TERMINAL_SETTINGS,
+  autoUpdate: DEFAULT_AUTO_UPDATE_SETTINGS,
 };
 
 export type PtySessionStatus = 'not-started' | 'running' | 'exited';

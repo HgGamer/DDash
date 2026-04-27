@@ -10,6 +10,8 @@ import { ShellSessionManager } from './shell-session';
 import { installAppMenu } from './menu';
 import { SettingsManager } from './settings';
 import { attachWindowStatePersistence } from './window-state';
+import { createAutoUpdater, type AutoUpdater } from './auto-updater';
+import { registerAutoUpdateIpc } from './auto-update-ipc';
 
 const isDev = !app.isPackaged;
 
@@ -24,6 +26,7 @@ let store!: JsonStore;
 let registry!: ProjectRegistry;
 const ptyManager = new PtySessionManager();
 const shellManager = new ShellSessionManager();
+let autoUpdater: AutoUpdater | null = null;
 
 async function createWindow(): Promise<void> {
   const state = store.get();
@@ -84,7 +87,9 @@ app.whenReady().then(async () => {
   registerIpc({ store, registry, ptyManager, shellManager, settings, getWindow: () => mainWindow });
   registerGitIpc({ registry, getWindow: () => mainWindow });
   registerShellIpc({ registry, settings, shellManager, getWindow: () => mainWindow });
-  installAppMenu(() => mainWindow);
+  autoUpdater = createAutoUpdater({ settings, store, getWindow: () => mainWindow });
+  registerAutoUpdateIpc({ updater: autoUpdater, settings, store, getWindow: () => mainWindow });
+  installAppMenu(() => mainWindow, () => autoUpdater);
 
   await createWindow();
 
@@ -109,8 +114,22 @@ app.on('before-quit', (event) => {
       await ptyManager.killAll();
       shellManager.killAll();
       if (store) await store.flush();
-    } finally {
-      app.exit(0);
+    } catch {
+      // best-effort cleanup; fall through to exit either way
     }
+    // If an update has been downloaded, swap the running app for the new
+    // one now — quitAndInstall replaces the binary and relaunches, so we
+    // never reach `app.exit` below in that path.
+    if (autoUpdater?.hasPendingInstall()) {
+      autoUpdater.shutdown();
+      try {
+        await autoUpdater.installNow();
+        return;
+      } catch {
+        // fall through to normal exit if the install handoff fails
+      }
+    }
+    autoUpdater?.shutdown();
+    app.exit(0);
   })();
 });

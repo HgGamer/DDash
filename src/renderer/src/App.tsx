@@ -4,6 +4,7 @@ import { Workspace } from './components/Workspace';
 import { SettingsModal } from './components/SettingsModal';
 import { NewWorktreeModal } from './components/NewWorktreeModal';
 import { StatusBar } from './components/StatusBar';
+import { UpdateBanner } from './components/UpdateBanner';
 import { useStore } from './store';
 import { compositeKey } from '@shared/ipc';
 import type { ActiveSelection, Project } from '@shared/types';
@@ -263,6 +264,7 @@ export function App() {
 
   return (
     <div className="app">
+      <UpdateBanner />
       <div className="app-body">
         <Sidebar
           activeId={activeId}

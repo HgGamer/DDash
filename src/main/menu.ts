@@ -1,9 +1,26 @@
 import { app, BrowserWindow, Menu, type MenuItemConstructorOptions } from 'electron';
 import { IPC } from '@shared/ipc';
+import type { AutoUpdater } from './auto-updater';
 
-export function installAppMenu(getWindow: () => BrowserWindow | null): void {
+export function installAppMenu(
+  getWindow: () => BrowserWindow | null,
+  getUpdater: () => AutoUpdater | null = () => null,
+): void {
   const isMac = process.platform === 'darwin';
   const isDev = !app.isPackaged;
+  // Disable the menu item on builds where the updater is a no-op so users
+  // don't get a misleading "checking" spinner that never finds anything.
+  const updaterEnabled = (() => {
+    const u = getUpdater();
+    if (!u) return !isDev; // updater not yet wired — fall back to packaged-build heuristic
+    const state = u.getInfo().state;
+    return !(state.kind === 'idle' && state.disabledReason);
+  })();
+  const checkForUpdates: MenuItemConstructorOptions = {
+    label: 'Check for updates…',
+    enabled: updaterEnabled,
+    click: () => void getUpdater()?.check(),
+  };
 
   const send = (channel: string, payload?: unknown) => {
     const w = getWindow();
@@ -24,6 +41,8 @@ export function installAppMenu(getWindow: () => BrowserWindow | null): void {
             label: app.name,
             submenu: [
               { role: 'about' },
+              { type: 'separator' },
+              checkForUpdates,
               { type: 'separator' },
               {
                 label: 'Settings…',
@@ -116,6 +135,14 @@ export function installAppMenu(getWindow: () => BrowserWindow | null): void {
       role: 'window',
       submenu: [{ role: 'minimize' }, ...(isMac ? ([{ role: 'zoom' }] as MenuItemConstructorOptions[]) : [])],
     },
+    ...(isMac
+      ? []
+      : ([
+          {
+            label: 'Help',
+            submenu: [checkForUpdates],
+          },
+        ] as MenuItemConstructorOptions[])),
   ];
 
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));

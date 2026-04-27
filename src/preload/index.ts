@@ -39,6 +39,8 @@ import {
 } from '@shared/ipc';
 import type {
   ActiveSelection,
+  AutoUpdateInfo,
+  AutoUpdateSettings,
   GitViewSettings,
   IntegratedTerminalSettings,
   NotificationSettings,
@@ -149,6 +151,16 @@ const api: DashApi = {
   notify: {
     attention: (args: NotifyAttentionArgs) => ipcRenderer.send(IPC.NotifyAttention, args),
     attentionClear: (key: string) => ipcRenderer.send(IPC.NotifyAttentionClear, key),
+  },
+  autoUpdate: {
+    getInfo: () => ipcRenderer.invoke(IPC.AutoUpdateGetInfo),
+    getSettings: () => ipcRenderer.invoke(IPC.AutoUpdateGetSettings),
+    setSettings: (patch: Partial<Omit<AutoUpdateSettings, 'version'>>) =>
+      ipcRenderer.invoke(IPC.AutoUpdateSetSettings, patch),
+    check: () => ipcRenderer.invoke(IPC.AutoUpdateCheck),
+    installNow: () => ipcRenderer.invoke(IPC.AutoUpdateInstallNow),
+    onInfoChanged: (h) => subscribe<AutoUpdateInfo>(IPC.AutoUpdateInfoChanged, h),
+    onSettingsChanged: (h) => subscribe<AutoUpdateSettings>(IPC.AutoUpdateSettingsChanged, h),
   },
   menu: {
     onAddProject: (h) => subscribe<void>(IPC.MenuAddProject, () => h()),

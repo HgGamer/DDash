@@ -1,5 +1,6 @@
 import { EventEmitter } from 'node:events';
 import type {
+  AutoUpdateSettings,
   GitViewSettings,
   IntegratedTerminalSettings,
   NotificationSettings,
@@ -9,6 +10,7 @@ import type {
   TodoViewSettings,
 } from '@shared/types';
 import {
+  DEFAULT_AUTO_UPDATE_SETTINGS,
   DEFAULT_GIT_VIEW_SETTINGS,
   DEFAULT_INTEGRATED_TERMINAL_SETTINGS,
   DEFAULT_NOTIFICATION_SETTINGS,
@@ -29,6 +31,7 @@ export interface SettingsManagerEvents {
   gitViewChanged: (settings: GitViewSettings) => void;
   todoViewChanged: (settings: TodoViewSettings) => void;
   integratedTerminalChanged: (settings: IntegratedTerminalSettings) => void;
+  autoUpdateChanged: (settings: AutoUpdateSettings) => void;
 }
 
 export class SettingsManager extends EventEmitter {
@@ -202,6 +205,30 @@ export class SettingsManager extends EventEmitter {
       draft.integratedTerminal = next;
     });
     this.emit('integratedTerminalChanged', next);
+    return next;
+  }
+
+  getAutoUpdate(): AutoUpdateSettings {
+    const raw = this.store.get().autoUpdate;
+    if (!raw) return { ...DEFAULT_AUTO_UPDATE_SETTINGS };
+    return { ...raw };
+  }
+
+  setAutoUpdate(patch: Partial<Omit<AutoUpdateSettings, 'version'>>): AutoUpdateSettings {
+    const current = this.getAutoUpdate();
+    const channel =
+      patch.channel === 'stable' || patch.channel === 'beta' ? patch.channel : current.channel;
+    const next: AutoUpdateSettings = {
+      version: 1,
+      enabled: typeof patch.enabled === 'boolean' ? patch.enabled : current.enabled,
+      channel,
+      lastCheckedAt:
+        'lastCheckedAt' in patch ? patch.lastCheckedAt ?? null : current.lastCheckedAt,
+    };
+    this.store.update((draft) => {
+      draft.autoUpdate = next;
+    });
+    this.emit('autoUpdateChanged', next);
     return next;
   }
 }

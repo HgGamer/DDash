@@ -61,6 +61,15 @@ Dash runs Claude Code — it does not bundle it. You need the **Claude Code CLI*
 | Toggle terminal    | Cmd+`           | Ctrl+`             |
 | New terminal tab   | Cmd+Shift+`     | Ctrl+Shift+`       |
 
+## Updates
+
+Dash checks GitHub Releases for new versions in the background — once at startup and every 6 hours afterward. Updates download silently and install when you next quit the app, so running terminal sessions are never interrupted by a surprise restart. You can also click **Restart and update** in **Settings → Updates** to install immediately, or **Check for updates…** to check on demand.
+
+- **Channel**: choose between *Stable* (default) and *Beta* (pre-releases) under **Settings → Updates**.
+- **Disable auto-checks**: turn off **Automatically check for updates** in the same panel. The manual check still works.
+- **Linux `.deb`**: updates are managed by your system package manager. The AppImage build auto-updates normally.
+- **Network**: this is the only outbound network call Dash makes on its own; it talks to GitHub's release API and CDN.
+
 ## Troubleshooting
 
 **"Claude not found"** — Dash uses your login shell's `PATH`. If `claude` works in your terminal but Dash can't find it, make sure the `PATH` export is in your login-shell rc file (`.zprofile`, `.bash_profile`, `.profile`) — not only in `.bashrc` / `.zshrc`'s non-login branch. Quit and relaunch Dash after fixing.
@@ -68,6 +77,8 @@ Dash runs Claude Code — it does not bundle it. You need the **Claude Code CLI*
 **"Project path not found"** — The folder was moved, renamed, or deleted after you added it. Click **Remove project** and re-add it, or restore the folder.
 
 **Git panel is blank** — Dash uses the system `git` binary. Make sure `git` is on your `PATH`. You can also turn the panel off entirely under **Settings → Git**.
+
+**Update never installs (macOS / Windows)** — `electron-updater` only installs signed builds. Verify the release was published with valid Developer ID / code-signing certificates. The error in **Settings → Updates** usually names the cause (e.g. signature mismatch). On macOS, also check Console.app for `com.apple.security.cs` or notarization errors.
 
 ## Status
 

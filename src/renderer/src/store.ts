@@ -70,7 +70,7 @@ interface AppStore {
   gitDiff: GitDiffSelection | null;
   gitCommit: GitCommitSelection | null;
   settingsModalOpen: boolean;
-  settingsModalTab: 'terminal' | 'notifications' | 'git' | 'integrated-terminal';
+  settingsModalTab: 'terminal' | 'notifications' | 'git' | 'integrated-terminal' | 'updates';
 
   setProjects: (projects: Project[]) => void;
   setActive: (active: ActiveSelection | null) => void;
@@ -93,7 +93,7 @@ interface AppStore {
   closeDiff: () => void;
   openCommit: (sel: GitCommitSelection) => void;
   closeCommit: () => void;
-  openSettings: (tab?: 'terminal' | 'notifications' | 'git' | 'integrated-terminal') => void;
+  openSettings: (tab?: 'terminal' | 'notifications' | 'git' | 'integrated-terminal' | 'updates') => void;
   closeSettings: () => void;
 }
 

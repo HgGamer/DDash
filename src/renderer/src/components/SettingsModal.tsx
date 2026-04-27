@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type {
+  AutoUpdateChannel,
+  AutoUpdateState,
   NotificationSettings,
   TerminalCursorStyle,
   TerminalStyleOptions,
@@ -7,6 +9,7 @@ import type {
 } from '@shared/types';
 import { resolveTerminalStyleOptions } from '@shared/types';
 import { useStore } from '../store';
+import { useAutoUpdate } from '../hooks/useAutoUpdate';
 
 interface PresetOption {
   id: Exclude<TerminalStylePreset, 'custom'>;
@@ -33,7 +36,7 @@ const CURSOR_STYLES: Array<{ id: TerminalCursorStyle; label: string }> = [
   { id: 'bar', label: 'Bar' },
 ];
 
-type TabId = 'terminal' | 'notifications' | 'git' | 'integrated-terminal';
+type TabId = 'terminal' | 'notifications' | 'git' | 'integrated-terminal' | 'updates';
 
 export function SettingsModal({ onClose }: { onClose: () => void }) {
   const tab = useStore((s) => s.settingsModalTab);
@@ -86,6 +89,12 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
           >
             Integrated terminal
           </button>
+          <button
+            className={`settings-nav-item${tab === 'updates' ? ' active' : ''}`}
+            onClick={() => setTab('updates')}
+          >
+            Updates
+          </button>
         </nav>
         <div className="settings-body">
           {tab === 'terminal' ? (
@@ -94,6 +103,8 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
             <NotificationsPanel />
           ) : tab === 'integrated-terminal' ? (
             <IntegratedTerminalPanel />
+          ) : tab === 'updates' ? (
+            <UpdatesPanel />
           ) : (
             <GitPanel />
           )}
@@ -331,6 +342,138 @@ function IntegratedTerminalPanel() {
           <code>Ctrl/Cmd+Shift+`</code> opens a new tab.
         </p>
       </section>
+    </div>
+  );
+}
+
+function describeState(state: AutoUpdateState): string {
+  switch (state.kind) {
+    case 'idle':
+      if (state.disabledReason === 'development') return 'Disabled in development';
+      if (state.disabledReason === 'unsupported-platform')
+        return 'Updates managed by your package manager';
+      return 'Up to date';
+    case 'checking':
+      return 'Checking for updates…';
+    case 'available':
+      return `Update available: ${state.version}`;
+    case 'downloading':
+      return `Downloading ${state.version} (${state.percent}%)`;
+    case 'downloaded':
+      return `Update ready: ${state.version} — restart to install`;
+    case 'error':
+      return `Update error: ${state.message}`;
+  }
+}
+
+function formatLastChecked(iso: string | null): string {
+  if (!iso) return 'Never';
+  try {
+    const d = new Date(iso);
+    return d.toLocaleString();
+  } catch {
+    return iso;
+  }
+}
+
+function UpdatesPanel() {
+  const { info, settings, check, installNow, setSettings } = useAutoUpdate();
+  const [busy, setBusy] = useState(false);
+
+  if (!info || !settings) {
+    return (
+      <div className="settings-panel">
+        <section>
+          <p className="preset-desc">Loading…</p>
+        </section>
+      </div>
+    );
+  }
+
+  const state = info.state;
+  const disabledReason = state.kind === 'idle' ? state.disabledReason : undefined;
+  const canCheck =
+    !disabledReason &&
+    state.kind !== 'checking' &&
+    state.kind !== 'downloading' &&
+    state.kind !== 'downloaded' &&
+    !busy;
+  const canInstall = state.kind === 'downloaded' && !busy;
+
+  const onCheck = async () => {
+    setBusy(true);
+    try {
+      await check();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onInstall = async () => {
+    setBusy(true);
+    try {
+      await installNow();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="settings-panel">
+      <section>
+        <h4>Application</h4>
+        <div className="field-row">
+          <label className="field-label">Current version</label>
+          <span>{info.currentVersion}</span>
+        </div>
+        <div className="field-row">
+          <label className="field-label">Last checked</label>
+          <span>{formatLastChecked(info.lastCheckedAt)}</span>
+        </div>
+        <div className="field-row">
+          <label className="field-label">Status</label>
+          <span>{describeState(state)}</span>
+        </div>
+        <div className="preset-browse-row">
+          <button onClick={() => void onCheck()} disabled={!canCheck}>
+            Check for updates…
+          </button>
+          {canInstall && (
+            <button onClick={() => void onInstall()}>Restart and update</button>
+          )}
+        </div>
+      </section>
+
+      {!disabledReason && (
+        <section>
+          <h4>Preferences</h4>
+          <div className="field-row">
+            <label className="field-label">Automatically check for updates</label>
+            <input
+              type="checkbox"
+              checked={settings.enabled}
+              onChange={(e) => void setSettings({ enabled: e.target.checked })}
+            />
+          </div>
+          <div className="field-row">
+            <label className="field-label">Update channel</label>
+            <select
+              className="field-input field-narrow"
+              value={settings.channel}
+              onChange={(e) =>
+                void setSettings({ channel: e.target.value as AutoUpdateChannel })
+              }
+            >
+              <option value="stable">Stable</option>
+              <option value="beta">Beta (pre-releases)</option>
+            </select>
+          </div>
+          <p className="preset-desc">
+            Updates are downloaded in the background and installed when you quit the app, or
+            immediately if you click <em>Restart and update</em>.
+          </p>
+        </section>
+      )}
     </div>
   );
 }
