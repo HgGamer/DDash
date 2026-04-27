@@ -257,13 +257,7 @@ export type AutoUpdateState =
   | { kind: 'checking' }
   | { kind: 'available'; version: string }
   | { kind: 'downloading'; version: string; percent: number }
-  | {
-      kind: 'downloaded';
-      version: string;
-      /** macOS: Squirrel can't apply updates to ad-hoc-signed builds. We download
-       *  the artifact but leave the install to the user (Finder reveal). */
-      manualInstall?: boolean;
-    }
+  | { kind: 'downloaded'; version: string }
   | { kind: 'error'; message: string };
 
 export interface AutoUpdateInfo {

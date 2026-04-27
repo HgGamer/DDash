@@ -118,10 +118,8 @@ app.on('before-quit', (event) => {
       // best-effort cleanup; fall through to exit either way
     }
     // If an update has been downloaded, swap the running app for the new
-    // one now — on win/linux quitAndInstall replaces the binary and relaunches,
-    // so we never reach `app.exit` below. On macOS installNow() only reveals
-    // the artifact in Finder (Squirrel rejects ad-hoc-signed builds), so we
-    // must still exit ourselves afterwards.
+    // one now — quitAndInstall replaces the binary and relaunches, so we
+    // typically never reach `app.exit` below.
     if (autoUpdater?.hasPendingInstall()) {
       autoUpdater.shutdown();
       try {

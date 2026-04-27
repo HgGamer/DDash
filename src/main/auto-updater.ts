@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell } from 'electron';
+import { app, BrowserWindow } from 'electron';
 import { EventEmitter } from 'node:events';
 import electronUpdater from 'electron-updater';
 import type {
@@ -100,10 +100,6 @@ class RealAutoUpdater extends EventEmitter implements AutoUpdater {
   private startupTimer: NodeJS.Timeout | null = null;
   private intervalTimer: NodeJS.Timeout | null = null;
   private readonly nativeUpdater: import('electron-updater').AppUpdater;
-  /** macOS-only: path to the downloaded artifact. Squirrel rejects our
-   *  ad-hoc-signed builds during validation, so we reveal this in Finder
-   *  on installNow() instead of calling quitAndInstall. */
-  private downloadedFile: string | null = null;
 
   constructor(private readonly deps: RealAutoUpdaterDeps) {
     super();
@@ -148,13 +144,7 @@ class RealAutoUpdater extends EventEmitter implements AutoUpdater {
         this.discardStaleUpdate(info.version);
         return;
       }
-      const manualInstall = process.platform === 'darwin';
-      this.downloadedFile = manualInstall ? (info.downloadedFile ?? null) : null;
-      this.setState({
-        kind: 'downloaded',
-        version: info.version,
-        ...(manualInstall ? { manualInstall: true } : {}),
-      });
+      this.setState({ kind: 'downloaded', version: info.version });
     });
     this.nativeUpdater.on('error', (err) => {
       this.setState({ kind: 'error', message: err?.message ?? String(err) });
@@ -196,10 +186,6 @@ class RealAutoUpdater extends EventEmitter implements AutoUpdater {
 
   async installNow(): Promise<void> {
     if (this.state.kind !== 'downloaded') return;
-    if (this.state.manualInstall) {
-      if (this.downloadedFile) shell.showItemInFolder(this.downloadedFile);
-      return;
-    }
     // `quitAndInstall(isSilent, isForceRunAfter)` — silent on Windows, relaunch
     // after install on all platforms.
     this.nativeUpdater.quitAndInstall(true, true);

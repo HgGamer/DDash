@@ -22,7 +22,24 @@ mac:
   artifactName: ${productName}-${version}-mac-${arch}.${ext}
   hardenedRuntime: false
   gatekeeperAssess: false
-  identity: null
+  # Self-signed code signing (no Apple Developer ID, no notarization).
+  # Squirrel.Mac requires the new bundle's signing identity to match the
+  # running app's, so every release MUST be signed with the same cert.
+  #
+  # One-time setup on the build machine:
+  #   1. Keychain Access → Certificate Assistant → Create a Certificate
+  #        Name: "Dash Self-Signed"
+  #        Identity Type: Self Signed Root
+  #        Certificate Type: Code Signing
+  #   2. Export the cert + private key as a .p12 and back it up. If you
+  #      lose it, existing installs can't accept updates — reinstall
+  #      becomes the only path.
+  #
+  # First install on any Mac will hit Gatekeeper ("developer cannot be
+  # verified") — user right-clicks → Open once, or runs:
+  #     xattr -dr com.apple.quarantine /Applications/Dash.app
+  # Auto-updates after that are silent.
+  identity: "Dash Self-Signed"
 win:
   target:
     - target: nsis
