@@ -31,6 +31,9 @@ import {
   type ShellResizeArgs,
   type ShellTabIdArgs,
   type ShellWriteArgs,
+  type TodoAddArgs,
+  type TodoRemoveArgs,
+  type TodoUpdateArgs,
   type WorktreeCreateArgs,
   type WorktreeRemoveArgs,
 } from '@shared/ipc';
@@ -42,6 +45,7 @@ import type {
   TerminalStyleOptions,
   TerminalStylePreset,
   TerminalStyleSettings,
+  TodoViewSettings,
 } from '@shared/types';
 
 function subscribe<T>(channel: string, handler: (payload: T) => void): () => void {
@@ -98,6 +102,10 @@ const api: DashApi = {
     setGitView: (patch: Partial<Omit<GitViewSettings, 'version'>>) =>
       ipcRenderer.invoke(IPC.SettingsSetGitView, patch),
     onGitViewChanged: (h) => subscribe<GitViewSettings>(IPC.SettingsGitViewChanged, h),
+    getTodoView: () => ipcRenderer.invoke(IPC.SettingsGetTodoView),
+    setTodoView: (patch: Partial<Omit<TodoViewSettings, 'version'>>) =>
+      ipcRenderer.invoke(IPC.SettingsSetTodoView, patch),
+    onTodoViewChanged: (h) => subscribe<TodoViewSettings>(IPC.SettingsTodoViewChanged, h),
     getIntegratedTerminal: () => ipcRenderer.invoke(IPC.SettingsGetIntegratedTerminal),
     setIntegratedTerminal: (patch: Partial<Omit<IntegratedTerminalSettings, 'version'>>) =>
       ipcRenderer.invoke(IPC.SettingsSetIntegratedTerminal, patch),
@@ -131,6 +139,12 @@ const api: DashApi = {
     subscribe: (args: GitTabRef) => ipcRenderer.invoke(IPC.GitSubscribe, args),
     unsubscribe: (args: GitTabRef) => ipcRenderer.invoke(IPC.GitUnsubscribe, args),
     onChanged: (h) => subscribe<GitChangedEvent>(IPC.GitChanged, h),
+  },
+  todos: {
+    list: (projectId: string) => ipcRenderer.invoke(IPC.TodoList, projectId),
+    add: (args: TodoAddArgs) => ipcRenderer.invoke(IPC.TodoAdd, args),
+    update: (args: TodoUpdateArgs) => ipcRenderer.invoke(IPC.TodoUpdate, args),
+    remove: (args: TodoRemoveArgs) => ipcRenderer.invoke(IPC.TodoRemove, args),
   },
   notify: {
     attention: (args: NotifyAttentionArgs) => ipcRenderer.send(IPC.NotifyAttention, args),

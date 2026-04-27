@@ -2,6 +2,7 @@ import { useStore } from '../store';
 
 export function StatusBar() {
   const gitViewSettings = useStore((s) => s.gitView);
+  const todoViewSettings = useStore((s) => s.todoView);
   const integratedTerminal = useStore((s) => s.integratedTerminal);
 
   return (
@@ -21,6 +22,15 @@ export function StatusBar() {
             ▯ {integratedTerminal.expanded ? 'Hide terminal' : 'Terminal'}
           </button>
         )}
+        <button
+          className="statusbar-button"
+          title="Toggle todo panel"
+          onClick={() => {
+            void window.api.settings.setTodoView({ expanded: !todoViewSettings.expanded });
+          }}
+        >
+          ☰ {todoViewSettings.expanded ? 'Hide todos' : 'Todos'}
+        </button>
         {gitViewSettings.enabled && (
           <button
             className="statusbar-button"

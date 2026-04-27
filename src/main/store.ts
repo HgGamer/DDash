@@ -6,10 +6,13 @@ import {
   DEFAULT_INTEGRATED_TERMINAL_SETTINGS,
   DEFAULT_NOTIFICATION_SETTINGS,
   DEFAULT_TERMINAL_STYLE,
+  DEFAULT_TODO_VIEW_SETTINGS,
   GIT_VIEW_MAX_WIDTH,
   GIT_VIEW_MIN_WIDTH,
   INTEGRATED_TERMINAL_MIN_HEIGHT,
   TERMINAL_STYLE_PRESET_IDS,
+  TODO_VIEW_MAX_WIDTH,
+  TODO_VIEW_MIN_WIDTH,
   type ActiveSelection,
   type AppState,
   type GitViewSettings,
@@ -17,6 +20,8 @@ import {
   type NotificationSettings,
   type Project,
   type TerminalStyleSettings,
+  type Todo,
+  type TodoViewSettings,
   type Worktree,
 } from '@shared/types';
 
@@ -135,6 +140,7 @@ export class JsonStore {
       terminalStyle: migrateTerminalStyle(r.terminalStyle),
       notifications: migrateNotifications(r.notifications),
       gitView: migrateGitView(r.gitView),
+      todoView: migrateTodoView(r.todoView),
       integratedTerminal: migrateIntegratedTerminal(r.integratedTerminal),
     };
   }
@@ -163,6 +169,9 @@ function normalizeProject(raw: unknown): Project | null {
   const worktrees = Array.isArray(r.worktrees)
     ? (r.worktrees as unknown[]).map(normalizeWorktree).filter((w): w is Worktree => w !== null)
     : [];
+  const todos = Array.isArray(r.todos)
+    ? (r.todos as unknown[]).map(normalizeTodo).filter((t): t is Todo => t !== null)
+    : [];
   const proj: Project = {
     id: r.id,
     name: typeof r.name === 'string' ? r.name : r.id,
@@ -171,9 +180,22 @@ function normalizeProject(raw: unknown): Project | null {
     lastOpenedAt: typeof r.lastOpenedAt === 'string' ? r.lastOpenedAt : null,
     order: typeof r.order === 'number' ? r.order : 0,
     worktrees,
+    todos,
   };
   if (typeof r.worktreesRoot === 'string') proj.worktreesRoot = r.worktreesRoot;
   return proj;
+}
+
+function normalizeTodo(raw: unknown): Todo | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+  if (typeof r.id !== 'string' || typeof r.text !== 'string') return null;
+  return {
+    id: r.id,
+    text: r.text,
+    done: typeof r.done === 'boolean' ? r.done : false,
+    createdAt: typeof r.createdAt === 'string' ? r.createdAt : new Date().toISOString(),
+  };
 }
 
 function normalizeWorktree(raw: unknown): Worktree | null {
@@ -245,6 +267,20 @@ function migrateGitView(raw: unknown): GitViewSettings {
     version: 1,
     enabled: typeof r.enabled === 'boolean' ? r.enabled : DEFAULT_GIT_VIEW_SETTINGS.enabled,
     expanded: typeof r.expanded === 'boolean' ? r.expanded : DEFAULT_GIT_VIEW_SETTINGS.expanded,
+    panelWidth,
+  };
+}
+
+function migrateTodoView(raw: unknown): TodoViewSettings {
+  if (!raw || typeof raw !== 'object') return { ...DEFAULT_TODO_VIEW_SETTINGS };
+  const r = raw as Partial<TodoViewSettings>;
+  const panelWidth =
+    typeof r.panelWidth === 'number' && Number.isFinite(r.panelWidth)
+      ? Math.min(TODO_VIEW_MAX_WIDTH, Math.max(TODO_VIEW_MIN_WIDTH, Math.round(r.panelWidth)))
+      : DEFAULT_TODO_VIEW_SETTINGS.panelWidth;
+  return {
+    version: 1,
+    expanded: typeof r.expanded === 'boolean' ? r.expanded : DEFAULT_TODO_VIEW_SETTINGS.expanded,
     panelWidth,
   };
 }

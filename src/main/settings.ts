@@ -6,16 +6,20 @@ import type {
   TerminalStyleOptions,
   TerminalStylePreset,
   TerminalStyleSettings,
+  TodoViewSettings,
 } from '@shared/types';
 import {
   DEFAULT_GIT_VIEW_SETTINGS,
   DEFAULT_INTEGRATED_TERMINAL_SETTINGS,
   DEFAULT_NOTIFICATION_SETTINGS,
   DEFAULT_TERMINAL_STYLE,
+  DEFAULT_TODO_VIEW_SETTINGS,
   GIT_VIEW_MAX_WIDTH,
   GIT_VIEW_MIN_WIDTH,
   INTEGRATED_TERMINAL_MIN_HEIGHT,
   TERMINAL_STYLE_PRESET_IDS,
+  TODO_VIEW_MAX_WIDTH,
+  TODO_VIEW_MIN_WIDTH,
 } from '@shared/types';
 import type { JsonStore } from './store';
 
@@ -23,6 +27,7 @@ export interface SettingsManagerEvents {
   terminalStyleChanged: (settings: TerminalStyleSettings) => void;
   notificationsChanged: (settings: NotificationSettings) => void;
   gitViewChanged: (settings: GitViewSettings) => void;
+  todoViewChanged: (settings: TodoViewSettings) => void;
   integratedTerminalChanged: (settings: IntegratedTerminalSettings) => void;
 }
 
@@ -145,6 +150,28 @@ export class SettingsManager extends EventEmitter {
       draft.gitView = next;
     });
     this.emit('gitViewChanged', next);
+    return next;
+  }
+
+  getTodoView(): TodoViewSettings {
+    const raw = this.store.get().todoView;
+    if (!raw) return { ...DEFAULT_TODO_VIEW_SETTINGS };
+    return { ...raw };
+  }
+
+  setTodoView(patch: Partial<Omit<TodoViewSettings, 'version'>>): TodoViewSettings {
+    const current = this.getTodoView();
+    let panelWidth = patch.panelWidth ?? current.panelWidth;
+    panelWidth = Math.min(TODO_VIEW_MAX_WIDTH, Math.max(TODO_VIEW_MIN_WIDTH, Math.round(panelWidth)));
+    const next: TodoViewSettings = {
+      version: 1,
+      expanded: patch.expanded ?? current.expanded,
+      panelWidth,
+    };
+    this.store.update((draft) => {
+      draft.todoView = next;
+    });
+    this.emit('todoViewChanged', next);
     return next;
   }
 

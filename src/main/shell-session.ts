@@ -114,9 +114,15 @@ export class ShellSessionManager {
     }
     env.TERM = env.TERM ?? 'xterm-256color';
 
+    // Run as a login shell on macOS/Linux so that /etc/zprofile, ~/.zprofile,
+    // ~/.bash_profile, etc. are sourced. That's where tools like dotnet, nvm,
+    // rustup, and Homebrew's path_helper typically add to PATH. Without this,
+    // the integrated terminal inherits only Electron's bare PATH.
+    const shellArgs = platform() === 'win32' ? [] : ['-l'];
+
     let proc: NodePty.IPty;
     try {
-      proc = pty.spawn(opts.shell, [], {
+      proc = pty.spawn(opts.shell, shellArgs, {
         name: 'xterm-256color',
         cwd: opts.cwd,
         cols: Math.max(1, opts.cols | 0),

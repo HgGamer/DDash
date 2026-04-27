@@ -20,6 +20,7 @@ export function App() {
     setTerminalStyle,
     setNotifications,
     setGitView,
+    setTodoView,
     setIntegratedTerminal,
     openSettings,
     closeSettings,
@@ -109,6 +110,15 @@ export function App() {
     const off = window.api.settings.onGitViewChanged((s) => setGitView(s));
     return () => off();
   }, [setGitView]);
+
+  useEffect(() => {
+    void (async () => {
+      const current = await window.api.settings.getTodoView();
+      setTodoView(current);
+    })();
+    const off = window.api.settings.onTodoViewChanged((s) => setTodoView(s));
+    return () => off();
+  }, [setTodoView]);
 
   useEffect(() => {
     void (async () => {

@@ -9,6 +9,8 @@ import type {
   TerminalStyleOptions,
   TerminalStylePreset,
   TerminalStyleSettings,
+  Todo,
+  TodoViewSettings,
   Worktree,
 } from './types';
 import type {
@@ -84,6 +86,17 @@ export const IPC = {
   SettingsGetGitView: 'settings:getGitView',
   SettingsSetGitView: 'settings:setGitView',
   SettingsGitViewChanged: 'settings:gitViewChanged',
+
+  // Todos (renderer ↔ main)
+  TodoList: 'todo:list',
+  TodoAdd: 'todo:add',
+  TodoUpdate: 'todo:update',
+  TodoRemove: 'todo:remove',
+
+  // Todo-view settings (renderer ↔ main)
+  SettingsGetTodoView: 'settings:getTodoView',
+  SettingsSetTodoView: 'settings:setTodoView',
+  SettingsTodoViewChanged: 'settings:todoViewChanged',
 
   // Integrated-terminal settings (renderer ↔ main)
   SettingsGetIntegratedTerminal: 'settings:getIntegratedTerminal',
@@ -371,6 +384,22 @@ export interface ShellExitEvent {
   signal: number | null;
 }
 
+// Todo IPC payloads ------------------------------------------------------
+
+export interface TodoAddArgs {
+  projectId: string;
+  text: string;
+}
+export interface TodoUpdateArgs {
+  projectId: string;
+  id: string;
+  patch: Partial<Pick<Todo, 'text' | 'done'>>;
+}
+export interface TodoRemoveArgs {
+  projectId: string;
+  id: string;
+}
+
 // The typed API exposed on window.api via contextBridge.
 export interface DashApi {
   projects: {
@@ -415,6 +444,9 @@ export interface DashApi {
     getGitView(): Promise<GitViewSettings>;
     setGitView(patch: Partial<Omit<GitViewSettings, 'version'>>): Promise<GitViewSettings>;
     onGitViewChanged(handler: (s: GitViewSettings) => void): () => void;
+    getTodoView(): Promise<TodoViewSettings>;
+    setTodoView(patch: Partial<Omit<TodoViewSettings, 'version'>>): Promise<TodoViewSettings>;
+    onTodoViewChanged(handler: (s: TodoViewSettings) => void): () => void;
     getIntegratedTerminal(): Promise<IntegratedTerminalSettings>;
     setIntegratedTerminal(
       patch: Partial<Omit<IntegratedTerminalSettings, 'version'>>,
@@ -452,6 +484,12 @@ export interface DashApi {
     subscribe(args: GitTabRef): Promise<void>;
     unsubscribe(args: GitTabRef): Promise<void>;
     onChanged(handler: (ev: GitChangedEvent) => void): () => void;
+  };
+  todos: {
+    list(projectId: string): Promise<Todo[]>;
+    add(args: TodoAddArgs): Promise<Todo>;
+    update(args: TodoUpdateArgs): Promise<Todo | null>;
+    remove(args: TodoRemoveArgs): Promise<void>;
   };
   menu: {
     onAddProject(handler: () => void): () => void;

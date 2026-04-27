@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { v4 as uuid } from 'uuid';
-import type { ActiveSelection, Project, Worktree } from '@shared/types';
+import type { ActiveSelection, Project, Todo, Worktree } from '@shared/types';
 import type { JsonStore } from './store';
 import { isGitRepo } from './git';
 
@@ -38,6 +38,7 @@ export class ProjectRegistry {
         lastOpenedAt: null,
         order: maxOrder + 1,
         worktrees: [],
+        todos: [],
       };
       draft.projects.push(created);
     });
@@ -149,6 +150,59 @@ export class ProjectRegistry {
 
   findWorktree(projectId: string, worktreeId: string): Worktree | undefined {
     return this.getById(projectId)?.worktrees.find((w) => w.id === worktreeId);
+  }
+
+  listTodos(projectId: string): Todo[] {
+    const proj = this.getById(projectId);
+    return proj?.todos ?? [];
+  }
+
+  addTodo(projectId: string, text: string): Todo | null {
+    const trimmed = text.trim();
+    if (!trimmed) return null;
+    let created: Todo | null = null;
+    this.store.update((draft) => {
+      const proj = draft.projects.find((p) => p.id === projectId);
+      if (!proj) return;
+      if (!Array.isArray(proj.todos)) proj.todos = [];
+      created = {
+        id: uuid(),
+        text: trimmed,
+        done: false,
+        createdAt: new Date().toISOString(),
+      };
+      proj.todos.push(created);
+    });
+    return created;
+  }
+
+  updateTodo(
+    projectId: string,
+    todoId: string,
+    patch: Partial<Pick<Todo, 'text' | 'done'>>,
+  ): Todo | null {
+    let updated: Todo | null = null;
+    this.store.update((draft) => {
+      const proj = draft.projects.find((p) => p.id === projectId);
+      if (!proj || !Array.isArray(proj.todos)) return;
+      const todo = proj.todos.find((t) => t.id === todoId);
+      if (!todo) return;
+      if (typeof patch.text === 'string') {
+        const trimmed = patch.text.trim();
+        if (trimmed) todo.text = trimmed;
+      }
+      if (typeof patch.done === 'boolean') todo.done = patch.done;
+      updated = { ...todo };
+    });
+    return updated;
+  }
+
+  removeTodo(projectId: string, todoId: string): void {
+    this.store.update((draft) => {
+      const proj = draft.projects.find((p) => p.id === projectId);
+      if (!proj || !Array.isArray(proj.todos)) return;
+      proj.todos = proj.todos.filter((t) => t.id !== todoId);
+    });
   }
 
   setWorktreeStatus(projectId: string, worktreeId: string, status: 'missing' | undefined): void {

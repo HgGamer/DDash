@@ -1,10 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ActiveSelection } from '@shared/types';
-import { GIT_VIEW_MAX_WIDTH, GIT_VIEW_MIN_WIDTH } from '@shared/types';
+import {
+  GIT_VIEW_MAX_WIDTH,
+  GIT_VIEW_MIN_WIDTH,
+  TODO_VIEW_MAX_WIDTH,
+  TODO_VIEW_MIN_WIDTH,
+} from '@shared/types';
 import { compositeKey, parseCompositeKey } from '@shared/ipc';
 import { useStore } from '../store';
 import { TerminalPane } from './TerminalPane';
 import { CommitView, DiffView, GitView } from './GitView';
+import { TodoView } from './TodoView';
 import { IntegratedTerminalDock, useWorkspaceHeight } from './IntegratedTerminalDock';
 import { useShellTabs } from '../hooks/useShellTabs';
 
@@ -16,6 +22,7 @@ export function Workspace({ activeId }: Props) {
   const mountedKeys = useStore((s) => s.mountedKeys);
   const projects = useStore((s) => s.projects);
   const gitViewSettings = useStore((s) => s.gitView);
+  const todoViewSettings = useStore((s) => s.todoView);
   const integratedTerminal = useStore((s) => s.integratedTerminal);
   const gitDiff = useStore((s) => s.gitDiff);
   const closeDiff = useStore((s) => s.closeDiff);
@@ -41,6 +48,7 @@ export function Workspace({ activeId }: Props) {
 
   const activeKey = activeId ? compositeKey(activeId.projectId, activeId.worktreeId) : null;
   const showGitView = gitViewSettings.enabled && gitViewSettings.expanded;
+  const showTodoView = todoViewSettings.expanded;
 
   if (!activeKey && resolved.length === 0) {
     return (
@@ -98,6 +106,9 @@ export function Workspace({ activeId }: Props) {
           />
         )}
       </div>
+      {showTodoView && (
+        <TodoViewDock width={todoViewSettings.panelWidth} active={activeId} />
+      )}
       {showGitView && (
         <GitViewDock
           width={gitViewSettings.panelWidth}
@@ -106,6 +117,63 @@ export function Workspace({ activeId }: Props) {
         />
       )}
     </main>
+  );
+}
+
+function TodoViewDock({
+  width,
+  active,
+}: {
+  width: number;
+  active: ActiveSelection | null;
+}) {
+  const dragStateRef = useRef<{ startX: number; startWidth: number } | null>(null);
+  const [liveWidth, setLiveWidth] = useState(width);
+
+  useEffect(() => {
+    setLiveWidth(width);
+  }, [width]);
+
+  const liveWidthRef = useRef(liveWidth);
+  useEffect(() => {
+    liveWidthRef.current = liveWidth;
+  }, [liveWidth]);
+
+  const onMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      dragStateRef.current = { startX: e.clientX, startWidth: liveWidth };
+      const onMove = (ev: MouseEvent) => {
+        const s = dragStateRef.current;
+        if (!s) return;
+        const delta = s.startX - ev.clientX;
+        const next = clamp(s.startWidth + delta, TODO_VIEW_MIN_WIDTH, TODO_VIEW_MAX_WIDTH);
+        setLiveWidth(next);
+      };
+      const onUp = () => {
+        const s = dragStateRef.current;
+        dragStateRef.current = null;
+        window.removeEventListener('mousemove', onMove);
+        window.removeEventListener('mouseup', onUp);
+        if (s) {
+          void window.api.settings.setTodoView({ panelWidth: liveWidthRef.current });
+        }
+      };
+      window.addEventListener('mousemove', onMove);
+      window.addEventListener('mouseup', onUp);
+    },
+    [liveWidth],
+  );
+
+  return (
+    <div className="todo-view-dock" style={{ width: liveWidth }}>
+      <div
+        className="todo-view-resize-handle"
+        onMouseDown={onMouseDown}
+        title="Drag to resize"
+      />
+      <TodoView active={active} />
+    </div>
   );
 }
 

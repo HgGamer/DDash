@@ -9,12 +9,14 @@ import type {
   PtySpawnError,
   ShellTab,
   TerminalStyleSettings,
+  TodoViewSettings,
   Worktree,
 } from '@shared/types';
 import {
   DEFAULT_GIT_VIEW_SETTINGS,
   DEFAULT_INTEGRATED_TERMINAL_SETTINGS,
   DEFAULT_NOTIFICATION_SETTINGS,
+  DEFAULT_TODO_VIEW_SETTINGS,
 } from '@shared/types';
 import { compositeKey } from '@shared/ipc';
 
@@ -61,6 +63,7 @@ interface AppStore {
   terminalStyle: TerminalStyleSettings;
   notifications: NotificationSettings;
   gitView: GitViewSettings;
+  todoView: TodoViewSettings;
   integratedTerminal: IntegratedTerminalSettings;
   /** Per-selection shell tab state, keyed by compositeKey(projectId, worktreeId). */
   shellTabs: Record<string, ShellTabsEntry>;
@@ -78,6 +81,7 @@ interface AppStore {
   setTerminalStyle: (s: TerminalStyleSettings) => void;
   setNotifications: (s: NotificationSettings) => void;
   setGitView: (s: GitViewSettings) => void;
+  setTodoView: (s: TodoViewSettings) => void;
   setIntegratedTerminal: (s: IntegratedTerminalSettings) => void;
   setShellTabsFor: (selectionKey: string, tabs: ShellTab[]) => void;
   addShellTab: (selectionKey: string, tab: ShellTab) => void;
@@ -102,6 +106,7 @@ export const useStore = create<AppStore>((set) => ({
   terminalStyle: { version: 1, preset: 'dash-dark' },
   notifications: { ...DEFAULT_NOTIFICATION_SETTINGS },
   gitView: { ...DEFAULT_GIT_VIEW_SETTINGS },
+  todoView: { ...DEFAULT_TODO_VIEW_SETTINGS },
   integratedTerminal: { ...DEFAULT_INTEGRATED_TERMINAL_SETTINGS },
   shellTabs: {},
   gitDiff: null,
@@ -168,6 +173,7 @@ export const useStore = create<AppStore>((set) => ({
   setTerminalStyle: (s) => set({ terminalStyle: s }),
   setNotifications: (s) => set({ notifications: s }),
   setGitView: (s) => set({ gitView: s }),
+  setTodoView: (s) => set({ todoView: s }),
   setIntegratedTerminal: (s) => set({ integratedTerminal: s }),
   setShellTabsFor: (selectionKey, tabs) =>
     set((s) => ({

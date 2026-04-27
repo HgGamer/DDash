@@ -424,7 +424,8 @@ button:hover {
   pointer-events: none;
 }
 
-.git-view-dock {
+.git-view-dock,
+.todo-view-dock {
   position: relative;
   flex: 0 0 auto;
   height: 100%;
@@ -434,6 +435,133 @@ button:hover {
   flex-direction: column;
   overflow: hidden;
 }
+
+.todo-view-resize-handle {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 4px;
+  cursor: col-resize;
+  background: transparent;
+  z-index: 2;
+}
+.todo-view-resize-handle:hover {
+  background: var(--accent);
+  opacity: 0.5;
+}
+
+.todo-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+.todo-view-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+}
+.todo-view-title {
+  flex: 1;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg);
+}
+.todo-view-count {
+  font-size: 11px;
+  color: var(--fg-muted);
+}
+.todo-view-add {
+  display: flex;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.todo-view-input {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 6px;
+  font-size: 12px;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+}
+.todo-view-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.todo-view-btn {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+.todo-view-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 0 12px;
+}
+.todo-view-empty {
+  padding: 16px;
+  color: var(--fg-muted);
+  font-size: 12px;
+}
+.todo-view-section {
+  padding: 6px 12px;
+  font-size: 11px;
+  color: var(--fg-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.todo-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.todo-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  font-size: 13px;
+}
+.todo-item:hover {
+  background: var(--bg);
+}
+.todo-item.done .todo-text {
+  text-decoration: line-through;
+  color: var(--fg-muted);
+}
+.todo-check {
+  flex: 0 0 auto;
+  margin: 0;
+}
+.todo-text {
+  flex: 1;
+  min-width: 0;
+  word-break: break-word;
+  cursor: text;
+}
+.todo-view-remove {
+  flex: 0 0 auto;
+  padding: 0 6px;
+  background: transparent;
+  border: none;
+  color: var(--fg-muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+.todo-item:hover .todo-view-remove {
+  opacity: 1;
+}
+.todo-view-remove:hover {
+  color: var(--danger, #e0644f);
+}
+
 .git-view-resize-handle {
   position: absolute;
   top: 0;

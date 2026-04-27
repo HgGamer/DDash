@@ -148,9 +148,14 @@ export function Sidebar({ activeId, onActivate, onAddProject, onRefresh, onNewWo
       setDragId(null);
       return;
     }
-    const ordered = [...projects].map((p) => p.id).filter((id) => id !== dragId);
-    const targetIndex = ordered.indexOf(targetId);
-    ordered.splice(targetIndex, 0, dragId);
+    const sourceIndex = projects.findIndex((p) => p.id === dragId);
+    const targetIndexOriginal = projects.findIndex((p) => p.id === targetId);
+    const ordered = projects.map((p) => p.id).filter((id) => id !== dragId);
+    const insertAt =
+      sourceIndex < targetIndexOriginal
+        ? ordered.indexOf(targetId) + 1
+        : ordered.indexOf(targetId);
+    ordered.splice(insertAt, 0, dragId);
     setDragId(null);
     await window.api.projects.reorder({ orderedIds: ordered });
     await onRefresh();

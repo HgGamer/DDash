@@ -17,6 +17,9 @@ import {
   type PtyOpenArgs,
   type PtyResizeArgs,
   type PtyWriteArgs,
+  type TodoAddArgs,
+  type TodoRemoveArgs,
+  type TodoUpdateArgs,
   type WorktreeCreateArgs,
   type WorktreeCreateResult,
   type WorktreeReconcileEntry,
@@ -35,6 +38,8 @@ import type {
   TerminalStyleOptions,
   TerminalStylePreset,
   TerminalStyleSettings,
+  Todo,
+  TodoViewSettings,
   Worktree,
 } from '@shared/types';
 import { PtySessionManager } from './pty-session';
@@ -393,6 +398,46 @@ export function registerIpc(args: {
 
   settings.on('gitViewChanged', (s: GitViewSettings) => {
     send(IPC.SettingsGitViewChanged, s);
+  });
+
+  ipcMain.handle(IPC.SettingsGetTodoView, async (): Promise<TodoViewSettings> => {
+    return settings.getTodoView();
+  });
+
+  ipcMain.handle(
+    IPC.SettingsSetTodoView,
+    async (_e, patch: Partial<Omit<TodoViewSettings, 'version'>>): Promise<TodoViewSettings> => {
+      const next = settings.setTodoView(patch);
+      await store.flush();
+      return next;
+    },
+  );
+
+  settings.on('todoViewChanged', (s: TodoViewSettings) => {
+    send(IPC.SettingsTodoViewChanged, s);
+  });
+
+  // Todo CRUD ----------------------------------------------------------
+
+  ipcMain.handle(IPC.TodoList, async (_e, projectId: string): Promise<Todo[]> => {
+    return registry.listTodos(projectId);
+  });
+
+  ipcMain.handle(IPC.TodoAdd, async (_e, args: TodoAddArgs): Promise<Todo | null> => {
+    const created = registry.addTodo(args.projectId, args.text);
+    if (created) await store.flush();
+    return created;
+  });
+
+  ipcMain.handle(IPC.TodoUpdate, async (_e, args: TodoUpdateArgs): Promise<Todo | null> => {
+    const updated = registry.updateTodo(args.projectId, args.id, args.patch);
+    if (updated) await store.flush();
+    return updated;
+  });
+
+  ipcMain.handle(IPC.TodoRemove, async (_e, args: TodoRemoveArgs): Promise<void> => {
+    registry.removeTodo(args.projectId, args.id);
+    await store.flush();
   });
 
   ipcMain.handle(
