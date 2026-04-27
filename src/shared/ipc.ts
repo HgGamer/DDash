@@ -35,6 +35,7 @@ export const IPC = {
 
   // Worktree management (renderer → main)
   WorktreeList: 'worktree:list',
+  WorktreeListWithHeads: 'worktree:listWithHeads',
   WorktreeCreate: 'worktree:create',
   WorktreeRemove: 'worktree:remove',
   WorktreeReconcile: 'worktree:reconcile',
@@ -240,6 +241,15 @@ export interface WorktreeReconcileEntry {
   status: 'present' | 'missing';
 }
 
+/** One entry per row of the project's worktree list, including the project's
+ *  primary tree. `worktreeId` is null for the primary tree row; `head` is the
+ *  short-hash form of HEAD for that worktree, or null when the worktree path
+ *  is missing on disk. */
+export interface WorktreeHeadEntry {
+  worktreeId: string | null;
+  head: string | null;
+}
+
 // Git view IPC payloads --------------------------------------------------
 
 /** Addresses a project primary tree OR one of its worktrees — the main
@@ -424,6 +434,7 @@ export interface DashApi {
   };
   worktrees: {
     list(projectId: string): Promise<Worktree[]>;
+    listWithHeads(projectId: string): Promise<WorktreeHeadEntry[]>;
     create(args: WorktreeCreateArgs): Promise<WorktreeCreateResult>;
     remove(args: WorktreeRemoveArgs): Promise<WorktreeRemoveResult>;
     reconcile(projectId: string): Promise<WorktreeReconcileEntry[]>;

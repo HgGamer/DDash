@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useReducer, useState } from 'react';
 import type { ActiveSelection } from '@shared/types';
+import { WorktreeList } from './WorktreeList';
 import type {
   GitBranch,
   GitChangeKind,
@@ -26,6 +27,13 @@ export function GitView({ active, isWorktreeTab }: Props) {
   const { state, refresh, loadMoreCommits, commitLimit } = useGitView(active);
   const [error, setError] = useState<GitError | null>(null);
   const [busy, setBusy] = useState<string | null>(null); // label of the in-flight action
+  // Bumps each time `state` is replaced — covers tab change, successful
+  // refresh, and `git:changed` watcher events. Used by WorktreeList to
+  // re-fetch HEAD short hashes on the same triggers as the rest of the panel.
+  const [worktreeRefreshKey, bumpWorktreeRefresh] = useReducer((n: number) => n + 1, 0);
+  useEffect(() => {
+    bumpWorktreeRefresh();
+  }, [state]);
   const gitDiff = useStore((s) => s.gitDiff);
   const openDiff = useStore((s) => s.openDiff);
   const closeDiff = useStore((s) => s.closeDiff);
@@ -125,6 +133,7 @@ export function GitView({ active, isWorktreeTab }: Props) {
         toggleCommit={toggleCommit}
         commitLimit={commitLimit}
         onLoadMoreCommits={loadMoreCommits}
+        worktreeRefreshKey={worktreeRefreshKey}
       />
     </div>
   );
@@ -186,6 +195,7 @@ interface BodyProps {
   toggleCommit: (hash: string) => void;
   commitLimit: number;
   onLoadMoreCommits: () => void;
+  worktreeRefreshKey: number;
 }
 
 function Body(props: BodyProps) {
@@ -227,6 +237,7 @@ function ReadyBody({
   toggleCommit,
   commitLimit,
   onLoadMoreCommits,
+  worktreeRefreshKey,
 }: BodyProps & { state: Extract<GitViewState, { kind: 'ready' }> }) {
   const { status, branches, commits } = state;
   const staged = status.files.filter((f) => f.stage === 'staged');
@@ -316,6 +327,11 @@ function ReadyBody({
         onLoadMore={onLoadMoreCommits}
         selectedCommit={selectedCommit}
         onToggleCommit={toggleCommit}
+      />
+      <WorktreeList
+        projectId={active.projectId}
+        active={active}
+        refreshKey={worktreeRefreshKey}
       />
     </div>
   );
