@@ -73,6 +73,33 @@ export async function listWorktrees(repoPath: string): Promise<GitWorktreeListEn
   return out;
 }
 
+/** Joins `git worktree list --porcelain` output to a project's registered
+ *  worktrees by absolute path. Returns one entry per registered row (primary
+ *  tree + each worktree). `head` is the short-hash form of HEAD, or null when
+ *  the path is missing from git's worktree list (typically because the
+ *  directory was removed externally). The primary tree appears as
+ *  `{ worktreeId: null, head }`. Registered worktrees whose path is unknown to
+ *  git are still returned, with `head: null`. */
+export async function listWorktreesWithHeads(
+  project: Project,
+): Promise<{ worktreeId: string | null; head: string | null }[]> {
+  const entries = await listWorktrees(project.path);
+  const headByPath = new Map<string, string>();
+  for (const e of entries) {
+    if (e.head) headByPath.set(e.path, e.head);
+  }
+  const toShort = (h: string): string => h.slice(0, 7);
+  const out: { worktreeId: string | null; head: string | null }[] = [];
+  // Primary tree is the project's path.
+  const primaryHead = headByPath.get(project.path);
+  out.push({ worktreeId: null, head: primaryHead ? toShort(primaryHead) : null });
+  for (const wt of project.worktrees) {
+    const h = headByPath.get(wt.path);
+    out.push({ worktreeId: wt.id, head: h ? toShort(h) : null });
+  }
+  return out;
+}
+
 export async function listLocalBranches(repoPath: string): Promise<string[]> {
   const res = await runGit(repoPath, ['for-each-ref', '--format=%(refname:short)', 'refs/heads/']);
   if (!res.ok) return [];

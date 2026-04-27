@@ -23,6 +23,7 @@ import {
   type WorktreeCreateArgs,
   type WorktreeCreateResult,
   type WorktreeReconcileEntry,
+  type WorktreeHeadEntry,
   type WorktreeRemoveArgs,
   type WorktreeRemoveResult,
 } from '@shared/ipc';
@@ -49,6 +50,7 @@ import {
   computeDefaultWorktreePath,
   listLocalBranches as gitListLocalBranches,
   listWorktrees as gitListWorktrees,
+  listWorktreesWithHeads as gitListWorktreesWithHeads,
   removeWorktree as gitRemoveWorktree,
 } from './git';
 
@@ -143,6 +145,15 @@ export function registerIpc(args: {
   ipcMain.handle(IPC.WorktreeList, async (_e, projectId: string): Promise<Worktree[]> => {
     return registry.getById(projectId)?.worktrees ?? [];
   });
+
+  ipcMain.handle(
+    IPC.WorktreeListWithHeads,
+    async (_e, projectId: string): Promise<WorktreeHeadEntry[]> => {
+      const proj = registry.getById(projectId);
+      if (!proj) return [];
+      return gitListWorktreesWithHeads(proj);
+    },
+  );
 
   ipcMain.handle(
     IPC.WorktreeCreate,

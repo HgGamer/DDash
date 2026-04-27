@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { ActiveSelection, Project } from '@shared/types';
 import { compositeKey } from '@shared/ipc';
 import { useStore } from '../store';
+import { removeWorktreeWithConfirm } from '../lib/removeWorktree';
 
 interface Props {
   activeId: ActiveSelection | null;
@@ -100,21 +101,16 @@ export function Sidebar({ activeId, onActivate, onAddProject, onRefresh, onNewWo
     const proj = projects.find((p) => p.id === projectId);
     const wt = proj?.worktrees.find((w) => w.id === worktreeId);
     if (!proj || !wt) return;
-    const ok = window.confirm(
-      `Remove worktree "${wt.branch}"?\n\nThis runs \`git worktree remove\` and deletes the directory at ${wt.path} if clean.`,
-    );
-    if (!ok) return;
-    let result = await window.api.worktrees.remove({ projectId, worktreeId, force: false });
-    if (!result.ok) {
-      const force = window.confirm(
-        `git refused to remove the worktree:\n\n${result.error}\n\nForce removal? (this may discard uncommitted changes)`,
-      );
-      if (!force) return;
-      result = await window.api.worktrees.remove({ projectId, worktreeId, force: true });
-      if (!result.ok) {
-        window.alert(`Failed to remove worktree:\n\n${result.error}`);
-        return;
-      }
+    const r = await removeWorktreeWithConfirm({
+      projectId,
+      worktreeId,
+      branch: wt.branch,
+      path: wt.path,
+    });
+    if (!r.ok) {
+      if (r.canceled) return;
+      window.alert(`Failed to remove worktree:\n\n${r.error}`);
+      return;
     }
     clearTab(compositeKey(projectId, worktreeId));
     const list = await onRefresh();

@@ -69,6 +69,8 @@ interface AppStore {
   shellTabs: Record<string, ShellTabsEntry>;
   gitDiff: GitDiffSelection | null;
   gitCommit: GitCommitSelection | null;
+  /** Project the new-worktree modal is open for, or null when closed. */
+  newWorktreeProjectId: string | null;
   settingsModalOpen: boolean;
   settingsModalTab: 'terminal' | 'notifications' | 'git' | 'integrated-terminal';
 
@@ -93,6 +95,8 @@ interface AppStore {
   closeDiff: () => void;
   openCommit: (sel: GitCommitSelection) => void;
   closeCommit: () => void;
+  openNewWorktree: (projectId: string) => void;
+  closeNewWorktree: () => void;
   openSettings: (tab?: 'terminal' | 'notifications' | 'git' | 'integrated-terminal') => void;
   closeSettings: () => void;
 }
@@ -111,6 +115,7 @@ export const useStore = create<AppStore>((set) => ({
   shellTabs: {},
   gitDiff: null,
   gitCommit: null,
+  newWorktreeProjectId: null,
   settingsModalOpen: false,
   settingsModalTab: 'terminal',
 
@@ -258,6 +263,8 @@ export const useStore = create<AppStore>((set) => ({
   closeDiff: () => set({ gitDiff: null }),
   openCommit: (sel) => set({ gitCommit: sel, gitDiff: null }),
   closeCommit: () => set({ gitCommit: null }),
+  openNewWorktree: (projectId) => set({ newWorktreeProjectId: projectId }),
+  closeNewWorktree: () => set({ newWorktreeProjectId: null }),
   openSettings: (tab) =>
     set((s) => ({ settingsModalOpen: true, settingsModalTab: tab ?? s.settingsModalTab })),
   closeSettings: () => set({ settingsModalOpen: false }),

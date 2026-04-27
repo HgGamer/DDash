@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { Workspace } from './components/Workspace';
 import { SettingsModal } from './components/SettingsModal';
@@ -6,7 +6,7 @@ import { NewWorktreeModal } from './components/NewWorktreeModal';
 import { StatusBar } from './components/StatusBar';
 import { useStore } from './store';
 import { compositeKey } from '@shared/ipc';
-import type { ActiveSelection, Project } from '@shared/types';
+import type { ActiveSelection } from '@shared/types';
 
 export function App() {
   const {
@@ -25,9 +25,14 @@ export function App() {
     openSettings,
     closeSettings,
     settingsModalOpen,
+    newWorktreeProjectId,
+    openNewWorktree,
+    closeNewWorktree,
   } = useStore();
 
-  const [newWorktreeFor, setNewWorktreeFor] = useState<Project | null>(null);
+  const newWorktreeFor = newWorktreeProjectId
+    ? projects.find((p) => p.id === newWorktreeProjectId) ?? null
+    : null;
 
   const refreshProjects = useCallback(async () => {
     const list = await window.api.projects.list();
@@ -269,10 +274,7 @@ export function App() {
           onActivate={activate}
           onAddProject={addProject}
           onRefresh={refreshProjects}
-          onNewWorktree={(projectId) => {
-            const p = projects.find((pp) => pp.id === projectId);
-            if (p) setNewWorktreeFor(p);
-          }}
+          onNewWorktree={(projectId) => openNewWorktree(projectId)}
         />
         <Workspace activeId={activeId} />
       </div>
@@ -283,12 +285,13 @@ export function App() {
           projectId={newWorktreeFor.id}
           projectPath={newWorktreeFor.path}
           worktreesRoot={newWorktreeFor.worktreesRoot}
-          onClose={() => setNewWorktreeFor(null)}
+          onClose={closeNewWorktree}
           onCreated={(wt) => {
-            setNewWorktreeFor(null);
+            const projectId = newWorktreeFor.id;
+            closeNewWorktree();
             void (async () => {
               await refreshProjects();
-              await activate({ projectId: newWorktreeFor.id, worktreeId: wt.id });
+              await activate({ projectId, worktreeId: wt.id });
             })();
           }}
         />

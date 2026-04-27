@@ -67,6 +67,7 @@ const api: DashApi = {
   },
   worktrees: {
     list: (projectId: string) => ipcRenderer.invoke(IPC.WorktreeList, projectId),
+    listWithHeads: (projectId: string) => ipcRenderer.invoke(IPC.WorktreeListWithHeads, projectId),
     create: (args: WorktreeCreateArgs) => ipcRenderer.invoke(IPC.WorktreeCreate, args),
     remove: (args: WorktreeRemoveArgs) => ipcRenderer.invoke(IPC.WorktreeRemove, args),
     reconcile: (projectId: string) => ipcRenderer.invoke(IPC.WorktreeReconcile, projectId),
