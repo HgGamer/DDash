@@ -1,3 +1,74 @@
+@font-face {
+  font-family: 'OperatorMono Nerd Font';
+  src: url('./assets/fonts/OperatorMonoNerdFont-Regular.otf') format('opentype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+}
+@font-face {
+  font-family: 'OperatorMono Nerd Font';
+  src: url('./assets/fonts/OperatorMonoNerdFont-Italic.otf') format('opentype');
+  font-weight: 400;
+  font-style: italic;
+  font-display: block;
+}
+@font-face {
+  font-family: 'OperatorMono Nerd Font';
+  src: url('./assets/fonts/OperatorMonoNerdFont-Bold.otf') format('opentype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: block;
+}
+@font-face {
+  font-family: 'OperatorMono Nerd Font';
+  src: url('./assets/fonts/OperatorMonoNerdFont-BoldItalic.otf') format('opentype');
+  font-weight: 700;
+  font-style: italic;
+  font-display: block;
+}
+@font-face {
+  font-family: 'OperatorMono Nerd Font';
+  src: url('./assets/fonts/OperatorMonoNerdFont-Light.otf') format('opentype');
+  font-weight: 300;
+  font-style: normal;
+  font-display: block;
+}
+@font-face {
+  font-family: 'OperatorMono Nerd Font';
+  src: url('./assets/fonts/OperatorMonoNerdFont-LightItalic.otf') format('opentype');
+  font-weight: 300;
+  font-style: italic;
+  font-display: block;
+}
+@font-face {
+  font-family: 'OperatorMono Nerd Font';
+  src: url('./assets/fonts/OperatorMonoNerdFont-Medium.otf') format('opentype');
+  font-weight: 500;
+  font-style: normal;
+  font-display: block;
+}
+@font-face {
+  font-family: 'OperatorMono Nerd Font';
+  src: url('./assets/fonts/OperatorMonoNerdFont-MediumItalic.otf') format('opentype');
+  font-weight: 500;
+  font-style: italic;
+  font-display: block;
+}
+@font-face {
+  font-family: 'OperatorMono Nerd Font';
+  src: url('./assets/fonts/OperatorMonoNerdFont-ExtraLight.otf') format('opentype');
+  font-weight: 200;
+  font-style: normal;
+  font-display: block;
+}
+@font-face {
+  font-family: 'OperatorMono Nerd Font';
+  src: url('./assets/fonts/OperatorMonoNerdFont-ExtraLightItalic.otf') format('opentype');
+  font-weight: 200;
+  font-style: italic;
+  font-display: block;
+}
+
 :root {
   color-scheme: dark light;
   --bg: #0f1115;

@@ -19,7 +19,7 @@ export function StatusBar() {
               });
             }}
           >
-            ▯ {integratedTerminal.expanded ? 'Hide terminal' : 'Terminal'}
+            {'>_'} {integratedTerminal.expanded ? 'Hide terminal' : 'Terminal'}
           </button>
         )}
         <button

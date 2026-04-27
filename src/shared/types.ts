@@ -103,8 +103,8 @@ export const TERMINAL_STYLE_PRESETS: Record<'default' | 'dash-dark', TerminalSty
   'dash-dark': {
     theme: { background: '#000000' },
     fontFamily:
-      '"SFMono-Regular", "Menlo", "Monaco", "Consolas", "Liberation Mono", "Courier New", monospace',
-    fontSize: 13,
+      '"OperatorMono Nerd Font", "SFMono-Regular", "Menlo", "Monaco", "Consolas", "Liberation Mono", "Courier New", monospace',
+    fontSize: 14,
   },
 };
 
