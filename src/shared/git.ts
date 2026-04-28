@@ -67,7 +67,38 @@ export type GitErrorCode =
   | 'git-missing'
   | 'timeout'
   | 'no-upstream'
+  | 'nothing-to-stash'
+  | 'stash-mismatch'
   | 'unknown';
+
+/**
+ * One entry on the stash stack as listed by `git stash list`. `ref` is the
+ * reflog selector (e.g. `stash@{0}`); `sha` is the stash commit SHA, used as a
+ * stable identity guard against external reshuffling between list-time and
+ * apply/pop/drop-time.
+ */
+export interface GitStashEntry {
+  /** Reflog selector, e.g. `stash@{0}`. Not stable across stash mutations. */
+  ref: string;
+  /** Full SHA of the stash commit. Stable. */
+  sha: string;
+  /** Source branch the stash was created on, parsed from the reflog subject.
+   *  Null when git couldn't tell us (e.g. detached HEAD at stash time). */
+  branch: string | null;
+  /** Human-readable stash message — either the user's `-m` text or git's
+   *  default `WIP on <branch>: <hash> <subject>`. */
+  message: string;
+  /** Unix epoch seconds of the stash's commit time. */
+  time: number;
+}
+
+/** A file changed by a stash, as reported by `git stash show --name-status`.
+ *  Stashes don't track copies/renames the way commits do — they appear as
+ *  added/modified/deleted. */
+export interface GitStashFile {
+  path: string;
+  kind: 'added' | 'modified' | 'deleted';
+}
 
 export interface GitError {
   code: GitErrorCode;
