@@ -48,6 +48,26 @@ export interface GitCommitSelection {
   hash: string;
 }
 
+/** When set, the main workspace area shows a stash detail/diff view instead
+ *  of the terminal. Mutually exclusive with `gitDiff` and `gitCommit` — opening
+ *  one clears the others. Cleared on active-tab change. The `sha` snapshot is
+ *  used to detect when the selected entry has been popped/dropped externally
+ *  so the renderer can clear the selection silently. */
+export interface GitStashSelection {
+  projectId: string;
+  worktreeId: string | null;
+  /** Reflog selector, e.g. `stash@{0}`. */
+  ref: string;
+  /** Stash commit SHA at selection time. */
+  sha: string;
+  /** Source branch the stash was created on, or null if detached. */
+  branch: string | null;
+  /** Stash message. */
+  message: string;
+  /** Unix epoch seconds of the stash commit. */
+  time: number;
+}
+
 export interface ShellTabsEntry {
   tabs: ShellTab[];
   activeTabId: string | null;
@@ -69,6 +89,7 @@ interface AppStore {
   shellTabs: Record<string, ShellTabsEntry>;
   gitDiff: GitDiffSelection | null;
   gitCommit: GitCommitSelection | null;
+  gitStash: GitStashSelection | null;
   settingsModalOpen: boolean;
   settingsModalTab: 'terminal' | 'notifications' | 'git' | 'integrated-terminal';
 
@@ -93,6 +114,8 @@ interface AppStore {
   closeDiff: () => void;
   openCommit: (sel: GitCommitSelection) => void;
   closeCommit: () => void;
+  openStash: (sel: GitStashSelection) => void;
+  closeStash: () => void;
   openSettings: (tab?: 'terminal' | 'notifications' | 'git' | 'integrated-terminal') => void;
   closeSettings: () => void;
 }
@@ -111,6 +134,7 @@ export const useStore = create<AppStore>((set) => ({
   shellTabs: {},
   gitDiff: null,
   gitCommit: null,
+  gitStash: null,
   settingsModalOpen: false,
   settingsModalTab: 'terminal',
 
@@ -128,10 +152,11 @@ export const useStore = create<AppStore>((set) => ({
         mountedKeys:
           key && !s.mountedKeys.includes(key) ? [...s.mountedKeys, key] : s.mountedKeys,
         tabs,
-        // Any open diff / commit selection belongs to the previously active
-        // tab; discard both.
+        // Any open diff / commit / stash selection belongs to the previously
+        // active tab; discard them all.
         gitDiff: null,
         gitCommit: null,
+        gitStash: null,
       };
     }),
   ensureMounted: (key) =>
@@ -254,10 +279,12 @@ export const useStore = create<AppStore>((set) => ({
         },
       };
     }),
-  openDiff: (sel) => set({ gitDiff: sel, gitCommit: null }),
+  openDiff: (sel) => set({ gitDiff: sel, gitCommit: null, gitStash: null }),
   closeDiff: () => set({ gitDiff: null }),
-  openCommit: (sel) => set({ gitCommit: sel, gitDiff: null }),
+  openCommit: (sel) => set({ gitCommit: sel, gitDiff: null, gitStash: null }),
   closeCommit: () => set({ gitCommit: null }),
+  openStash: (sel) => set({ gitStash: sel, gitDiff: null, gitCommit: null }),
+  closeStash: () => set({ gitStash: null }),
   openSettings: (tab) =>
     set((s) => ({ settingsModalOpen: true, settingsModalTab: tab ?? s.settingsModalTab })),
   closeSettings: () => set({ settingsModalOpen: false }),

@@ -1,4 +1,11 @@
-import type { GitBranch, GitChangeKind, GitCommit, GitStatus } from '@shared/git';
+import type {
+  GitBranch,
+  GitChangeKind,
+  GitCommit,
+  GitStashEntry,
+  GitStashFile,
+  GitStatus,
+} from '@shared/git';
 
 // ---------------------------------------------------------------------------
 // status --porcelain=v2 --branch --untracked-files=all -z
@@ -256,3 +263,92 @@ export const BRANCHES_ARGS = [
   'refs/heads/',
   'refs/remotes/',
 ];
+
+// ---------------------------------------------------------------------------
+// stash list -z --format=%gd%x00%H%x00%gs%x00%ct
+// ---------------------------------------------------------------------------
+
+const STASH_LIST_FORMAT = '%gd%x00%H%x00%gs%x00%ct';
+
+export const STASH_LIST_ARGS = ['stash', 'list', '-z', `--format=${STASH_LIST_FORMAT}`];
+
+/**
+ * Parse `git stash list -z --format=%gd%x00%H%x00%gs%x00%ct`.
+ *
+ * `-z` makes git use NUL as the *record* separator and our format itself uses
+ * NUL between fields, so a stream of N stashes contains N×4 + (N-1) NULs.
+ * We walk the token array in groups of 4 and skip empty trailing tokens that
+ * git appends after the last record.
+ *
+ * The reflog subject (%gs) takes one of two forms:
+ *   - "WIP on <branch>: <hash> <subject>"  — git's default message
+ *   - "On <branch>: <user message>"        — when the user passed `-m`
+ * We extract the branch from either form. When neither matches (e.g. stashed
+ * from a detached HEAD), we leave `branch` null and return the message as-is.
+ */
+export function parseStashList(stdout: string): GitStashEntry[] {
+  const tokens = stdout.split('\0');
+  const out: GitStashEntry[] = [];
+  let i = 0;
+  while (i + 3 < tokens.length) {
+    const ref = tokens[i];
+    if (!ref) {
+      i++;
+      continue;
+    }
+    const sha = tokens[i + 1] ?? '';
+    const reflogSubject = tokens[i + 2] ?? '';
+    const timeStr = tokens[i + 3] ?? '';
+    const { branch, message } = parseStashReflogSubject(reflogSubject);
+    out.push({
+      ref,
+      sha,
+      branch,
+      message,
+      time: Number(timeStr) || 0,
+    });
+    i += 4;
+  }
+  return out;
+}
+
+function parseStashReflogSubject(raw: string): { branch: string | null; message: string } {
+  // Default message: "WIP on <branch>: <hash> <subject>"
+  let m = raw.match(/^WIP on ([^:]+): (.*)$/s);
+  if (m) return { branch: m[1] ?? null, message: raw };
+  // User-supplied message: "On <branch>: <message>"
+  m = raw.match(/^On ([^:]+): (.*)$/s);
+  if (m) return { branch: m[1] ?? null, message: m[2] ?? '' };
+  return { branch: null, message: raw };
+}
+
+// ---------------------------------------------------------------------------
+// stash show --name-status -z
+// ---------------------------------------------------------------------------
+
+/**
+ * Parse `git stash show --name-status -z <ref>` output. With `-z`, fields and
+ * records are NUL-separated rather than tab/newline. Each entry is two
+ * tokens: a status code (`A`/`M`/`D`/`T`/...) and a path.
+ *
+ * We only emit the kinds spec'd in `GitStashFile`; `T` (typechange) is
+ * normalized to `modified` to match how the UI renders it.
+ */
+export function parseStashFiles(stdout: string): GitStashFile[] {
+  const tokens = stdout.split('\0').filter((t) => t.length > 0);
+  const out: GitStashFile[] = [];
+  for (let i = 0; i + 1 < tokens.length; i++) {
+    const code = tokens[i]!;
+    if (code.length !== 1) continue;
+    const path = tokens[++i]!;
+    let kind: GitStashFile['kind'];
+    if (code === 'A') kind = 'added';
+    else if (code === 'D') kind = 'deleted';
+    else if (code === 'M' || code === 'T') kind = 'modified';
+    else continue;
+    out.push({ kind, path });
+  }
+  return out;
+}
+
+export const STASH_FILES_ARGS = (ref: string) => ['stash', 'show', '--name-status', '-z', ref];

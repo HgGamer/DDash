@@ -18,6 +18,8 @@ import type {
   GitChangedEvent,
   GitCommit,
   GitOperationResult,
+  GitStashEntry,
+  GitStashFile,
   GitStatus,
 } from './git';
 
@@ -78,6 +80,12 @@ export const IPC = {
   GitDiff: 'git:diff',
   GitShowCommit: 'git:showCommit',
   GitDiscard: 'git:discard',
+  GitStashList: 'git:stashList',
+  GitStashPush: 'git:stashPush',
+  GitStashApply: 'git:stashApply',
+  GitStashPop: 'git:stashPop',
+  GitStashDrop: 'git:stashDrop',
+  GitStashShowFiles: 'git:stashShowFiles',
   GitSubscribe: 'git:subscribe',
   GitUnsubscribe: 'git:unsubscribe',
   GitChanged: 'git:changed',
@@ -291,6 +299,12 @@ export interface GitDiffArgs extends GitTabRef {
    * an addition.
    */
   commit?: string;
+  /**
+   * When set, ignore `stage` and `commit` and return the patch captured by
+   * this stash entry for `path`, via `git stash show -p <ref>`. The ref may
+   * be either a reflog selector (e.g. `stash@{0}`) or the stash commit SHA.
+   */
+  stash?: string;
 }
 
 export interface GitShowCommitArgs extends GitTabRef {
@@ -330,6 +344,39 @@ export interface GitDiscardArgs extends GitTabRef {
 export type GitDiffResult =
   | { ok: true; diff: string; binary: boolean }
   | { ok: false; reason: 'not-a-repo' | 'git-missing' | 'tab-missing'; stderr?: string };
+
+// Stash IPC payloads ----------------------------------------------------
+
+export type GitStashListResult =
+  | { ok: true; stashes: GitStashEntry[] }
+  | { ok: false; reason: 'not-a-repo' | 'git-missing' | 'tab-missing'; stderr?: string };
+
+export interface GitStashPushArgs extends GitTabRef {
+  /** Optional stash message. When empty/undefined, git generates the default
+   *  `WIP on <branch>: <hash> <subject>`. */
+  message?: string;
+  /** When true, also stash untracked (but not gitignored) files via `-u`. */
+  includeUntracked?: boolean;
+}
+
+/** Apply / Pop / Drop all share the same shape: a stash ref plus the SHA the
+ *  renderer last saw at that ref. The main process re-resolves the ref and
+ *  fails with `stash-mismatch` if the SHA has shifted out from under us. */
+export interface GitStashWriteArgs extends GitTabRef {
+  /** Reflog selector, e.g. `stash@{0}`. */
+  ref: string;
+  /** SHA the renderer believes `ref` points to. */
+  expectedSha: string;
+}
+
+export interface GitStashShowFilesArgs extends GitTabRef {
+  /** Reflog selector or stash commit SHA. */
+  ref: string;
+}
+
+export type GitStashShowFilesResult =
+  | { ok: true; files: GitStashFile[] }
+  | { ok: false; reason: 'not-a-repo' | 'git-missing' | 'tab-missing' | 'unknown-stash'; stderr?: string };
 
 export type { GitChangedEvent, GitOperationResult };
 
@@ -481,6 +528,12 @@ export interface DashApi {
     diff(args: GitDiffArgs): Promise<GitDiffResult>;
     showCommit(args: GitShowCommitArgs): Promise<GitShowCommitResult>;
     discard(args: GitDiscardArgs): Promise<GitOperationResult>;
+    stashList(args: GitTabRef): Promise<GitStashListResult>;
+    stashPush(args: GitStashPushArgs): Promise<GitOperationResult>;
+    stashApply(args: GitStashWriteArgs): Promise<GitOperationResult>;
+    stashPop(args: GitStashWriteArgs): Promise<GitOperationResult>;
+    stashDrop(args: GitStashWriteArgs): Promise<GitOperationResult>;
+    stashShowFiles(args: GitStashShowFilesArgs): Promise<GitStashShowFilesResult>;
     subscribe(args: GitTabRef): Promise<void>;
     unsubscribe(args: GitTabRef): Promise<void>;
     onChanged(handler: (ev: GitChangedEvent) => void): () => void;

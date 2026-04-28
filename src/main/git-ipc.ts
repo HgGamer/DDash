@@ -17,6 +17,11 @@ import {
   type GitShowCommitArgs,
   type GitShowCommitResult,
   type GitStagePathsArgs,
+  type GitStashListResult,
+  type GitStashPushArgs,
+  type GitStashShowFilesArgs,
+  type GitStashShowFilesResult,
+  type GitStashWriteArgs,
   type GitStatusResult,
   type GitTabRef,
 } from '@shared/ipc';
@@ -27,6 +32,10 @@ import {
   parseBranches,
   parseLog,
   parsePorcelainV2,
+  parseStashFiles,
+  parseStashList,
+  STASH_FILES_ARGS,
+  STASH_LIST_ARGS,
   STATUS_ARGS,
 } from './git-parsers';
 import { isGitAvailable, runGit, runWriteGit, toGitError } from './git-runner';
@@ -183,7 +192,12 @@ export function registerGitIpc(args: {
     const r = resolveCwd(registry, a);
     if (!r.ok) return { ok: false, reason: 'tab-missing' };
     let args: string[];
-    if (a.commit) {
+    if (a.stash) {
+      // Per-file diff captured by a stash. `stash show -p <ref> -- <path>`
+      // emits a unified diff that includes the staged + worktree + untracked
+      // pieces consistently, regardless of how the stash was created.
+      args = ['stash', 'show', '-p', '--no-color', a.stash, '--', a.path];
+    } else if (a.commit) {
       // Per-file diff introduced by a specific commit. `show` emits the full
       // commit header otherwise; `--format=` suppresses it. For the root
       // commit (no parent) `show` with `--root` emits the initial contents as
@@ -299,6 +313,144 @@ export function registerGitIpc(args: {
     return { ok: true };
   });
 
+  ipcMain.handle(IPC.GitStashList, async (_e, ref: GitTabRef): Promise<GitStashListResult> => {
+    if (!(await isGitAvailable())) return { ok: false, reason: 'git-missing' };
+    const r = resolveCwd(registry, ref);
+    if (!r.ok) return { ok: false, reason: 'tab-missing' };
+    const res = await runGit(r.cwd, STASH_LIST_ARGS);
+    if (!res.ok) {
+      if (res.failure === 'git-missing') return { ok: false, reason: 'git-missing' };
+      return { ok: false, reason: 'not-a-repo', stderr: res.stderr };
+    }
+    return { ok: true, stashes: parseStashList(res.stdout) };
+  });
+
+  ipcMain.handle(IPC.GitStashPush, async (_e, a: GitStashPushArgs): Promise<GitOperationResult> => {
+    const r = resolveCwd(registry, a);
+    if (!r.ok) return { ok: false, error: { code: 'unknown', message: 'tab not found', stderr: '' } };
+    const args = ['stash', 'push'];
+    if (a.includeUntracked) args.push('--include-untracked');
+    const message = a.message?.trim();
+    if (message) args.push('-m', message);
+    const res = await runWriteGit(r.cwd, args);
+    if (!res.ok) {
+      const err = toGitError(res, 'git stash push failed');
+      // git prints this on stdout, not stderr, when there's nothing to stash.
+      if (
+        /no local changes to save/i.test(res.stderr) ||
+        /no local changes to save/i.test(res.stdout)
+      ) {
+        return {
+          ok: false,
+          error: {
+            code: 'nothing-to-stash',
+            message: 'No local changes to stash.',
+            stderr: res.stderr || res.stdout,
+          },
+        };
+      }
+      return { ok: false, error: err };
+    }
+    // Even on exit-zero, `stash push` prints "No local changes to save" and
+    // does nothing when the tree is clean — surface that as a typed failure
+    // so the renderer can keep its UI consistent.
+    if (/no local changes to save/i.test(res.stdout)) {
+      return {
+        ok: false,
+        error: {
+          code: 'nothing-to-stash',
+          message: 'No local changes to stash.',
+          stderr: res.stdout,
+        },
+      };
+    }
+    return { ok: true };
+  });
+
+  // SHA-guard helper. Re-resolves `ref` to its current SHA and compares against
+  // what the renderer thought it was. Bails with `stash-mismatch` on disagreement
+  // so apply/pop/drop never act on the wrong entry after an external reshuffle.
+  async function checkStashSha(
+    cwd: string,
+    ref: string,
+    expectedSha: string,
+  ): Promise<GitOperationResult | null> {
+    const probe = await runGit(cwd, ['rev-parse', '--verify', ref]);
+    if (!probe.ok) {
+      if (probe.failure === 'git-missing') {
+        return { ok: false, error: toGitError(probe, 'git rev-parse failed') };
+      }
+      return {
+        ok: false,
+        error: {
+          code: 'stash-mismatch',
+          message: 'Stash entry no longer exists — refresh and retry.',
+          stderr: probe.stderr,
+        },
+      };
+    }
+    const sha = probe.stdout.trim();
+    if (sha !== expectedSha) {
+      return {
+        ok: false,
+        error: {
+          code: 'stash-mismatch',
+          message: 'Stash entry changed — refresh and retry.',
+          stderr: '',
+        },
+      };
+    }
+    return null;
+  }
+
+  ipcMain.handle(IPC.GitStashApply, async (_e, a: GitStashWriteArgs): Promise<GitOperationResult> => {
+    const r = resolveCwd(registry, a);
+    if (!r.ok) return { ok: false, error: { code: 'unknown', message: 'tab not found', stderr: '' } };
+    const guard = await checkStashSha(r.cwd, a.ref, a.expectedSha);
+    if (guard) return guard;
+    const res = await runWriteGit(r.cwd, ['stash', 'apply', a.ref]);
+    if (!res.ok) return { ok: false, error: toGitError(res, 'git stash apply failed') };
+    return { ok: true };
+  });
+
+  ipcMain.handle(IPC.GitStashPop, async (_e, a: GitStashWriteArgs): Promise<GitOperationResult> => {
+    const r = resolveCwd(registry, a);
+    if (!r.ok) return { ok: false, error: { code: 'unknown', message: 'tab not found', stderr: '' } };
+    const guard = await checkStashSha(r.cwd, a.ref, a.expectedSha);
+    if (guard) return guard;
+    const res = await runWriteGit(r.cwd, ['stash', 'pop', a.ref]);
+    if (!res.ok) return { ok: false, error: toGitError(res, 'git stash pop failed') };
+    return { ok: true };
+  });
+
+  ipcMain.handle(IPC.GitStashDrop, async (_e, a: GitStashWriteArgs): Promise<GitOperationResult> => {
+    const r = resolveCwd(registry, a);
+    if (!r.ok) return { ok: false, error: { code: 'unknown', message: 'tab not found', stderr: '' } };
+    const guard = await checkStashSha(r.cwd, a.ref, a.expectedSha);
+    if (guard) return guard;
+    const res = await runWriteGit(r.cwd, ['stash', 'drop', a.ref]);
+    if (!res.ok) return { ok: false, error: toGitError(res, 'git stash drop failed') };
+    return { ok: true };
+  });
+
+  ipcMain.handle(
+    IPC.GitStashShowFiles,
+    async (_e, a: GitStashShowFilesArgs): Promise<GitStashShowFilesResult> => {
+      if (!(await isGitAvailable())) return { ok: false, reason: 'git-missing' };
+      const r = resolveCwd(registry, a);
+      if (!r.ok) return { ok: false, reason: 'tab-missing' };
+      const res = await runGit(r.cwd, STASH_FILES_ARGS(a.ref));
+      if (!res.ok) {
+        if (res.failure === 'git-missing') return { ok: false, reason: 'git-missing' };
+        if (/is not a stash-like commit|unknown revision|bad revision|ambiguous argument/i.test(res.stderr)) {
+          return { ok: false, reason: 'unknown-stash', stderr: res.stderr };
+        }
+        return { ok: false, reason: 'not-a-repo', stderr: res.stderr };
+      }
+      return { ok: true, files: parseStashFiles(res.stdout) };
+    },
+  );
+
   ipcMain.handle(IPC.GitSubscribe, async (_e, ref: GitTabRef): Promise<void> => {
     const r = resolveCwd(registry, ref);
     if (!r.ok) return;
@@ -328,6 +480,12 @@ export function registerGitIpc(args: {
         IPC.GitDiff,
         IPC.GitShowCommit,
         IPC.GitDiscard,
+        IPC.GitStashList,
+        IPC.GitStashPush,
+        IPC.GitStashApply,
+        IPC.GitStashPop,
+        IPC.GitStashDrop,
+        IPC.GitStashShowFiles,
         IPC.GitSubscribe,
         IPC.GitUnsubscribe,
       ]) {

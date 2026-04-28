@@ -18,7 +18,7 @@ Dash is a cross-platform desktop app that gives each of your projects its own ta
 
 - **Tabs per project.** Add a folder once; Dash remembers it and spawns a fresh `claude` session in that directory every time you open the tab.
 - **Real terminals.** PTY-backed, not a fake web shell — colors, prompts, TUIs, and interactive flows all work as they do in your normal terminal.
-- **Git panel.** Stage, unstage, discard, commit, switch branches, create branches, push, and browse history (~500 commits) without leaving the tab.
+- **Git panel.** Stage, unstage, discard, commit, switch branches, create branches, push, browse history (~500 commits), and manage stashes (push, pop, apply, drop with diff preview) without leaving the tab.
 - **Integrated terminal dock.** A bottom-docked shell for dev servers, tests, and scripts — per-project tabs, backgrounded processes survive collapsing the panel.
 - **Worktree-aware.** Worktree tabs pin to their branch so you don't accidentally switch them out from under your work.
 - **Your shell, your PATH.** Dash resolves `claude` against your login shell, so whatever works in your terminal works here.

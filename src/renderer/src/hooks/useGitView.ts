@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ActiveSelection } from '@shared/types';
-import type { GitBranch, GitCommit, GitStatus } from '@shared/git';
+import type { GitBranch, GitCommit, GitStashEntry, GitStatus } from '@shared/git';
 
 export type GitViewState =
   | { kind: 'idle' }
@@ -12,6 +12,7 @@ export type GitViewState =
       status: GitStatus;
       branches: GitBranch[];
       commits: GitCommit[];
+      stashes: GitStashEntry[];
     }
   | { kind: 'error'; message: string };
 
@@ -85,10 +86,11 @@ export function useGitView(active: ActiveSelection | null): UseGitView {
       }
       subscribedCwd = probe.cwd;
 
-      const [status, branches, log] = await Promise.all([
+      const [status, branches, log, stashList] = await Promise.all([
         api.status(active),
         api.branches(active),
         api.log({ ...active, limit: commitLimit }),
+        api.stashList(active),
       ]);
       if (cancelled || epochRef.current !== epoch) return;
 
@@ -111,6 +113,9 @@ export function useGitView(active: ActiveSelection | null): UseGitView {
         status: status.status,
         branches: branches.branches,
         commits: log.commits,
+        // A stash-list error isn't fatal — the rest of the view stays usable
+        // and the stashes section just renders empty.
+        stashes: stashList.ok ? stashList.stashes : [],
       });
     };
 
@@ -131,10 +136,11 @@ export function useGitView(active: ActiveSelection | null): UseGitView {
 
     const reload = async (e: number) => {
       if (!active) return;
-      const [status, branches, log] = await Promise.all([
+      const [status, branches, log, stashList] = await Promise.all([
         api.status(active),
         api.branches(active),
         api.log({ ...active, limit: commitLimit }),
+        api.stashList(active),
       ]);
       if (epochRef.current !== e) return;
       if (status.ok && branches.ok && log.ok) {
@@ -143,6 +149,7 @@ export function useGitView(active: ActiveSelection | null): UseGitView {
           status: status.status,
           branches: branches.branches,
           commits: log.commits,
+          stashes: stashList.ok ? stashList.stashes : [],
         });
       }
     };
@@ -164,18 +171,22 @@ export function useGitView(active: ActiveSelection | null): UseGitView {
       // reload in place by faking a changed event for the current cwd.
       if (!active) return;
       const api = window.api.git;
-      void Promise.all([api.status(active), api.branches(active), api.log({ ...active })]).then(
-        ([status, branches, log]) => {
-          if (status.ok && branches.ok && log.ok) {
-            setState({
-              kind: 'ready',
-              status: status.status,
-              branches: branches.branches,
-              commits: log.commits,
-            });
-          }
-        },
-      );
+      void Promise.all([
+        api.status(active),
+        api.branches(active),
+        api.log({ ...active }),
+        api.stashList(active),
+      ]).then(([status, branches, log, stashList]) => {
+        if (status.ok && branches.ok && log.ok) {
+          setState({
+            kind: 'ready',
+            status: status.status,
+            branches: branches.branches,
+            commits: log.commits,
+            stashes: stashList.ok ? stashList.stashes : [],
+          });
+        }
+      });
     },
   };
 }

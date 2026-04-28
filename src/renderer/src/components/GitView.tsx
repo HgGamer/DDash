@@ -5,6 +5,8 @@ import type {
   GitChangeKind,
   GitCommit,
   GitError,
+  GitStashEntry,
+  GitStashFile,
   GitStatusFile,
 } from '@shared/git';
 import type { GitCommitDetail, GitCommitFile } from '@shared/ipc';
@@ -32,6 +34,9 @@ export function GitView({ active, isWorktreeTab }: Props) {
   const gitCommit = useStore((s) => s.gitCommit);
   const openCommit = useStore((s) => s.openCommit);
   const closeCommit = useStore((s) => s.closeCommit);
+  const gitStash = useStore((s) => s.gitStash);
+  const openStash = useStore((s) => s.openStash);
+  const closeStash = useStore((s) => s.closeStash);
 
   // Clear transient UI state when the active tab changes. The store already
   // clears `gitDiff` on active-tab change.
@@ -96,6 +101,44 @@ export function GitView({ active, isWorktreeTab }: Props) {
     }
   }, [selectedCommit, commitsForCleanup, closeCommit]);
 
+  const selectedStash = useMemo(
+    () =>
+      gitStash &&
+      active &&
+      gitStash.projectId === active.projectId &&
+      (gitStash.worktreeId ?? null) === (active.worktreeId ?? null)
+        ? { ref: gitStash.ref, sha: gitStash.sha }
+        : null,
+    [gitStash, active],
+  );
+  const toggleStash = (entry: GitStashEntry) => {
+    if (!active) return;
+    if (selectedStash && selectedStash.sha === entry.sha) {
+      closeStash();
+      return;
+    }
+    openStash({
+      projectId: active.projectId,
+      worktreeId: active.worktreeId ?? null,
+      ref: entry.ref,
+      sha: entry.sha,
+      branch: entry.branch,
+      message: entry.message,
+      time: entry.time,
+    });
+  };
+
+  // If the stash list refreshes and the selected stash is no longer present
+  // (popped/dropped externally), clear the selection silently. We compare on
+  // SHA, not ref, because `stash@{N}` indices shift on every stash mutation.
+  const stashesForCleanup = state.kind === 'ready' ? state.stashes : null;
+  useEffect(() => {
+    if (!selectedStash || !stashesForCleanup) return;
+    if (!stashesForCleanup.some((s) => s.sha === selectedStash.sha)) {
+      closeStash();
+    }
+  }, [selectedStash, stashesForCleanup, closeStash]);
+
   if (!active) {
     return <EmptyPanel message="No tab selected." />;
   }
@@ -123,6 +166,8 @@ export function GitView({ active, isWorktreeTab }: Props) {
         setSelectedFile={setSelectedFile}
         selectedCommit={selectedCommit}
         toggleCommit={toggleCommit}
+        selectedStash={selectedStash}
+        toggleStash={toggleStash}
         commitLimit={commitLimit}
         onLoadMoreCommits={loadMoreCommits}
       />
@@ -184,6 +229,8 @@ interface BodyProps {
   setSelectedFile: (f: { path: string; stage: 'staged' | 'unstaged' | 'untracked' } | null) => void;
   selectedCommit: string | null;
   toggleCommit: (hash: string) => void;
+  selectedStash: { ref: string; sha: string } | null;
+  toggleStash: (entry: GitStashEntry) => void;
   commitLimit: number;
   onLoadMoreCommits: () => void;
 }
@@ -225,13 +272,16 @@ function ReadyBody({
   setSelectedFile,
   selectedCommit,
   toggleCommit,
+  selectedStash,
+  toggleStash,
   commitLimit,
   onLoadMoreCommits,
 }: BodyProps & { state: Extract<GitViewState, { kind: 'ready' }> }) {
-  const { status, branches, commits } = state;
+  const { status, branches, commits, stashes } = state;
   const staged = status.files.filter((f) => f.stage === 'staged');
   const unstaged = status.files.filter((f) => f.stage === 'unstaged');
   const untracked = status.files.filter((f) => f.stage === 'untracked');
+  const hasChanges = status.files.length > 0;
 
   return (
     <div className="git-view-body">
@@ -309,6 +359,16 @@ function ReadyBody({
         <div className="git-view-clean fg-muted">Working tree clean.</div>
       )}
       <PushRow status={status} active={active} busy={busy} setBusy={setBusy} setError={setError} />
+      <StashesSection
+        stashes={stashes}
+        active={active}
+        hasChanges={hasChanges}
+        busy={busy}
+        setBusy={setBusy}
+        setError={setError}
+        selectedStash={selectedStash}
+        onToggleStash={toggleStash}
+      />
       <CommitList
         commits={commits}
         head={status.head}
@@ -880,6 +940,7 @@ export function DiffView({
   active,
   file,
   commit,
+  stash,
   onClose,
 }: {
   active: ActiveSelection;
@@ -887,6 +948,10 @@ export function DiffView({
   /** When set, fetch the per-file diff introduced by this commit instead of
    *  the working-tree diff. The `stage` on `file` is ignored. */
   commit?: string;
+  /** When set, fetch the per-file diff captured by this stash entry instead
+   *  of the working-tree diff. The `stage` on `file` and `commit` are
+   *  ignored. */
+  stash?: string;
   onClose?: () => void;
 }) {
   const [diff, setDiff] = useState<string | null>(null);
@@ -901,7 +966,7 @@ export function DiffView({
     setBinary(false);
     setErr(null);
     void window.api.git
-      .diff({ projectId, worktreeId, path: file.path, stage: file.stage, commit })
+      .diff({ projectId, worktreeId, path: file.path, stage: file.stage, commit, stash })
       .then((r) => {
         if (cancelled) return;
         if (r.ok) {
@@ -914,7 +979,7 @@ export function DiffView({
     return () => {
       cancelled = true;
     };
-  }, [projectId, worktreeId, file.path, file.stage, commit]);
+  }, [projectId, worktreeId, file.path, file.stage, commit, stash]);
 
   // Close on Escape.
   useEffect(() => {
@@ -932,7 +997,9 @@ export function DiffView({
     <div className="git-diff-view">
       <div className="git-diff-pane-header">
         <span className="git-diff-path">{file.path}</span>
-        <span className="fg-muted">({commit ? `@ ${commit.slice(0, 7)}` : file.stage})</span>
+        <span className="fg-muted">
+          ({stash ? `@ ${stash}` : commit ? `@ ${commit.slice(0, 7)}` : file.stage})
+        </span>
         {onClose && (
           <button className="git-diff-close" onClick={onClose} title="Close diff (Esc)">
             ×
@@ -1196,5 +1263,365 @@ function formatCommitDate(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
   return d.toLocaleString();
+}
+
+// ---------------------------------------------------------------------------
+// Stashes section
+// ---------------------------------------------------------------------------
+
+interface StashesSectionProps {
+  stashes: GitStashEntry[];
+  active: ActiveSelection;
+  /** Whether the working tree has anything that `git stash push` would capture.
+   *  Drives the disabled state of the "Stash changes" button. */
+  hasChanges: boolean;
+  busy: string | null;
+  setBusy: (s: string | null) => void;
+  setError: (e: GitError | null) => void;
+  selectedStash: { ref: string; sha: string } | null;
+  onToggleStash: (entry: GitStashEntry) => void;
+}
+
+function StashesSection({
+  stashes,
+  active,
+  hasChanges,
+  busy,
+  setBusy,
+  setError,
+  selectedStash,
+  onToggleStash,
+}: StashesSectionProps) {
+  const [creating, setCreating] = useState(false);
+  return (
+    <div className="git-section">
+      <div className="git-section-header">
+        <span className="git-section-title">Stashes</span>
+        <span className="git-section-count">{stashes.length}</span>
+        {!creating && (
+          <button
+            className="git-section-all"
+            title={
+              hasChanges
+                ? 'Stash the current working tree'
+                : 'Working tree is clean — nothing to stash'
+            }
+            disabled={!hasChanges || busy !== null}
+            onClick={() => setCreating(true)}
+          >
+            stash changes
+          </button>
+        )}
+      </div>
+      {creating && (
+        <StashCreateForm
+          active={active}
+          busy={busy}
+          setBusy={setBusy}
+          setError={setError}
+          onClose={() => setCreating(false)}
+        />
+      )}
+      {stashes.length === 0 ? (
+        <div className="git-section-empty fg-muted">No stashes.</div>
+      ) : (
+        <ul className="git-file-list">
+          {stashes.map((s) => {
+            const sel = selectedStash?.sha === s.sha;
+            return (
+              <li
+                key={s.sha}
+                className={`git-file-row${sel ? ' selected' : ''}`}
+                onClick={() => onToggleStash(s)}
+                title={s.ref}
+              >
+                <span className="git-commit-hash">{s.ref}</span>
+                <span className="git-file-path">{s.message}</span>
+                <span className="git-commit-meta">
+                  {s.branch ? `on ${s.branch} · ` : ''}
+                  {relativeTime(s.time)}
+                </span>
+                <button
+                  className="git-file-action"
+                  title="Apply (keep on stack)"
+                  disabled={busy !== null}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void runStashWrite('apply', active, s, setBusy, setError);
+                  }}
+                >
+                  apply
+                </button>
+                <button
+                  className="git-file-action"
+                  title="Pop (apply and remove)"
+                  disabled={busy !== null}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void runStashWrite('pop', active, s, setBusy, setError);
+                  }}
+                >
+                  pop
+                </button>
+                <button
+                  className="git-file-action git-file-discard"
+                  title="Drop (delete without applying)"
+                  disabled={busy !== null}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const msg =
+                      `Drop this stash?\n\n${s.ref}: ${s.message}\n\nThis cannot be undone.`;
+                    if (window.confirm(msg)) {
+                      void runStashWrite('drop', active, s, setBusy, setError);
+                    }
+                  }}
+                >
+                  ×
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+async function runStashWrite(
+  op: 'apply' | 'pop' | 'drop',
+  active: ActiveSelection,
+  entry: GitStashEntry,
+  setBusy: (s: string | null) => void,
+  setError: (e: GitError | null) => void,
+): Promise<void> {
+  setBusy(`stash:${op}`);
+  const args = {
+    projectId: active.projectId,
+    worktreeId: active.worktreeId ?? null,
+    ref: entry.ref,
+    expectedSha: entry.sha,
+  };
+  const r =
+    op === 'apply'
+      ? await window.api.git.stashApply(args)
+      : op === 'pop'
+        ? await window.api.git.stashPop(args)
+        : await window.api.git.stashDrop(args);
+  setBusy(null);
+  if (!r.ok) setError(r.error);
+}
+
+interface StashCreateFormProps {
+  active: ActiveSelection;
+  busy: string | null;
+  setBusy: (s: string | null) => void;
+  setError: (e: GitError | null) => void;
+  onClose: () => void;
+}
+
+function StashCreateForm({ active, busy, setBusy, setError, onClose }: StashCreateFormProps) {
+  const [message, setMessage] = useState('');
+  const [includeUntracked, setIncludeUntracked] = useState(false);
+  const submit = async () => {
+    setBusy('stash:push');
+    const r = await window.api.git.stashPush({
+      projectId: active.projectId,
+      worktreeId: active.worktreeId ?? null,
+      message: message.trim() || undefined,
+      includeUntracked,
+    });
+    setBusy(null);
+    if (r.ok) {
+      onClose();
+      setMessage('');
+      setIncludeUntracked(false);
+    } else {
+      setError(r.error);
+    }
+  };
+  return (
+    <div className="git-commit-box">
+      <input
+        autoFocus
+        className="field-input"
+        placeholder="Stash message (optional)"
+        value={message}
+        onChange={(e) => setMessage(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') onClose();
+          if (e.key === 'Enter' && busy === null) void submit();
+        }}
+        disabled={busy !== null}
+      />
+      <label className="git-stash-untracked" title="git stash push --include-untracked">
+        <input
+          type="checkbox"
+          checked={includeUntracked}
+          onChange={(e) => setIncludeUntracked(e.target.checked)}
+          disabled={busy !== null}
+        />
+        <span>include untracked files</span>
+      </label>
+      <div style={{ display: 'flex', gap: 6 }}>
+        <button
+          className="git-view-btn git-commit-btn"
+          disabled={busy !== null}
+          onClick={() => void submit()}
+        >
+          {busy === 'stash:push' ? 'Stashing…' : 'Stash'}
+        </button>
+        <button className="git-view-btn" disabled={busy !== null} onClick={onClose}>
+          cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Stash view (stash detail + per-file diff)
+// ---------------------------------------------------------------------------
+
+export function StashView({
+  active,
+  ref,
+  sha,
+  branch,
+  message,
+  time,
+  onClose,
+}: {
+  active: ActiveSelection;
+  ref: string;
+  sha: string;
+  branch: string | null;
+  message: string;
+  time: number;
+  onClose?: () => void;
+}) {
+  const [files, setFiles] = useState<GitStashFile[] | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [selectedPath, setSelectedPath] = useState<string | null>(null);
+
+  const projectId = active.projectId;
+  const worktreeId = active.worktreeId ?? null;
+
+  // Reset the in-pane file selection whenever the stash or tab changes.
+  useEffect(() => {
+    setSelectedPath(null);
+  }, [projectId, worktreeId, sha]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setFiles(null);
+    setErr(null);
+    void window.api.git.stashShowFiles({ projectId, worktreeId, ref }).then((r) => {
+      if (cancelled) return;
+      if (r.ok) {
+        setFiles(r.files);
+      } else {
+        setErr(r.stderr ?? r.reason);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, worktreeId, ref, sha]);
+
+  // Close on Escape.
+  useEffect(() => {
+    if (!onClose) return;
+    const h = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  }, [onClose]);
+
+  const selected = useMemo(
+    () => (selectedPath && files ? files.find((f) => f.path === selectedPath) ?? null : null),
+    [selectedPath, files],
+  );
+
+  return (
+    <div className="git-diff-view git-commit-view">
+      <div className="git-diff-pane-header">
+        <span className="git-diff-path">stash {ref}</span>
+        {branch && <span className="fg-muted">· on {branch}</span>}
+        {onClose && (
+          <button className="git-diff-close" onClick={onClose} title="Close (Esc)">
+            ×
+          </button>
+        )}
+      </div>
+      {err ? (
+        <div className="fg-muted" style={{ padding: 8 }}>
+          stash unavailable: {err}
+        </div>
+      ) : !files ? (
+        <div className="fg-muted" style={{ padding: 8 }}>
+          Loading stash…
+        </div>
+      ) : (
+        <div className="git-commit-body">
+          <div className="git-commit-meta-block">
+            <div className="git-commit-hash-full" title={sha}>
+              {sha}
+            </div>
+            <div className="git-commit-author">
+              <span>{branch ? `on ${branch}` : '(detached)'}</span>
+              <span className="fg-muted git-commit-date">
+                {' · '}
+                {relativeTime(time)}
+              </span>
+            </div>
+            <div className="git-commit-subject-full">{message}</div>
+          </div>
+          <div className="git-commit-files">
+            <div className="git-section-header">
+              <span className="git-section-title">Files</span>
+              <span className="git-section-count">{files.length}</span>
+            </div>
+            {files.length === 0 ? (
+              <div className="git-section-empty fg-muted">No files changed.</div>
+            ) : (
+              <ul className="git-file-list">
+                {files.map((f) => {
+                  const isSel = selectedPath === f.path;
+                  return (
+                    <li
+                      key={f.path}
+                      className={`git-file-row${isSel ? ' selected' : ''}`}
+                      onClick={() => setSelectedPath(isSel ? null : f.path)}
+                    >
+                      <span
+                        className={`git-change-badge change-${f.kind}`}
+                        title={f.kind}
+                      ></span>
+                      <span className="git-file-path">{f.path}</span>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+          {selected && (
+            <div className="git-commit-diff-region">
+              <DiffView
+                active={active}
+                file={{
+                  path: selected.path,
+                  // `stage` is ignored when `stash` is set, but the type
+                  // requires a value. 'staged' is a harmless placeholder.
+                  stage: 'staged',
+                }}
+                stash={ref}
+              />
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
