@@ -2,6 +2,10 @@ import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
 import {
   IPC,
   type DashApi,
+  type DocsListArgs,
+  type DocsListDirArgs,
+  type DocsReadArgs,
+  type DocsWriteArgs,
   type GitCheckoutArgs,
   type GitChangedEvent,
   type GitCommitArgs,
@@ -18,6 +22,7 @@ import {
   type ProjectAddArgs,
   type ProjectRenameArgs,
   type ProjectReorderArgs,
+  type ProjectSetWorktreesCollapsedArgs,
   type PtyCloseArgs,
   type PtyDataEvent,
   type PtyErrorEvent,
@@ -44,6 +49,7 @@ import type {
   ActiveSelection,
   AutoUpdateInfo,
   AutoUpdateSettings,
+  DocsViewSettings,
   GitViewSettings,
   IntegratedTerminalSettings,
   NotificationSettings,
@@ -51,6 +57,7 @@ import type {
   TerminalStylePreset,
   TerminalStyleSettings,
   TodoViewSettings,
+  WebAccessSettings,
 } from '@shared/types';
 
 function subscribe<T>(channel: string, handler: (payload: T) => void): () => void {
@@ -68,6 +75,8 @@ const api: DashApi = {
     reorder: (args: ProjectReorderArgs) => ipcRenderer.invoke(IPC.ProjectReorder, args),
     setActive: (active: ActiveSelection | null) =>
       ipcRenderer.invoke(IPC.ProjectSetActive, active),
+    setWorktreesCollapsed: (args: ProjectSetWorktreesCollapsedArgs) =>
+      ipcRenderer.invoke(IPC.ProjectSetWorktreesCollapsed, args),
     pickDirectory: () => ipcRenderer.invoke(IPC.ProjectPickDirectory),
   },
   worktrees: {
@@ -112,11 +121,20 @@ const api: DashApi = {
     setTodoView: (patch: Partial<Omit<TodoViewSettings, 'version'>>) =>
       ipcRenderer.invoke(IPC.SettingsSetTodoView, patch),
     onTodoViewChanged: (h) => subscribe<TodoViewSettings>(IPC.SettingsTodoViewChanged, h),
+    getDocsView: () => ipcRenderer.invoke(IPC.SettingsGetDocsView),
+    setDocsView: (patch: Partial<Omit<DocsViewSettings, 'version'>>) =>
+      ipcRenderer.invoke(IPC.SettingsSetDocsView, patch),
+    onDocsViewChanged: (h) => subscribe<DocsViewSettings>(IPC.SettingsDocsViewChanged, h),
     getIntegratedTerminal: () => ipcRenderer.invoke(IPC.SettingsGetIntegratedTerminal),
     setIntegratedTerminal: (patch: Partial<Omit<IntegratedTerminalSettings, 'version'>>) =>
       ipcRenderer.invoke(IPC.SettingsSetIntegratedTerminal, patch),
     onIntegratedTerminalChanged: (h) =>
       subscribe<IntegratedTerminalSettings>(IPC.SettingsIntegratedTerminalChanged, h),
+    getWebAccess: () => ipcRenderer.invoke(IPC.SettingsGetWebAccess),
+    setWebAccess: (patch: Partial<Omit<WebAccessSettings, 'version'>>) =>
+      ipcRenderer.invoke(IPC.SettingsSetWebAccess, patch),
+    onWebAccessChanged: (h) =>
+      subscribe<WebAccessSettings>(IPC.SettingsWebAccessChanged, h),
   },
   shell: {
     open: (args: ShellOpenArgs) => ipcRenderer.invoke(IPC.ShellOpen, args),
@@ -163,6 +181,13 @@ const api: DashApi = {
     attention: (args: NotifyAttentionArgs) => ipcRenderer.send(IPC.NotifyAttention, args),
     attentionClear: (key: string) => ipcRenderer.send(IPC.NotifyAttentionClear, key),
   },
+  docs: {
+    list: (args: DocsListArgs) => ipcRenderer.invoke(IPC.DocsList, args),
+    listDir: (args: DocsListDirArgs) => ipcRenderer.invoke(IPC.DocsListDir, args),
+    read: (args: DocsReadArgs) => ipcRenderer.invoke(IPC.DocsRead, args),
+    write: (args: DocsWriteArgs) => ipcRenderer.invoke(IPC.DocsWrite, args),
+    openExternal: (url: string) => ipcRenderer.invoke(IPC.DocsOpenExternal, { url }),
+  },
   autoUpdate: {
     getInfo: () => ipcRenderer.invoke(IPC.AutoUpdateGetInfo),
     getSettings: () => ipcRenderer.invoke(IPC.AutoUpdateGetSettings),
@@ -172,6 +197,9 @@ const api: DashApi = {
     installNow: () => ipcRenderer.invoke(IPC.AutoUpdateInstallNow),
     onInfoChanged: (h) => subscribe<AutoUpdateInfo>(IPC.AutoUpdateInfoChanged, h),
     onSettingsChanged: (h) => subscribe<AutoUpdateSettings>(IPC.AutoUpdateSettingsChanged, h),
+  },
+  app: {
+    setUnsaved: (unsaved: boolean) => ipcRenderer.send(IPC.AppSetUnsaved, unsaved),
   },
   menu: {
     onAddProject: (h) => subscribe<void>(IPC.MenuAddProject, () => h()),

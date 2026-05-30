@@ -38,10 +38,10 @@ esac
 # our callers always pass -C <cwd>, so skip them here too.
 if [[ "\${1-}" == "-C" ]]; then shift 2; fi
 case "\${1-}" in
-  sleep) sleep "\$2"; exit 0 ;;
-  fail) echo "boom" >&2; exit "\$2" ;;
+  sleep) sleep "$2"; exit 0 ;;
+  fail) echo "boom" >&2; exit "$2" ;;
   echo) shift; echo "$*"; exit 0 ;;
-  *) printf '%s' "[\"\$@\"]"; exit 0 ;;
+  *) printf '%s' "["$@"]"; exit 0 ;;
 esac
 `;
 

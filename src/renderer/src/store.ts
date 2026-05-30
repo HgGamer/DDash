@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type {
   ActiveSelection,
+  DocsViewSettings,
   GitViewSettings,
   IntegratedTerminalSettings,
   NotificationSettings,
@@ -10,13 +11,16 @@ import type {
   ShellTab,
   TerminalStyleSettings,
   TodoViewSettings,
+  WebAccessSettings,
   Worktree,
 } from '@shared/types';
 import {
+  DEFAULT_DOCS_VIEW_SETTINGS,
   DEFAULT_GIT_VIEW_SETTINGS,
   DEFAULT_INTEGRATED_TERMINAL_SETTINGS,
   DEFAULT_NOTIFICATION_SETTINGS,
   DEFAULT_TODO_VIEW_SETTINGS,
+  DEFAULT_WEB_ACCESS_SETTINGS,
 } from '@shared/types';
 import { compositeKey } from '@shared/ipc';
 
@@ -84,7 +88,9 @@ interface AppStore {
   notifications: NotificationSettings;
   gitView: GitViewSettings;
   todoView: TodoViewSettings;
+  docsView: DocsViewSettings;
   integratedTerminal: IntegratedTerminalSettings;
+  webAccess: WebAccessSettings;
   /** Per-selection shell tab state, keyed by compositeKey(projectId, worktreeId). */
   shellTabs: Record<string, ShellTabsEntry>;
   gitDiff: GitDiffSelection | null;
@@ -92,8 +98,21 @@ interface AppStore {
   /** Project the new-worktree modal is open for, or null when closed. */
   newWorktreeProjectId: string | null;
   gitStash: GitStashSelection | null;
+  /** Open document tabs (markdown relPaths) per selection compositeKey. The
+   *  "Claude Code" terminal is the implicit first tab and is not stored here. */
+  docTabs: Record<string, string[]>;
+  /** Which content tab is active per selection: a doc relPath, or null/absent
+   *  for the Claude Code terminal. */
+  activeDocByKey: Record<string, string | null>;
+  /** Which view the side panel shows (selected from the activity bar). */
+  sidebarView: 'projects' | 'files' | 'git' | 'todos';
+  /** Whether the side panel is expanded. */
+  sidebarOpen: boolean;
+  /** Open files with unsaved edits, keyed by an opaque id. Used for the
+   *  unsaved-changes warning on app close. */
+  dirtyFiles: Record<string, true>;
   settingsModalOpen: boolean;
-  settingsModalTab: 'terminal' | 'notifications' | 'git' | 'integrated-terminal' | 'updates';
+  settingsModalTab: 'terminal' | 'notifications' | 'git' | 'integrated-terminal' | 'updates' | 'web-access';
 
   setProjects: (projects: Project[]) => void;
   setActive: (active: ActiveSelection | null) => void;
@@ -105,7 +124,9 @@ interface AppStore {
   setNotifications: (s: NotificationSettings) => void;
   setGitView: (s: GitViewSettings) => void;
   setTodoView: (s: TodoViewSettings) => void;
+  setDocsView: (s: DocsViewSettings) => void;
   setIntegratedTerminal: (s: IntegratedTerminalSettings) => void;
+  setWebAccess: (s: WebAccessSettings) => void;
   setShellTabsFor: (selectionKey: string, tabs: ShellTab[]) => void;
   addShellTab: (selectionKey: string, tab: ShellTab) => void;
   removeShellTab: (selectionKey: string, tabId: string) => void;
@@ -120,7 +141,17 @@ interface AppStore {
   closeNewWorktree: () => void;
   openStash: (sel: GitStashSelection) => void;
   closeStash: () => void;
-  openSettings: (tab?: 'terminal' | 'notifications' | 'git' | 'integrated-terminal' | 'updates') => void;
+  /** Open a doc as a content tab for the selection and make it active. */
+  openDoc: (selectionKey: string, relPath: string) => void;
+  /** Close a doc tab; if it was active, fall back to a neighbor or the terminal. */
+  closeDoc: (selectionKey: string, relPath: string) => void;
+  /** Switch the active content tab (a doc relPath, or null for the terminal). */
+  setActiveDoc: (selectionKey: string, relPath: string | null) => void;
+  /** Activity-bar click: select a view (opening the panel), or collapse it when
+   *  the already-active view's icon is clicked again. */
+  selectSidebarView: (view: 'projects' | 'files' | 'git' | 'todos') => void;
+  setFileDirty: (id: string, dirty: boolean) => void;
+  openSettings: (tab?: 'terminal' | 'notifications' | 'git' | 'integrated-terminal' | 'updates' | 'web-access') => void;
   closeSettings: () => void;
 }
 
@@ -134,12 +165,19 @@ export const useStore = create<AppStore>((set) => ({
   notifications: { ...DEFAULT_NOTIFICATION_SETTINGS },
   gitView: { ...DEFAULT_GIT_VIEW_SETTINGS },
   todoView: { ...DEFAULT_TODO_VIEW_SETTINGS },
+  docsView: { ...DEFAULT_DOCS_VIEW_SETTINGS },
   integratedTerminal: { ...DEFAULT_INTEGRATED_TERMINAL_SETTINGS },
+  webAccess: { ...DEFAULT_WEB_ACCESS_SETTINGS },
   shellTabs: {},
   gitDiff: null,
   gitCommit: null,
   newWorktreeProjectId: null,
   gitStash: null,
+  docTabs: {},
+  activeDocByKey: {},
+  sidebarView: 'projects',
+  sidebarOpen: true,
+  dirtyFiles: {},
   settingsModalOpen: false,
   settingsModalTab: 'terminal',
 
@@ -177,7 +215,14 @@ export const useStore = create<AppStore>((set) => ({
     set((s) => {
       if (s.tabs[key]?.needsAttention) window.api.notify.attentionClear(key);
       const { [key]: _omit, ...rest } = s.tabs;
-      return { tabs: rest, mountedKeys: s.mountedKeys.filter((m) => m !== key) };
+      const { [key]: _dt, ...docTabs } = s.docTabs;
+      const { [key]: _ad, ...activeDocByKey } = s.activeDocByKey;
+      return {
+        tabs: rest,
+        mountedKeys: s.mountedKeys.filter((m) => m !== key),
+        docTabs,
+        activeDocByKey,
+      };
     }),
   clearProjectAndWorktrees: (projectId) =>
     set((s) => {
@@ -194,17 +239,29 @@ export const useStore = create<AppStore>((set) => ({
       for (const [k, v] of Object.entries(s.shellTabs)) {
         if (!isMatch(k)) shellTabs[k] = v;
       }
+      const docTabs: Record<string, string[]> = {};
+      for (const [k, v] of Object.entries(s.docTabs)) {
+        if (!isMatch(k)) docTabs[k] = v;
+      }
+      const activeDocByKey: Record<string, string | null> = {};
+      for (const [k, v] of Object.entries(s.activeDocByKey)) {
+        if (!isMatch(k)) activeDocByKey[k] = v;
+      }
       return {
         tabs,
         mountedKeys: s.mountedKeys.filter((k) => !isMatch(k)),
         shellTabs,
+        docTabs,
+        activeDocByKey,
       };
     }),
   setTerminalStyle: (s) => set({ terminalStyle: s }),
   setNotifications: (s) => set({ notifications: s }),
   setGitView: (s) => set({ gitView: s }),
   setTodoView: (s) => set({ todoView: s }),
+  setDocsView: (s) => set({ docsView: s }),
   setIntegratedTerminal: (s) => set({ integratedTerminal: s }),
+  setWebAccess: (s) => set({ webAccess: s }),
   setShellTabsFor: (selectionKey, tabs) =>
     set((s) => ({
       shellTabs: {
@@ -292,6 +349,42 @@ export const useStore = create<AppStore>((set) => ({
   closeNewWorktree: () => set({ newWorktreeProjectId: null }),
   openStash: (sel) => set({ gitStash: sel, gitDiff: null, gitCommit: null }),
   closeStash: () => set({ gitStash: null }),
+  openDoc: (selectionKey, relPath) =>
+    set((s) => {
+      const prev = s.docTabs[selectionKey] ?? [];
+      const tabs = prev.includes(relPath) ? prev : [...prev, relPath];
+      return {
+        docTabs: { ...s.docTabs, [selectionKey]: tabs },
+        activeDocByKey: { ...s.activeDocByKey, [selectionKey]: relPath },
+      };
+    }),
+  closeDoc: (selectionKey, relPath) =>
+    set((s) => {
+      const prev = s.docTabs[selectionKey] ?? [];
+      const idx = prev.indexOf(relPath);
+      const tabs = prev.filter((t) => t !== relPath);
+      const wasActive = s.activeDocByKey[selectionKey] === relPath;
+      // Fall back to the tab to the left, then right, then the terminal.
+      const nextActive = wasActive ? tabs[idx - 1] ?? tabs[idx] ?? null : s.activeDocByKey[selectionKey];
+      return {
+        docTabs: { ...s.docTabs, [selectionKey]: tabs },
+        activeDocByKey: { ...s.activeDocByKey, [selectionKey]: nextActive },
+      };
+    }),
+  setActiveDoc: (selectionKey, relPath) =>
+    set((s) => ({ activeDocByKey: { ...s.activeDocByKey, [selectionKey]: relPath } })),
+  selectSidebarView: (view) =>
+    set((s) => (s.sidebarView === view ? { sidebarOpen: !s.sidebarOpen } : { sidebarView: view, sidebarOpen: true })),
+  setFileDirty: (id, dirty) =>
+    set((s) => {
+      if (dirty) {
+        if (s.dirtyFiles[id]) return {};
+        return { dirtyFiles: { ...s.dirtyFiles, [id]: true } };
+      }
+      if (!s.dirtyFiles[id]) return {};
+      const { [id]: _omit, ...rest } = s.dirtyFiles;
+      return { dirtyFiles: rest };
+    }),
   openSettings: (tab) =>
     set((s) => ({ settingsModalOpen: true, settingsModalTab: tab ?? s.settingsModalTab })),
   closeSettings: () => set({ settingsModalOpen: false }),

@@ -22,6 +22,12 @@ export interface Project {
   /** Optional override for where this project's worktrees live on disk.
    * When unset, defaults to `<project.path>.worktrees`. */
   worktreesRoot?: string;
+  /** Whether this project's worktree group is collapsed in the sidebar.
+   * Persisted per project; defaults to expanded (false). */
+  worktreesCollapsed?: boolean;
+  /** Branches the user has most recently created worktrees from, most-recent
+   * first, capped at 5. Persisted; defaults to []. */
+  recentBranches?: string[];
   /** Runtime-only cache populated after launch. Never persisted. */
   isGitRepo?: boolean;
 }
@@ -197,6 +203,20 @@ export const DEFAULT_TODO_VIEW_SETTINGS: TodoViewSettings = {
 export const TODO_VIEW_MIN_WIDTH = 240;
 export const TODO_VIEW_MAX_WIDTH = 720;
 
+export interface DocsViewSettings {
+  version: 1;
+  /** Width in pixels of the Docs (markdown viewer) panel. */
+  panelWidth: number;
+}
+
+export const DEFAULT_DOCS_VIEW_SETTINGS: DocsViewSettings = {
+  version: 1,
+  panelWidth: 420,
+};
+
+export const DOCS_VIEW_MIN_WIDTH = 280;
+export const DOCS_VIEW_MAX_WIDTH = 900;
+
 export interface IntegratedTerminalSettings {
   version: 1;
   /** When false, the statusbar button and dock are hidden. */
@@ -236,6 +256,28 @@ export const DEFAULT_AUTO_UPDATE_SETTINGS: AutoUpdateSettings = {
   enabled: true,
   channel: 'stable',
   lastCheckedAt: null,
+};
+
+export interface WebAccessSettings {
+  version: 1;
+  /** When true, the LAN web UI is served on `port`. */
+  enabled: boolean;
+  /** TCP port to bind on 0.0.0.0. Defaults to DEFAULT_WEB_ACCESS_PORT. */
+  port: number;
+  /** Plaintext password required to log into the web UI. Empty disables
+   *  enabling — the server refuses to start without a password set. */
+  password: string;
+}
+
+// Picked deliberately to avoid the usual dev-server suspects
+// (3000/4000/5000/5173/8000/8080/9000) and the DECK remote-server port (7779).
+export const DEFAULT_WEB_ACCESS_PORT = 47821;
+
+export const DEFAULT_WEB_ACCESS_SETTINGS: WebAccessSettings = {
+  version: 1,
+  enabled: false,
+  port: DEFAULT_WEB_ACCESS_PORT,
+  password: '',
 };
 
 /** Translate the user-facing channel name to electron-updater's wire name.
@@ -292,8 +334,10 @@ export interface AppState {
   notifications: NotificationSettings;
   gitView: GitViewSettings;
   todoView: TodoViewSettings;
+  docsView: DocsViewSettings;
   integratedTerminal: IntegratedTerminalSettings;
   autoUpdate: AutoUpdateSettings;
+  webAccess: WebAccessSettings;
 }
 
 export const DEFAULT_WINDOW_STATE: WindowState = {
@@ -313,8 +357,10 @@ export const DEFAULT_APP_STATE: AppState = {
   notifications: DEFAULT_NOTIFICATION_SETTINGS,
   gitView: DEFAULT_GIT_VIEW_SETTINGS,
   todoView: DEFAULT_TODO_VIEW_SETTINGS,
+  docsView: DEFAULT_DOCS_VIEW_SETTINGS,
   integratedTerminal: DEFAULT_INTEGRATED_TERMINAL_SETTINGS,
   autoUpdate: DEFAULT_AUTO_UPDATE_SETTINGS,
+  webAccess: DEFAULT_WEB_ACCESS_SETTINGS,
 };
 
 export type PtySessionStatus = 'not-started' | 'running' | 'exited';

@@ -109,6 +109,26 @@ export class ProjectRegistry {
     return this.store.get().projects.find((p) => p.id === id);
   }
 
+  setWorktreesCollapsed(id: string, collapsed: boolean): void {
+    this.store.update((draft) => {
+      const proj = draft.projects.find((p) => p.id === id);
+      if (proj) proj.worktreesCollapsed = collapsed;
+    });
+  }
+
+  /** Push a branch onto a project's recently-used list: dedup to the front,
+   *  most-recent first, capped at five entries. */
+  pushRecentBranch(id: string, branch: string): void {
+    const trimmed = branch.trim();
+    if (!trimmed) return;
+    this.store.update((draft) => {
+      const proj = draft.projects.find((p) => p.id === id);
+      if (!proj) return;
+      const prev = Array.isArray(proj.recentBranches) ? proj.recentBranches : [];
+      proj.recentBranches = [trimmed, ...prev.filter((b) => b !== trimmed)].slice(0, 5);
+    });
+  }
+
   async refreshGitMeta(): Promise<void> {
     for (const proj of this.store.get().projects) {
       proj.isGitRepo = await isGitRepo(proj.path);

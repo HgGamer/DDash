@@ -10,6 +10,7 @@ import {
   type ProjectRemoveResult,
   type ProjectRenameArgs,
   type ProjectReorderArgs,
+  type ProjectSetWorktreesCollapsedArgs,
   type PtyCloseArgs,
   type PtyDataEvent,
   type PtyErrorEvent,
@@ -33,6 +34,7 @@ import type { JsonStore } from './store';
 import type { SettingsManager } from './settings';
 import type {
   ActiveSelection,
+  DocsViewSettings,
   GitViewSettings,
   IntegratedTerminalSettings,
   NotificationSettings,
@@ -41,6 +43,7 @@ import type {
   TerminalStyleSettings,
   Todo,
   TodoViewSettings,
+  WebAccessSettings,
   Worktree,
 } from '@shared/types';
 import { PtySessionManager } from './pty-session';
@@ -61,8 +64,10 @@ export function registerIpc(args: {
   shellManager: ShellSessionManager;
   settings: SettingsManager;
   getWindow: () => BrowserWindow | null;
+  remoteFeed?: (key: string, data: string) => void;
+  webFeed?: (key: string, data: string) => void;
 }): void {
-  const { store, registry, ptyManager, shellManager, settings, getWindow } = args;
+  const { store, registry, ptyManager, shellManager, settings, getWindow, remoteFeed, webFeed } = args;
 
   const send = (channel: string, payload: unknown) => {
     const win = getWindow();
@@ -130,6 +135,14 @@ export function registerIpc(args: {
     await store.flush();
   });
 
+  ipcMain.handle(
+    IPC.ProjectSetWorktreesCollapsed,
+    async (_e, a: ProjectSetWorktreesCollapsedArgs) => {
+      registry.setWorktreesCollapsed(a.id, a.collapsed);
+      await store.flush();
+    },
+  );
+
   ipcMain.handle(IPC.ProjectPickDirectory, async (): Promise<ProjectPickDirectoryResult> => {
     const win = getWindow();
     const result = await dialog.showOpenDialog(win ?? undefined!, {
@@ -166,6 +179,7 @@ export function registerIpc(args: {
         return { ok: false, error: r.stderr || r.stdout || `git exited ${r.exitCode}` };
       }
       const wt = registry.addWorktree(a.projectId, { branch: a.branch, path: targetPath });
+      registry.pushRecentBranch(a.projectId, a.branch);
       await store.flush();
       return { ok: true, worktree: wt };
     },
@@ -267,6 +281,8 @@ export function registerIpc(args: {
           data,
         };
         send(IPC.PtyData, ev);
+        remoteFeed?.(key, data);
+        webFeed?.(key, data);
       },
       onExit: (exitCode, signal) => {
         const ev: PtyExitEvent = {
@@ -411,6 +427,23 @@ export function registerIpc(args: {
     send(IPC.SettingsGitViewChanged, s);
   });
 
+  ipcMain.handle(IPC.SettingsGetWebAccess, async (): Promise<WebAccessSettings> => {
+    return settings.getWebAccess();
+  });
+
+  ipcMain.handle(
+    IPC.SettingsSetWebAccess,
+    async (_e, patch: Partial<Omit<WebAccessSettings, 'version'>>): Promise<WebAccessSettings> => {
+      const next = settings.setWebAccess(patch);
+      await store.flush();
+      return next;
+    },
+  );
+
+  settings.on('webAccessChanged', (s: WebAccessSettings) => {
+    send(IPC.SettingsWebAccessChanged, s);
+  });
+
   ipcMain.handle(IPC.SettingsGetTodoView, async (): Promise<TodoViewSettings> => {
     return settings.getTodoView();
   });
@@ -426,6 +459,23 @@ export function registerIpc(args: {
 
   settings.on('todoViewChanged', (s: TodoViewSettings) => {
     send(IPC.SettingsTodoViewChanged, s);
+  });
+
+  ipcMain.handle(IPC.SettingsGetDocsView, async (): Promise<DocsViewSettings> => {
+    return settings.getDocsView();
+  });
+
+  ipcMain.handle(
+    IPC.SettingsSetDocsView,
+    async (_e, patch: Partial<Omit<DocsViewSettings, 'version'>>): Promise<DocsViewSettings> => {
+      const next = settings.setDocsView(patch);
+      await store.flush();
+      return next;
+    },
+  );
+
+  settings.on('docsViewChanged', (s: DocsViewSettings) => {
+    send(IPC.SettingsDocsViewChanged, s);
   });
 
   // Todo CRUD ----------------------------------------------------------

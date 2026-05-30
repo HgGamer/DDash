@@ -132,6 +132,7 @@ export async function removeWorktree(
 
 export function sanitizeBranchForFs(branch: string): string {
   // Replace anything filesystem-unsafe (incl. control chars) with '-'.
+  // eslint-disable-next-line no-control-regex -- control chars are intentional
   let s = branch.replace(/[\\/:*?"<>|\x00-\x1f]/g, '-');
   s = s.replace(/-+/g, '-');
   s = s.replace(/^[-.]+|[-.]+$/g, '');

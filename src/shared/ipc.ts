@@ -3,6 +3,7 @@ import type {
   AutoUpdateInfo,
   AutoUpdateSettings,
   GitViewSettings,
+  DocsViewSettings,
   IntegratedTerminalSettings,
   NotificationSettings,
   Project,
@@ -13,6 +14,7 @@ import type {
   TerminalStyleSettings,
   Todo,
   TodoViewSettings,
+  WebAccessSettings,
   Worktree,
 } from './types';
 import type {
@@ -33,6 +35,7 @@ export const IPC = {
   ProjectRename: 'project:rename',
   ProjectReorder: 'project:reorder',
   ProjectSetActive: 'project:setActive',
+  ProjectSetWorktreesCollapsed: 'project:setWorktreesCollapsed',
   ProjectPickDirectory: 'project:pickDirectory',
 
   // Worktree management (renderer → main)
@@ -109,6 +112,11 @@ export const IPC = {
   SettingsSetTodoView: 'settings:setTodoView',
   SettingsTodoViewChanged: 'settings:todoViewChanged',
 
+  // Web-access (LAN web UI) settings (renderer ↔ main)
+  SettingsGetWebAccess: 'settings:getWebAccess',
+  SettingsSetWebAccess: 'settings:setWebAccess',
+  SettingsWebAccessChanged: 'settings:webAccessChanged',
+
   // Integrated-terminal settings (renderer ↔ main)
   SettingsGetIntegratedTerminal: 'settings:getIntegratedTerminal',
   SettingsSetIntegratedTerminal: 'settings:setIntegratedTerminal',
@@ -124,6 +132,18 @@ export const IPC = {
   ShellData: 'shell:data',
   ShellExit: 'shell:exit',
 
+  // Docs / file viewer (renderer ↔ main)
+  DocsList: 'docs:list',
+  DocsListDir: 'docs:listDir',
+  DocsRead: 'docs:read',
+  DocsWrite: 'docs:write',
+  DocsOpenExternal: 'docs:openExternal',
+
+  // Docs-view settings (renderer ↔ main)
+  SettingsGetDocsView: 'settings:getDocsView',
+  SettingsSetDocsView: 'settings:setDocsView',
+  SettingsDocsViewChanged: 'settings:docsViewChanged',
+
   // Auto-update (renderer ↔ main)
   AutoUpdateGetInfo: 'autoUpdate:getInfo',
   AutoUpdateGetSettings: 'autoUpdate:getSettings',
@@ -132,6 +152,9 @@ export const IPC = {
   AutoUpdateInstallNow: 'autoUpdate:installNow',
   AutoUpdateInfoChanged: 'autoUpdate:infoChanged',
   AutoUpdateSettingsChanged: 'autoUpdate:settingsChanged',
+
+  // App-level (renderer → main)
+  AppSetUnsaved: 'app:setUnsaved',
 
   // Menu/shortcut events (main → renderer)
   MenuAddProject: 'menu:addProject',
@@ -166,6 +189,10 @@ export interface ProjectRenameArgs {
 }
 export interface ProjectReorderArgs {
   orderedIds: string[];
+}
+export interface ProjectSetWorktreesCollapsedArgs {
+  id: string;
+  collapsed: boolean;
 }
 export interface ProjectPickDirectoryResult {
   path: string | null;
@@ -468,6 +495,64 @@ export interface TodoRemoveArgs {
   id: string;
 }
 
+// Docs / markdown viewer IPC payloads -----------------------------------
+
+export interface DocsListArgs {
+  projectId: string;
+}
+export interface DocsFileEntry {
+  /** Path relative to the project root, using forward slashes. */
+  relPath: string;
+  /** Modification time, epoch milliseconds. */
+  mtime: number;
+  /** Size in bytes. */
+  size: number;
+}
+export type DocsListResult =
+  | { ok: true; files: DocsFileEntry[] }
+  | { ok: false; reason: 'project-missing' | 'error'; message?: string };
+
+export interface DocsReadArgs {
+  projectId: string;
+  relPath: string;
+}
+export type DocsReadResult =
+  | { ok: true; contents: string }
+  | {
+      ok: false;
+      reason: 'project-missing' | 'escape' | 'not-found' | 'too-large' | 'binary' | 'error';
+      message?: string;
+    };
+
+export interface DocsWriteArgs {
+  projectId: string;
+  relPath: string;
+  contents: string;
+}
+export type DocsWriteResult =
+  | { ok: true }
+  | { ok: false; reason: 'project-missing' | 'escape' | 'too-large' | 'error'; message?: string };
+
+/** One entry in a directory listing for the file explorer. */
+export interface DocsDirEntry {
+  name: string;
+  /** Path relative to the project root, forward slashes. */
+  relPath: string;
+  type: 'dir' | 'file';
+}
+export interface DocsListDirArgs {
+  projectId: string;
+  /** Directory relative to the project root; '' lists the root. */
+  relPath: string;
+}
+export type DocsListDirResult =
+  | { ok: true; entries: DocsDirEntry[] }
+  | { ok: false; reason: 'project-missing' | 'escape' | 'not-found' | 'error'; message?: string };
+
+export interface DocsOpenExternalArgs {
+  url: string;
+}
+
 // The typed API exposed on window.api via contextBridge.
 export interface DashApi {
   projects: {
@@ -477,6 +562,7 @@ export interface DashApi {
     rename(args: ProjectRenameArgs): Promise<void>;
     reorder(args: ProjectReorderArgs): Promise<void>;
     setActive(active: ActiveSelection | null): Promise<void>;
+    setWorktreesCollapsed(args: ProjectSetWorktreesCollapsedArgs): Promise<void>;
     pickDirectory(): Promise<ProjectPickDirectoryResult>;
   };
   worktrees: {
@@ -516,11 +602,19 @@ export interface DashApi {
     getTodoView(): Promise<TodoViewSettings>;
     setTodoView(patch: Partial<Omit<TodoViewSettings, 'version'>>): Promise<TodoViewSettings>;
     onTodoViewChanged(handler: (s: TodoViewSettings) => void): () => void;
+    getDocsView(): Promise<DocsViewSettings>;
+    setDocsView(patch: Partial<Omit<DocsViewSettings, 'version'>>): Promise<DocsViewSettings>;
+    onDocsViewChanged(handler: (s: DocsViewSettings) => void): () => void;
     getIntegratedTerminal(): Promise<IntegratedTerminalSettings>;
     setIntegratedTerminal(
       patch: Partial<Omit<IntegratedTerminalSettings, 'version'>>,
     ): Promise<IntegratedTerminalSettings>;
     onIntegratedTerminalChanged(handler: (s: IntegratedTerminalSettings) => void): () => void;
+    getWebAccess(): Promise<WebAccessSettings>;
+    setWebAccess(
+      patch: Partial<Omit<WebAccessSettings, 'version'>>,
+    ): Promise<WebAccessSettings>;
+    onWebAccessChanged(handler: (s: WebAccessSettings) => void): () => void;
   };
   shell: {
     open(args: ShellOpenArgs): Promise<ShellOpenResult>;
@@ -566,6 +660,13 @@ export interface DashApi {
     update(args: TodoUpdateArgs): Promise<Todo | null>;
     remove(args: TodoRemoveArgs): Promise<void>;
   };
+  docs: {
+    list(args: DocsListArgs): Promise<DocsListResult>;
+    listDir(args: DocsListDirArgs): Promise<DocsListDirResult>;
+    read(args: DocsReadArgs): Promise<DocsReadResult>;
+    write(args: DocsWriteArgs): Promise<DocsWriteResult>;
+    openExternal(url: string): Promise<void>;
+  };
   autoUpdate: {
     getInfo(): Promise<AutoUpdateInfo>;
     getSettings(): Promise<AutoUpdateSettings>;
@@ -579,6 +680,11 @@ export interface DashApi {
     installNow(): Promise<void>;
     onInfoChanged(handler: (info: AutoUpdateInfo) => void): () => void;
     onSettingsChanged(handler: (settings: AutoUpdateSettings) => void): () => void;
+  };
+  app: {
+    /** Tell the main process whether there are unsaved file edits, so it can
+     *  warn before the window/app closes. */
+    setUnsaved(unsaved: boolean): void;
   };
   menu: {
     onAddProject(handler: () => void): () => void;

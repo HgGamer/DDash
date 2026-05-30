@@ -1,16 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useRef } from 'react';
 import type { ActiveSelection } from '@shared/types';
-import {
-  GIT_VIEW_MAX_WIDTH,
-  GIT_VIEW_MIN_WIDTH,
-  TODO_VIEW_MAX_WIDTH,
-  TODO_VIEW_MIN_WIDTH,
-} from '@shared/types';
 import { compositeKey, parseCompositeKey } from '@shared/ipc';
 import { useStore } from '../store';
 import { TerminalPane } from './TerminalPane';
-import { CommitView, DiffView, GitView, StashView } from './GitView';
-import { TodoView } from './TodoView';
+import { CommitView, DiffView, StashView } from './GitView';
+import { FileView } from './MarkdownViewer';
 import { IntegratedTerminalDock, useWorkspaceHeight } from './IntegratedTerminalDock';
 import { useShellTabs } from '../hooks/useShellTabs';
 
@@ -21,8 +15,6 @@ interface Props {
 export function Workspace({ activeId }: Props) {
   const mountedKeys = useStore((s) => s.mountedKeys);
   const projects = useStore((s) => s.projects);
-  const gitViewSettings = useStore((s) => s.gitView);
-  const todoViewSettings = useStore((s) => s.todoView);
   const integratedTerminal = useStore((s) => s.integratedTerminal);
   const gitDiff = useStore((s) => s.gitDiff);
   const closeDiff = useStore((s) => s.closeDiff);
@@ -30,6 +22,7 @@ export function Workspace({ activeId }: Props) {
   const closeCommit = useStore((s) => s.closeCommit);
   const gitStash = useStore((s) => s.gitStash);
   const closeStash = useStore((s) => s.closeStash);
+  const activeDocByKey = useStore((s) => s.activeDocByKey);
   const workspaceRef = useRef<HTMLElement>(null);
   const workspaceHeight = useWorkspaceHeight(workspaceRef);
 
@@ -49,8 +42,10 @@ export function Workspace({ activeId }: Props) {
     .filter((x): x is { key: string; proj: typeof projects[number]; worktree: typeof projects[number]['worktrees'][number] | null } => x !== null);
 
   const activeKey = activeId ? compositeKey(activeId.projectId, activeId.worktreeId) : null;
-  const showGitView = gitViewSettings.enabled && gitViewSettings.expanded;
-  const showTodoView = todoViewSettings.expanded;
+  const activeDocRel = activeKey ? activeDocByKey[activeKey] ?? null : null;
+  const activeProjectRoot = activeId
+    ? projects.find((p) => p.id === activeId.projectId)?.path ?? ''
+    : '';
 
   if (!activeKey && resolved.length === 0) {
     return (
@@ -68,6 +63,7 @@ export function Workspace({ activeId }: Props) {
   return (
     <main className="workspace workspace-split" ref={workspaceRef}>
       <div className="workspace-left">
+        {activeId && <WorkspaceContentTabs activeId={activeId} />}
         <div className="workspace-terminals">
           {resolved.map(({ key, proj, worktree }) => {
             const active = key === activeKey;
@@ -85,6 +81,16 @@ export function Workspace({ activeId }: Props) {
               </div>
             );
           })}
+          {activeDocRel && activeId && (
+            <div className="workspace-doc-overlay">
+              <FileView
+                key={`${activeKey}:${activeDocRel}`}
+                projectId={activeId.projectId}
+                projectRoot={activeProjectRoot}
+                relPath={activeDocRel}
+              />
+            </div>
+          )}
           {gitDiff && activeId && gitDiff.projectId === activeId.projectId && (
             <div className="workspace-diff-overlay">
               <DiffView
@@ -121,135 +127,66 @@ export function Workspace({ activeId }: Props) {
           />
         )}
       </div>
-      {showTodoView && (
-        <TodoViewDock width={todoViewSettings.panelWidth} active={activeId} />
-      )}
-      {showGitView && (
-        <GitViewDock
-          width={gitViewSettings.panelWidth}
-          active={activeId}
-          isWorktreeTab={!!activeId?.worktreeId}
-        />
-      )}
     </main>
   );
 }
 
-function TodoViewDock({
-  width,
-  active,
-}: {
-  width: number;
-  active: ActiveSelection | null;
-}) {
-  const dragStateRef = useRef<{ startX: number; startWidth: number } | null>(null);
-  const [liveWidth, setLiveWidth] = useState(width);
+function WorkspaceContentTabs({ activeId }: { activeId: ActiveSelection }) {
+  const docTabsByKey = useStore((s) => s.docTabs);
+  const activeDocByKey = useStore((s) => s.activeDocByKey);
+  const closeDoc = useStore((s) => s.closeDoc);
+  const setActiveDoc = useStore((s) => s.setActiveDoc);
 
-  useEffect(() => {
-    setLiveWidth(width);
-  }, [width]);
+  const key = compositeKey(activeId.projectId, activeId.worktreeId);
+  const docTabs = docTabsByKey[key] ?? [];
+  const activeDoc = activeDocByKey[key] ?? null;
 
-  const liveWidthRef = useRef(liveWidth);
-  useEffect(() => {
-    liveWidthRef.current = liveWidth;
-  }, [liveWidth]);
-
-  const onMouseDown = useCallback(
-    (e: React.MouseEvent) => {
-      e.preventDefault();
-      dragStateRef.current = { startX: e.clientX, startWidth: liveWidth };
-      const onMove = (ev: MouseEvent) => {
-        const s = dragStateRef.current;
-        if (!s) return;
-        const delta = s.startX - ev.clientX;
-        const next = clamp(s.startWidth + delta, TODO_VIEW_MIN_WIDTH, TODO_VIEW_MAX_WIDTH);
-        setLiveWidth(next);
-      };
-      const onUp = () => {
-        const s = dragStateRef.current;
-        dragStateRef.current = null;
-        window.removeEventListener('mousemove', onMove);
-        window.removeEventListener('mouseup', onUp);
-        if (s) {
-          void window.api.settings.setTodoView({ panelWidth: liveWidthRef.current });
-        }
-      };
-      window.addEventListener('mousemove', onMove);
-      window.addEventListener('mouseup', onUp);
-    },
-    [liveWidth],
-  );
+  const basename = (p: string) => p.split('/').pop() ?? p;
 
   return (
-    <div className="todo-view-dock" style={{ width: liveWidth }}>
-      <div
-        className="todo-view-resize-handle"
-        onMouseDown={onMouseDown}
-        title="Drag to resize"
-      />
-      <TodoView active={active} />
-    </div>
+    <header className="ws-header">
+      <div className="ws-tabs">
+        <button
+          type="button"
+          className={`ws-tab ${activeDoc === null ? 'active' : ''}`}
+          onClick={() => setActiveDoc(key, null)}
+        >
+          Claude Code
+        </button>
+        {docTabs.map((relPath) => (
+          <span
+            key={relPath}
+            className={`ws-tab ws-tab-doc ${activeDoc === relPath ? 'active' : ''}`}
+            onAuxClick={(e) => {
+              // Middle-click closes the tab.
+              if (e.button === 1) {
+                e.preventDefault();
+                closeDoc(key, relPath);
+              }
+            }}
+          >
+            <button
+              type="button"
+              className="ws-tab-label"
+              title={relPath}
+              onClick={() => setActiveDoc(key, relPath)}
+            >
+              {basename(relPath)}
+            </button>
+            <button
+              type="button"
+              className="ws-tab-close"
+              aria-label={`Close ${basename(relPath)}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                closeDoc(key, relPath);
+              }}
+            >
+              ✕
+            </button>
+          </span>
+        ))}
+      </div>
+    </header>
   );
-}
-
-function GitViewDock({
-  width,
-  active,
-  isWorktreeTab,
-}: {
-  width: number;
-  active: ActiveSelection | null;
-  isWorktreeTab: boolean;
-}) {
-  const dragStateRef = useRef<{ startX: number; startWidth: number } | null>(null);
-  const [liveWidth, setLiveWidth] = useState(width);
-
-  useEffect(() => {
-    setLiveWidth(width);
-  }, [width]);
-
-  const onMouseDown = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    dragStateRef.current = { startX: e.clientX, startWidth: liveWidth };
-    const onMove = (ev: MouseEvent) => {
-      const s = dragStateRef.current;
-      if (!s) return;
-      const delta = s.startX - ev.clientX; // dragging left grows the panel
-      const next = clamp(s.startWidth + delta, GIT_VIEW_MIN_WIDTH, GIT_VIEW_MAX_WIDTH);
-      setLiveWidth(next);
-    };
-    const onUp = () => {
-      const s = dragStateRef.current;
-      dragStateRef.current = null;
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-      if (s) {
-        // Persist the final width.
-        void window.api.settings.setGitView({ panelWidth: liveWidthRef.current });
-      }
-    };
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
-  }, [liveWidth]);
-
-  // Track liveWidth in a ref so the mouseup handler reads the latest value.
-  const liveWidthRef = useRef(liveWidth);
-  useEffect(() => {
-    liveWidthRef.current = liveWidth;
-  }, [liveWidth]);
-
-  return (
-    <div className="git-view-dock" style={{ width: liveWidth }}>
-      <div
-        className="git-view-resize-handle"
-        onMouseDown={onMouseDown}
-        title="Drag to resize"
-      />
-      <GitView active={active} isWorktreeTab={isWorktreeTab} />
-    </div>
-  );
-}
-
-function clamp(n: number, lo: number, hi: number): number {
-  return Math.min(hi, Math.max(lo, n));
 }
