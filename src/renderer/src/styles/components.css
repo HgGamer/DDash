@@ -498,6 +498,10 @@
   padding: 0 var(--space-3);
   background: var(--color-surface);
   border-bottom: 1px solid var(--color-border);
+  /* Establish a stacking context above the terminal panes below (which are
+   * absolutely positioned), so the agent-launcher dropdown overlays them. */
+  position: relative;
+  z-index: 10;
 }
 /* Content tabs (Claude Code ↔ open documents). */
 .ws-tabs {
@@ -579,6 +583,71 @@
   align-items: center;
   gap: var(--space-1);
   flex: 0 0 auto;
+}
+
+/* Agent launcher ("+" dropdown in the workspace tab bar) ------------------- */
+.ws-agent-launcher {
+  position: relative;
+  display: inline-flex;
+  align-items: stretch;
+}
+.ws-tab-add {
+  font-size: var(--text-md);
+  line-height: 1;
+  padding: 0 var(--space-2);
+  color: var(--color-fg-muted);
+}
+.ws-tab-add:hover {
+  color: var(--color-fg);
+}
+.ws-agent-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 50;
+  min-width: 200px;
+  margin-top: var(--space-1);
+  padding: var(--space-1);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-pop);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.ws-agent-menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-1) var(--space-2);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--color-fg);
+  font-size: var(--text-sm);
+  text-align: left;
+  cursor: pointer;
+}
+.ws-agent-menu-item:hover {
+  background: var(--color-surface-2);
+}
+.ws-agent-menu-empty {
+  color: var(--color-fg-muted);
+  font-size: var(--text-xs);
+}
+.ws-agent-menu-hint {
+  color: var(--color-fg-subtle);
+  font-size: var(--text-xs);
+}
+.agent-row {
+  gap: var(--space-2);
+}
+.agent-row .field-input {
+  flex: 1 1 0;
+  min-width: 0;
 }
 
 /* File explorer (lives inside the left sidebar) ---------------------------- */

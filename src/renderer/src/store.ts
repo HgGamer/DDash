@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type {
   ActiveSelection,
+  AgentDef,
   DocsViewSettings,
   GitViewSettings,
   IntegratedTerminalSettings,
@@ -22,7 +23,7 @@ import {
   DEFAULT_TODO_VIEW_SETTINGS,
   DEFAULT_WEB_ACCESS_SETTINGS,
 } from '@shared/types';
-import { compositeKey } from '@shared/ipc';
+import { compositeKey, parseCompositeKey } from '@shared/ipc';
 
 export interface TabState {
   status: PtySessionStatus;
@@ -104,6 +105,15 @@ interface AppStore {
   /** Which content tab is active per selection: a doc relPath, or null/absent
    *  for the Claude Code terminal. */
   activeDocByKey: Record<string, string | null>;
+  /** User-defined custom agents (name + command), configured in settings. */
+  agents: AgentDef[];
+  /** Open custom-agent tabs (agent ids) per selection compositeKey. The
+   *  "Claude Code" terminal is always implicitly available and not listed. */
+  openAgentsByKey: Record<string, string[]>;
+  /** Which custom agent is currently shown per selection, or null/absent when
+   *  the Claude Code terminal or a doc is shown. Takes precedence over
+   *  activeDocByKey when set. */
+  activeAgentByKey: Record<string, string | null>;
   /** Which view the side panel shows (selected from the activity bar). */
   sidebarView: 'projects' | 'files' | 'git' | 'todos';
   /** Whether the side panel is expanded. */
@@ -112,7 +122,7 @@ interface AppStore {
    *  unsaved-changes warning on app close. */
   dirtyFiles: Record<string, true>;
   settingsModalOpen: boolean;
-  settingsModalTab: 'terminal' | 'notifications' | 'git' | 'integrated-terminal' | 'updates' | 'web-access';
+  settingsModalTab: 'terminal' | 'notifications' | 'git' | 'integrated-terminal' | 'agents' | 'updates' | 'web-access';
 
   setProjects: (projects: Project[]) => void;
   setActive: (active: ActiveSelection | null) => void;
@@ -127,6 +137,7 @@ interface AppStore {
   setDocsView: (s: DocsViewSettings) => void;
   setIntegratedTerminal: (s: IntegratedTerminalSettings) => void;
   setWebAccess: (s: WebAccessSettings) => void;
+  setAgents: (agents: AgentDef[]) => void;
   setShellTabsFor: (selectionKey: string, tabs: ShellTab[]) => void;
   addShellTab: (selectionKey: string, tab: ShellTab) => void;
   removeShellTab: (selectionKey: string, tabId: string) => void;
@@ -147,11 +158,18 @@ interface AppStore {
   closeDoc: (selectionKey: string, relPath: string) => void;
   /** Switch the active content tab (a doc relPath, or null for the terminal). */
   setActiveDoc: (selectionKey: string, relPath: string | null) => void;
+  /** Open a custom agent as a content tab for the selection and make it active. */
+  openAgent: (selectionKey: string, agentId: string) => void;
+  /** Close an agent tab; kills its session and falls back to a neighbor or
+   *  the Claude Code terminal. */
+  closeAgent: (selectionKey: string, agentId: string) => void;
+  /** Make a custom agent the active content tab (it must already be open). */
+  setActiveAgent: (selectionKey: string, agentId: string) => void;
   /** Activity-bar click: select a view (opening the panel), or collapse it when
    *  the already-active view's icon is clicked again. */
   selectSidebarView: (view: 'projects' | 'files' | 'git' | 'todos') => void;
   setFileDirty: (id: string, dirty: boolean) => void;
-  openSettings: (tab?: 'terminal' | 'notifications' | 'git' | 'integrated-terminal' | 'updates' | 'web-access') => void;
+  openSettings: (tab?: 'terminal' | 'notifications' | 'git' | 'integrated-terminal' | 'agents' | 'updates' | 'web-access') => void;
   closeSettings: () => void;
 }
 
@@ -175,6 +193,9 @@ export const useStore = create<AppStore>((set) => ({
   gitStash: null,
   docTabs: {},
   activeDocByKey: {},
+  agents: [],
+  openAgentsByKey: {},
+  activeAgentByKey: {},
   sidebarView: 'projects',
   sidebarOpen: true,
   dirtyFiles: {},
@@ -217,11 +238,22 @@ export const useStore = create<AppStore>((set) => ({
       const { [key]: _omit, ...rest } = s.tabs;
       const { [key]: _dt, ...docTabs } = s.docTabs;
       const { [key]: _ad, ...activeDocByKey } = s.activeDocByKey;
+      const { [key]: openAgents, ...openAgentsByKey } = s.openAgentsByKey;
+      const { [key]: _aa, ...activeAgentByKey } = s.activeAgentByKey;
+      // Kill any agent sessions belonging to the removed selection.
+      if (openAgents?.length) {
+        const { projectId, worktreeId } = parseCompositeKey(key);
+        for (const agentId of openAgents) {
+          void window.api.pty.close({ projectId, worktreeId, agentId });
+        }
+      }
       return {
         tabs: rest,
         mountedKeys: s.mountedKeys.filter((m) => m !== key),
         docTabs,
         activeDocByKey,
+        openAgentsByKey,
+        activeAgentByKey,
       };
     }),
   clearProjectAndWorktrees: (projectId) =>
@@ -247,12 +279,27 @@ export const useStore = create<AppStore>((set) => ({
       for (const [k, v] of Object.entries(s.activeDocByKey)) {
         if (!isMatch(k)) activeDocByKey[k] = v;
       }
+      const openAgentsByKey: Record<string, string[]> = {};
+      for (const [k, v] of Object.entries(s.openAgentsByKey)) {
+        if (isMatch(k)) {
+          const { projectId: pid, worktreeId } = parseCompositeKey(k);
+          for (const agentId of v) void window.api.pty.close({ projectId: pid, worktreeId, agentId });
+        } else {
+          openAgentsByKey[k] = v;
+        }
+      }
+      const activeAgentByKey: Record<string, string | null> = {};
+      for (const [k, v] of Object.entries(s.activeAgentByKey)) {
+        if (!isMatch(k)) activeAgentByKey[k] = v;
+      }
       return {
         tabs,
         mountedKeys: s.mountedKeys.filter((k) => !isMatch(k)),
         shellTabs,
         docTabs,
         activeDocByKey,
+        openAgentsByKey,
+        activeAgentByKey,
       };
     }),
   setTerminalStyle: (s) => set({ terminalStyle: s }),
@@ -262,6 +309,25 @@ export const useStore = create<AppStore>((set) => ({
   setDocsView: (s) => set({ docsView: s }),
   setIntegratedTerminal: (s) => set({ integratedTerminal: s }),
   setWebAccess: (s) => set({ webAccess: s }),
+  setAgents: (agents) =>
+    set((s) => {
+      // If a configured agent was removed, drop any open tabs referencing it.
+      const valid = new Set(agents.map((a) => a.id));
+      let changedOpen = false;
+      const openAgentsByKey: Record<string, string[]> = {};
+      for (const [k, ids] of Object.entries(s.openAgentsByKey)) {
+        const next = ids.filter((id) => valid.has(id));
+        if (next.length !== ids.length) changedOpen = true;
+        openAgentsByKey[k] = next;
+      }
+      const activeAgentByKey: Record<string, string | null> = {};
+      for (const [k, id] of Object.entries(s.activeAgentByKey)) {
+        activeAgentByKey[k] = id && valid.has(id) ? id : null;
+      }
+      return changedOpen
+        ? { agents, openAgentsByKey, activeAgentByKey }
+        : { agents, activeAgentByKey };
+    }),
   setShellTabsFor: (selectionKey, tabs) =>
     set((s) => ({
       shellTabs: {
@@ -356,6 +422,8 @@ export const useStore = create<AppStore>((set) => ({
       return {
         docTabs: { ...s.docTabs, [selectionKey]: tabs },
         activeDocByKey: { ...s.activeDocByKey, [selectionKey]: relPath },
+        // A doc takes over the content area from any active agent.
+        activeAgentByKey: { ...s.activeAgentByKey, [selectionKey]: null },
       };
     }),
   closeDoc: (selectionKey, relPath) =>
@@ -372,7 +440,43 @@ export const useStore = create<AppStore>((set) => ({
       };
     }),
   setActiveDoc: (selectionKey, relPath) =>
-    set((s) => ({ activeDocByKey: { ...s.activeDocByKey, [selectionKey]: relPath } })),
+    set((s) => ({
+      activeDocByKey: { ...s.activeDocByKey, [selectionKey]: relPath },
+      // Selecting the Claude terminal (null) or a doc deactivates any agent.
+      activeAgentByKey: { ...s.activeAgentByKey, [selectionKey]: null },
+    })),
+  openAgent: (selectionKey, agentId) =>
+    set((s) => {
+      const prev = s.openAgentsByKey[selectionKey] ?? [];
+      const open = prev.includes(agentId) ? prev : [...prev, agentId];
+      return {
+        openAgentsByKey: { ...s.openAgentsByKey, [selectionKey]: open },
+        activeAgentByKey: { ...s.activeAgentByKey, [selectionKey]: agentId },
+        // An agent takes over the content area from any active doc.
+        activeDocByKey: { ...s.activeDocByKey, [selectionKey]: null },
+      };
+    }),
+  closeAgent: (selectionKey, agentId) =>
+    set((s) => {
+      const prev = s.openAgentsByKey[selectionKey] ?? [];
+      const idx = prev.indexOf(agentId);
+      const open = prev.filter((id) => id !== agentId);
+      const wasActive = s.activeAgentByKey[selectionKey] === agentId;
+      // Fall back to the neighbor agent, else the Claude/doc content (null).
+      const nextActive = wasActive ? open[idx - 1] ?? open[idx] ?? null : s.activeAgentByKey[selectionKey];
+      // Kill the underlying session.
+      const { projectId, worktreeId } = parseCompositeKey(selectionKey);
+      void window.api.pty.close({ projectId, worktreeId, agentId });
+      return {
+        openAgentsByKey: { ...s.openAgentsByKey, [selectionKey]: open },
+        activeAgentByKey: { ...s.activeAgentByKey, [selectionKey]: nextActive },
+      };
+    }),
+  setActiveAgent: (selectionKey, agentId) =>
+    set((s) => ({
+      activeAgentByKey: { ...s.activeAgentByKey, [selectionKey]: agentId },
+      activeDocByKey: { ...s.activeDocByKey, [selectionKey]: null },
+    })),
   selectSidebarView: (view) =>
     set((s) => (s.sidebarView === view ? { sidebarOpen: !s.sidebarOpen } : { sidebarView: view, sidebarOpen: true })),
   setFileDirty: (id, dirty) =>

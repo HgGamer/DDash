@@ -4,21 +4,30 @@ import { FitAddon } from 'xterm-addon-fit';
 import { WebLinksAddon } from 'xterm-addon-web-links';
 import type { Project, PtySpawnError, Worktree } from '@shared/types';
 import { resolveTerminalStyleOptions } from '@shared/types';
-import { compositeKey } from '@shared/ipc';
+import { agentKey, compositeKey } from '@shared/ipc';
 import { useStore } from '../store';
 
 interface Props {
   project: Project;
   worktree: Worktree | null;
   active: boolean;
+  /** When set, this pane runs a custom agent rather than the Claude session. */
+  agentId?: string;
+  /** Display label for the agent (used in status/error overlays). */
+  agentLabel?: string;
 }
 
 const CLAUDE_PROMPT_RE = /ask me something|Do you want to|❯\s*\d+\.\s/;
 
-export function TerminalPane({ project, worktree, active }: Props) {
-  const key = compositeKey(project.id, worktree?.id ?? null);
+export function TerminalPane({ project, worktree, active, agentId, agentLabel }: Props) {
+  const aid = agentId ?? null;
+  // Selection key (Claude session / tab cleanup) vs. session key (this pane's
+  // PTY + tab state — distinct per agent so agents don't clobber Claude).
+  const selectionKey = compositeKey(project.id, worktree?.id ?? null);
+  const key = agentKey(project.id, worktree?.id ?? null, aid);
   const worktreeId = worktree?.id ?? null;
   const cwd = worktree?.path ?? project.path;
+  const sessionLabel = agentLabel ?? 'Claude';
   const displayName = worktree ? `${project.name} · ${worktree.branch}` : project.name;
 
   const hostRef = useRef<HTMLDivElement>(null);
@@ -62,15 +71,17 @@ export function TerminalPane({ project, worktree, active }: Props) {
     };
 
     const disposeData = term.onData((data) => {
-      window.api.pty.write({ projectId: project.id, worktreeId, data });
+      window.api.pty.write({ projectId: project.id, worktreeId, agentId: aid, data });
     });
     const disposeResize = term.onResize(({ cols, rows }) => {
-      window.api.pty.resize({ projectId: project.id, worktreeId, cols, rows });
+      window.api.pty.resize({ projectId: project.id, worktreeId, agentId: aid, cols, rows });
     });
 
     let scanTimer: ReturnType<typeof setTimeout> | null = null;
     const scanForPrompt = () => {
       scanTimer = null;
+      // The prompt/attention heuristic is Claude-specific; skip for agents.
+      if (aid) return;
       const cur = useStore.getState().activeId;
       const isActiveTab =
         !!cur && cur.projectId === project.id && (cur.worktreeId ?? null) === worktreeId;
@@ -99,8 +110,14 @@ export function TerminalPane({ project, worktree, active }: Props) {
       scanTimer = setTimeout(scanForPrompt, 150);
     });
 
-    const matches = (ev: { projectId: string; worktreeId?: string | null }): boolean =>
-      ev.projectId === project.id && (ev.worktreeId ?? null) === worktreeId;
+    const matches = (ev: {
+      projectId: string;
+      worktreeId?: string | null;
+      agentId?: string | null;
+    }): boolean =>
+      ev.projectId === project.id &&
+      (ev.worktreeId ?? null) === worktreeId &&
+      (ev.agentId ?? null) === aid;
 
     const offPtyData = window.api.pty.onData((ev) => {
       if (matches(ev)) term.write(ev.data);
@@ -132,7 +149,7 @@ export function TerminalPane({ project, worktree, active }: Props) {
       if (paths.length === 0) return;
       e.preventDefault();
       const text = paths.map(shellQuote).join(' ') + ' ';
-      window.api.pty.write({ projectId: project.id, worktreeId, data: text });
+      window.api.pty.write({ projectId: project.id, worktreeId, agentId: aid, data: text });
       term.focus();
     };
     host.addEventListener('dragover', onDragOver);
@@ -156,7 +173,7 @@ export function TerminalPane({ project, worktree, active }: Props) {
       const cols = term.cols || 80;
       const rows = term.rows || 24;
       void (async () => {
-        const res = await window.api.pty.open({ projectId: project.id, worktreeId, cols, rows });
+        const res = await window.api.pty.open({ projectId: project.id, worktreeId, agentId: aid, cols, rows });
         if (res.ok) {
           upsertTab(key, { status: 'running' });
           setLocalError(null);
@@ -164,7 +181,7 @@ export function TerminalPane({ project, worktree, active }: Props) {
             safeFit();
             const t = termRef.current;
             if (t) {
-              window.api.pty.resize({ projectId: project.id, worktreeId, cols: t.cols, rows: t.rows });
+              window.api.pty.resize({ projectId: project.id, worktreeId, agentId: aid, cols: t.cols, rows: t.rows });
             }
           }, 400);
         } else if (res.error) {
@@ -240,7 +257,7 @@ export function TerminalPane({ project, worktree, active }: Props) {
     termRef.current.clear();
     termRef.current.write('\x1b[90m[starting new session…]\x1b[0m\r\n');
     const { cols, rows } = termRef.current;
-    const res = await window.api.pty.open({ projectId: project.id, worktreeId, cols, rows });
+    const res = await window.api.pty.open({ projectId: project.id, worktreeId, agentId: aid, cols, rows });
     if (res.ok) {
       upsertTab(key, { status: 'running', exitCode: undefined, error: undefined });
     } else if (res.error) {
@@ -273,7 +290,7 @@ export function TerminalPane({ project, worktree, active }: Props) {
                 window.alert(`Failed to remove worktree:\n${r.error}`);
                 return;
               }
-              useStore.getState().clearTab(key);
+              useStore.getState().clearTab(selectionKey);
               const list = await window.api.projects.list();
               useStore.getState().setProjects(list);
               const proj = list.find((p) => p.id === project.id);
@@ -305,7 +322,7 @@ export function TerminalPane({ project, worktree, active }: Props) {
         <div className="error-overlay">
           <div className="error-card">
             <h3 style={{ color: 'var(--warn)' }}>Session exited</h3>
-            <p>The Claude session for this {worktree ? 'worktree' : 'project'} has exited.</p>
+            <p>The {sessionLabel} session for this {worktree ? 'worktree' : 'project'} has exited.</p>
             <div className="actions">
               <button onClick={restart}>Start new session</button>
             </div>

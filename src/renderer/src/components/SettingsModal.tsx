@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type {
+  AgentDef,
   AutoUpdateChannel,
   AutoUpdateState,
   NotificationSettings,
@@ -36,7 +37,14 @@ const CURSOR_STYLES: Array<{ id: TerminalCursorStyle; label: string }> = [
   { id: 'bar', label: 'Bar' },
 ];
 
-type TabId = 'terminal' | 'notifications' | 'git' | 'integrated-terminal' | 'updates' | 'web-access';
+type TabId =
+  | 'terminal'
+  | 'notifications'
+  | 'git'
+  | 'integrated-terminal'
+  | 'agents'
+  | 'updates'
+  | 'web-access';
 
 export function SettingsModal({ onClose }: { onClose: () => void }) {
   const tab = useStore((s) => s.settingsModalTab);
@@ -90,6 +98,12 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
             Integrated terminal
           </button>
           <button
+            className={`settings-nav-item${tab === 'agents' ? ' active' : ''}`}
+            onClick={() => setTab('agents')}
+          >
+            Agents
+          </button>
+          <button
             className={`settings-nav-item${tab === 'updates' ? ' active' : ''}`}
             onClick={() => setTab('updates')}
           >
@@ -109,6 +123,8 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
             <NotificationsPanel />
           ) : tab === 'integrated-terminal' ? (
             <IntegratedTerminalPanel />
+          ) : tab === 'agents' ? (
+            <AgentsPanel />
           ) : tab === 'updates' ? (
             <UpdatesPanel />
           ) : tab === 'web-access' ? (
@@ -349,6 +365,75 @@ function IntegratedTerminalPanel() {
           Windows). Shortcut: <code>Ctrl/Cmd+`</code> toggles the panel;{' '}
           <code>Ctrl/Cmd+Shift+`</code> opens a new tab.
         </p>
+      </section>
+    </div>
+  );
+}
+
+function AgentsPanel() {
+  // Seed once from the store; this panel is the sole editor while open, so we
+  // keep a local draft (which may hold half-typed rows) and persist a
+  // sanitized copy on every change.
+  const [rows, setRows] = useState<AgentDef[]>(() => useStore.getState().agents.map((a) => ({ ...a })));
+
+  const persist = (next: AgentDef[]) => {
+    setRows(next);
+    void window.api.settings.setAgents(next);
+  };
+
+  const addRow = () => {
+    const id = `a_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+    persist([...rows, { id, name: '', command: '' }]);
+  };
+  const updateRow = (id: string, patch: Partial<AgentDef>) =>
+    persist(rows.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+  const removeRow = (id: string) => persist(rows.filter((r) => r.id !== id));
+
+  return (
+    <div className="settings-panel">
+      <section>
+        <h4>Agents</h4>
+        <p className="preset-desc">
+          Define extra agents to launch from the workspace tab bar alongside Claude Code. Each is
+          run through your login shell in the active project/worktree, so anything on your{' '}
+          <code>PATH</code> works (e.g. <code>opencode</code> or <code>omlx launch opencode</code>).
+        </p>
+        {rows.length === 0 && (
+          <p className="preset-desc">No agents yet. Add one below.</p>
+        )}
+        {rows.map((row) => (
+          <div className="field-row agent-row" key={row.id}>
+            <input
+              className="field-input"
+              type="text"
+              value={row.name}
+              placeholder="Name (e.g. opencode)"
+              aria-label="Agent name"
+              onChange={(e) => updateRow(row.id, { name: e.target.value })}
+            />
+            <input
+              className="field-input"
+              type="text"
+              value={row.command}
+              placeholder="Command (e.g. opencode)"
+              aria-label="Agent command"
+              onChange={(e) => updateRow(row.id, { command: e.target.value })}
+            />
+            <button
+              type="button"
+              className="danger"
+              aria-label={`Remove ${row.name || 'agent'}`}
+              onClick={() => removeRow(row.id)}
+            >
+              Remove
+            </button>
+          </div>
+        ))}
+        <div className="field-row">
+          <button type="button" onClick={addRow}>
+            Add agent
+          </button>
+        </div>
       </section>
     </div>
   );

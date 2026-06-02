@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ActiveSelection } from '@shared/types';
 import { compositeKey, parseCompositeKey } from '@shared/ipc';
 import { useStore } from '../store';
@@ -23,6 +23,9 @@ export function Workspace({ activeId }: Props) {
   const gitStash = useStore((s) => s.gitStash);
   const closeStash = useStore((s) => s.closeStash);
   const activeDocByKey = useStore((s) => s.activeDocByKey);
+  const agents = useStore((s) => s.agents);
+  const openAgentsByKey = useStore((s) => s.openAgentsByKey);
+  const activeAgentByKey = useStore((s) => s.activeAgentByKey);
   const workspaceRef = useRef<HTMLElement>(null);
   const workspaceHeight = useWorkspaceHeight(workspaceRef);
 
@@ -67,17 +70,44 @@ export function Workspace({ activeId }: Props) {
         <div className="workspace-terminals">
           {resolved.map(({ key, proj, worktree }) => {
             const active = key === activeKey;
+            const activeAgent = activeAgentByKey[key] ?? null;
+            const openAgents = openAgentsByKey[key] ?? [];
             return (
-              <div
-                key={key}
-                style={{
-                  position: 'absolute',
-                  inset: 0,
-                  visibility: active ? 'visible' : 'hidden',
-                  pointerEvents: active ? 'auto' : 'none',
-                }}
-              >
-                <TerminalPane project={proj} worktree={worktree} active={active} />
+              <div key={key} style={{ position: 'absolute', inset: 0 }}>
+                <div
+                  style={{
+                    position: 'absolute',
+                    inset: 0,
+                    visibility: active && !activeAgent ? 'visible' : 'hidden',
+                    pointerEvents: active && !activeAgent ? 'auto' : 'none',
+                  }}
+                >
+                  <TerminalPane project={proj} worktree={worktree} active={active && !activeAgent} />
+                </div>
+                {openAgents.map((agentId) => {
+                  const def = agents.find((a) => a.id === agentId);
+                  if (!def) return null;
+                  const agentActive = active && activeAgent === agentId;
+                  return (
+                    <div
+                      key={`${key}::${agentId}`}
+                      style={{
+                        position: 'absolute',
+                        inset: 0,
+                        visibility: agentActive ? 'visible' : 'hidden',
+                        pointerEvents: agentActive ? 'auto' : 'none',
+                      }}
+                    >
+                      <TerminalPane
+                        project={proj}
+                        worktree={worktree}
+                        active={agentActive}
+                        agentId={agentId}
+                        agentLabel={def.name}
+                      />
+                    </div>
+                  );
+                })}
               </div>
             );
           })}
@@ -136,23 +166,68 @@ function WorkspaceContentTabs({ activeId }: { activeId: ActiveSelection }) {
   const activeDocByKey = useStore((s) => s.activeDocByKey);
   const closeDoc = useStore((s) => s.closeDoc);
   const setActiveDoc = useStore((s) => s.setActiveDoc);
+  const agents = useStore((s) => s.agents);
+  const openAgentsByKey = useStore((s) => s.openAgentsByKey);
+  const activeAgentByKey = useStore((s) => s.activeAgentByKey);
+  const openAgent = useStore((s) => s.openAgent);
+  const closeAgent = useStore((s) => s.closeAgent);
+  const setActiveAgent = useStore((s) => s.setActiveAgent);
 
   const key = compositeKey(activeId.projectId, activeId.worktreeId);
   const docTabs = docTabsByKey[key] ?? [];
   const activeDoc = activeDocByKey[key] ?? null;
+  const openAgents = openAgentsByKey[key] ?? [];
+  const activeAgent = activeAgentByKey[key] ?? null;
 
   const basename = (p: string) => p.split('/').pop() ?? p;
+  const claudeActive = activeDoc === null && activeAgent === null;
 
   return (
     <header className="ws-header">
       <div className="ws-tabs">
         <button
           type="button"
-          className={`ws-tab ${activeDoc === null ? 'active' : ''}`}
+          className={`ws-tab ${claudeActive ? 'active' : ''}`}
           onClick={() => setActiveDoc(key, null)}
         >
           Claude Code
         </button>
+        {openAgents.map((agentId) => {
+          const def = agents.find((a) => a.id === agentId);
+          if (!def) return null;
+          return (
+            <span
+              key={agentId}
+              className={`ws-tab ws-tab-doc ${activeAgent === agentId ? 'active' : ''}`}
+              onAuxClick={(e) => {
+                if (e.button === 1) {
+                  e.preventDefault();
+                  closeAgent(key, agentId);
+                }
+              }}
+            >
+              <button
+                type="button"
+                className="ws-tab-label"
+                title={def.command}
+                onClick={() => setActiveAgent(key, agentId)}
+              >
+                {def.name}
+              </button>
+              <button
+                type="button"
+                className="ws-tab-close"
+                aria-label={`Close ${def.name}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  closeAgent(key, agentId);
+                }}
+              >
+                ✕
+              </button>
+            </span>
+          );
+        })}
         {docTabs.map((relPath) => (
           <span
             key={relPath}
@@ -187,6 +262,82 @@ function WorkspaceContentTabs({ activeId }: { activeId: ActiveSelection }) {
           </span>
         ))}
       </div>
+      <div className="ws-header-actions">
+        <AgentLauncher
+          agents={agents}
+          openAgentIds={openAgents}
+          onOpen={(agentId) => openAgent(key, agentId)}
+        />
+      </div>
     </header>
+  );
+}
+
+function AgentLauncher({
+  agents,
+  openAgentIds,
+  onOpen,
+}: {
+  agents: { id: string; name: string; command: string }[];
+  openAgentIds: string[];
+  onOpen: (agentId: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const openSettings = useStore((s) => s.openSettings);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    window.addEventListener('mousedown', onDown);
+    return () => window.removeEventListener('mousedown', onDown);
+  }, [open]);
+
+  return (
+    <div className="ws-agent-launcher" ref={ref}>
+      <button
+        type="button"
+        className="ws-tab ws-tab-add"
+        aria-label="Open an agent"
+        title="Open an agent"
+        onClick={() => setOpen((v) => !v)}
+      >
+        +
+      </button>
+      {open && (
+        <div className="ws-agent-menu" role="menu">
+          {agents.length === 0 ? (
+            <button
+              type="button"
+              className="ws-agent-menu-item ws-agent-menu-empty"
+              onClick={() => {
+                setOpen(false);
+                openSettings('agents');
+              }}
+            >
+              No agents configured — add one in Settings…
+            </button>
+          ) : (
+            agents.map((a) => (
+              <button
+                key={a.id}
+                type="button"
+                className="ws-agent-menu-item"
+                title={a.command}
+                onClick={() => {
+                  setOpen(false);
+                  onOpen(a.id);
+                }}
+              >
+                <span className="ws-agent-menu-name">{a.name}</span>
+                {openAgentIds.includes(a.id) && <span className="ws-agent-menu-hint">open</span>}
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
   );
 }

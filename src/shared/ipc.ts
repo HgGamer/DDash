@@ -1,5 +1,7 @@
 import type {
   ActiveSelection,
+  AgentDef,
+  AgentsSettings,
   AutoUpdateInfo,
   AutoUpdateSettings,
   GitViewSettings,
@@ -144,6 +146,11 @@ export const IPC = {
   SettingsSetDocsView: 'settings:setDocsView',
   SettingsDocsViewChanged: 'settings:docsViewChanged',
 
+  // Custom agents settings (renderer ↔ main)
+  SettingsGetAgents: 'settings:getAgents',
+  SettingsSetAgents: 'settings:setAgents',
+  SettingsAgentsChanged: 'settings:agentsChanged',
+
   // Auto-update (renderer ↔ main)
   AutoUpdateGetInfo: 'autoUpdate:getInfo',
   AutoUpdateGetSettings: 'autoUpdate:getSettings',
@@ -178,6 +185,19 @@ export function parseCompositeKey(key: string): { projectId: string; worktreeId:
   return { projectId: key.slice(0, i), worktreeId: key.slice(i + 1) };
 }
 
+// PTY session key. The built-in Claude Code session uses the bare composite
+// key (no agentId) so it stays identical to historical behavior. Custom agents
+// get their own keyspace suffix so multiple agents can run per selection
+// without colliding with Claude or each other.
+export function agentKey(
+  projectId: string,
+  worktreeId: string | null | undefined,
+  agentId?: string | null,
+): string {
+  const base = compositeKey(projectId, worktreeId);
+  return agentId ? `${base}::agent:${agentId}` : base;
+}
+
 // Request/response payloads
 export interface ProjectAddArgs {
   path: string;
@@ -210,40 +230,49 @@ export type BrowseTerminalStyleResult =
 export interface PtyOpenArgs {
   projectId: string;
   worktreeId?: string | null;
+  /** When set, launch this custom agent (looked up in settings) instead of the
+   *  built-in Claude Code session. */
+  agentId?: string | null;
   cols: number;
   rows: number;
 }
 export interface PtyWriteArgs {
   projectId: string;
   worktreeId?: string | null;
+  agentId?: string | null;
   data: string;
 }
 export interface PtyResizeArgs {
   projectId: string;
   worktreeId?: string | null;
+  agentId?: string | null;
   cols: number;
   rows: number;
 }
 export interface PtyCloseArgs {
   projectId: string;
   worktreeId?: string | null;
+  agentId?: string | null;
 }
 
 // Event payloads
 export interface PtyDataEvent {
   projectId: string;
   worktreeId?: string | null;
+  agentId?: string | null;
   data: string;
 }
 export interface PtyExitEvent {
   projectId: string;
   worktreeId?: string | null;
+  agentId?: string | null;
   exitCode: number | null;
   signal: number | null;
 }
 export interface PtyErrorEvent {
   projectId: string;
   worktreeId?: string | null;
+  agentId?: string | null;
   error: NonNullable<PtySpawnResult['error']>;
 }
 
@@ -615,6 +644,9 @@ export interface DashApi {
       patch: Partial<Omit<WebAccessSettings, 'version'>>,
     ): Promise<WebAccessSettings>;
     onWebAccessChanged(handler: (s: WebAccessSettings) => void): () => void;
+    getAgents(): Promise<AgentsSettings>;
+    setAgents(agents: AgentDef[]): Promise<AgentsSettings>;
+    onAgentsChanged(handler: (s: AgentsSettings) => void): () => void;
   };
   shell: {
     open(args: ShellOpenArgs): Promise<ShellOpenResult>;

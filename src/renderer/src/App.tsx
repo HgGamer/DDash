@@ -27,6 +27,7 @@ export function App() {
     setDocsView,
     setIntegratedTerminal,
     setWebAccess,
+    setAgents,
     openSettings,
     closeSettings,
     settingsModalOpen,
@@ -162,6 +163,15 @@ export function App() {
     const off = window.api.settings.onWebAccessChanged((s) => setWebAccess(s));
     return () => off();
   }, [setWebAccess]);
+
+  useEffect(() => {
+    void (async () => {
+      const current = await window.api.settings.getAgents();
+      setAgents(current.agents);
+    })();
+    const off = window.api.settings.onAgentsChanged((s) => setAgents(s.agents));
+    return () => off();
+  }, [setAgents]);
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => {

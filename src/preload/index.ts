@@ -47,6 +47,8 @@ import {
 } from '@shared/ipc';
 import type {
   ActiveSelection,
+  AgentDef,
+  AgentsSettings,
   AutoUpdateInfo,
   AutoUpdateSettings,
   DocsViewSettings,
@@ -135,6 +137,9 @@ const api: DashApi = {
       ipcRenderer.invoke(IPC.SettingsSetWebAccess, patch),
     onWebAccessChanged: (h) =>
       subscribe<WebAccessSettings>(IPC.SettingsWebAccessChanged, h),
+    getAgents: () => ipcRenderer.invoke(IPC.SettingsGetAgents),
+    setAgents: (agents: AgentDef[]) => ipcRenderer.invoke(IPC.SettingsSetAgents, agents),
+    onAgentsChanged: (h) => subscribe<AgentsSettings>(IPC.SettingsAgentsChanged, h),
   },
   shell: {
     open: (args: ShellOpenArgs) => ipcRenderer.invoke(IPC.ShellOpen, args),

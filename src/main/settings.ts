@@ -1,5 +1,7 @@
 import { EventEmitter } from 'node:events';
 import type {
+  AgentDef,
+  AgentsSettings,
   AutoUpdateSettings,
   GitViewSettings,
   IntegratedTerminalSettings,
@@ -41,6 +43,7 @@ export interface SettingsManagerEvents {
   integratedTerminalChanged: (settings: IntegratedTerminalSettings) => void;
   autoUpdateChanged: (settings: AutoUpdateSettings) => void;
   webAccessChanged: (settings: WebAccessSettings) => void;
+  agentsChanged: (settings: AgentsSettings) => void;
 }
 
 export class SettingsManager extends EventEmitter {
@@ -232,6 +235,29 @@ export class SettingsManager extends EventEmitter {
       draft.integratedTerminal = next;
     });
     this.emit('integratedTerminalChanged', next);
+    return next;
+  }
+
+  getAgents(): AgentsSettings {
+    const raw = this.store.get().agents;
+    if (!raw || !Array.isArray(raw.agents)) return { version: 1, agents: [] };
+    return { version: 1, agents: raw.agents.map((a) => ({ ...a })) };
+  }
+
+  setAgents(agents: AgentDef[]): AgentsSettings {
+    // Sanitize: keep only well-formed entries with a non-empty name + command.
+    const cleaned: AgentDef[] = (Array.isArray(agents) ? agents : [])
+      .map((a) => ({
+        id: typeof a?.id === 'string' && a.id ? a.id : '',
+        name: typeof a?.name === 'string' ? a.name.trim() : '',
+        command: typeof a?.command === 'string' ? a.command.trim() : '',
+      }))
+      .filter((a) => a.id && a.name && a.command);
+    const next: AgentsSettings = { version: 1, agents: cleaned };
+    this.store.update((draft) => {
+      draft.agents = next;
+    });
+    this.emit('agentsChanged', next);
     return next;
   }
 

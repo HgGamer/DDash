@@ -239,6 +239,28 @@ export const DEFAULT_INTEGRATED_TERMINAL_SETTINGS: IntegratedTerminalSettings = 
 export const INTEGRATED_TERMINAL_MIN_HEIGHT = 120;
 export const INTEGRATED_TERMINAL_MAX_HEIGHT_RATIO = 0.8;
 
+/** A user-defined agent that can be launched in the workspace alongside the
+ *  built-in Claude Code session. `command` is run through the user's login
+ *  shell (so PATH and aliases resolve) in the selected project/worktree cwd. */
+export interface AgentDef {
+  /** Stable opaque id used as part of the PTY session key. */
+  id: string;
+  /** Display name shown on the workspace tab (e.g. "opencode"). */
+  name: string;
+  /** Shell command line to launch (e.g. "opencode" or "omlx launch opencode"). */
+  command: string;
+}
+
+export interface AgentsSettings {
+  version: 1;
+  agents: AgentDef[];
+}
+
+export const DEFAULT_AGENTS_SETTINGS: AgentsSettings = {
+  version: 1,
+  agents: [],
+};
+
 export type AutoUpdateChannel = 'stable' | 'beta';
 
 export interface AutoUpdateSettings {
@@ -338,6 +360,7 @@ export interface AppState {
   integratedTerminal: IntegratedTerminalSettings;
   autoUpdate: AutoUpdateSettings;
   webAccess: WebAccessSettings;
+  agents: AgentsSettings;
 }
 
 export const DEFAULT_WINDOW_STATE: WindowState = {
@@ -361,6 +384,7 @@ export const DEFAULT_APP_STATE: AppState = {
   integratedTerminal: DEFAULT_INTEGRATED_TERMINAL_SETTINGS,
   autoUpdate: DEFAULT_AUTO_UPDATE_SETTINGS,
   webAccess: DEFAULT_WEB_ACCESS_SETTINGS,
+  agents: DEFAULT_AGENTS_SETTINGS,
 };
 
 export type PtySessionStatus = 'not-started' | 'running' | 'exited';

@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import {
+  DEFAULT_AGENTS_SETTINGS,
   DEFAULT_APP_STATE,
   DEFAULT_AUTO_UPDATE_SETTINGS,
   DEFAULT_GIT_VIEW_SETTINGS,
@@ -20,6 +21,8 @@ import {
   DOCS_VIEW_MAX_WIDTH,
   DOCS_VIEW_MIN_WIDTH,
   type ActiveSelection,
+  type AgentDef,
+  type AgentsSettings,
   type AppState,
   type AutoUpdateSettings,
   type DocsViewSettings,
@@ -167,6 +170,7 @@ export class JsonStore {
       integratedTerminal: migrateIntegratedTerminal(r.integratedTerminal),
       autoUpdate: migrateAutoUpdate(r.autoUpdate),
       webAccess: migrateWebAccess(r.webAccess),
+      agents: migrateAgents(r.agents),
     };
   }
 }
@@ -358,6 +362,24 @@ function migrateAutoUpdate(raw: unknown): AutoUpdateSettings {
     channel,
     lastCheckedAt: typeof r.lastCheckedAt === 'string' ? r.lastCheckedAt : null,
   };
+}
+
+function migrateAgents(raw: unknown): AgentsSettings {
+  if (!raw || typeof raw !== 'object') return { ...DEFAULT_AGENTS_SETTINGS };
+  const r = raw as Partial<AgentsSettings>;
+  const agents: AgentDef[] = Array.isArray(r.agents)
+    ? (r.agents as unknown[])
+        .map((a): AgentDef | null => {
+          if (!a || typeof a !== 'object') return null;
+          const o = a as Record<string, unknown>;
+          if (typeof o.id !== 'string' || typeof o.name !== 'string' || typeof o.command !== 'string') {
+            return null;
+          }
+          return { id: o.id, name: o.name, command: o.command };
+        })
+        .filter((a): a is AgentDef => a !== null)
+    : [];
+  return { version: 1, agents };
 }
 
 function migrateWebAccess(raw: unknown): WebAccessSettings {
