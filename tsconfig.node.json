@@ -25,5 +25,6 @@
     "src/shared/**/*.ts",
     "electron.vite.config.ts",
     "test/**/*.ts"
-  ]
+  ],
+  "exclude": ["test/**/*.dom.test.ts"]
 }

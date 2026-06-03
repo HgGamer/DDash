@@ -1,13 +1,41 @@
 import { app, BrowserWindow, Menu, type MenuItemConstructorOptions } from 'electron';
 import { IPC } from '@shared/ipc';
 import type { AutoUpdater } from './auto-updater';
+import type { SettingsManager } from './settings';
 
 export function installAppMenu(
   getWindow: () => BrowserWindow | null,
   getUpdater: () => AutoUpdater | null = () => null,
+  settings?: SettingsManager,
+): void {
+  const build = (): void => doInstall(getWindow, getUpdater, settings, build);
+  build();
+}
+
+function doInstall(
+  getWindow: () => BrowserWindow | null,
+  getUpdater: () => AutoUpdater | null,
+  settings: SettingsManager | undefined,
+  rebuild: () => void,
 ): void {
   const isMac = process.platform === 'darwin';
   const isDev = !app.isPackaged;
+  const webAccess = settings?.getWebAccess();
+  if (settings && !(rebuild as { _wired?: boolean })._wired) {
+    settings.on('webAccessChanged', () => rebuild());
+    (rebuild as { _wired?: boolean })._wired = true;
+  }
+  const webAccessItem: MenuItemConstructorOptions | null = settings && webAccess
+    ? {
+        label: 'Web access (LAN)',
+        type: 'checkbox',
+        checked: webAccess.enabled,
+        enabled: webAccess.password.length > 0,
+        click: () => {
+          settings.setWebAccess({ enabled: !webAccess.enabled });
+        },
+      }
+    : null;
   // Disable the menu item on builds where the updater is a no-op so users
   // don't get a misleading "checking" spinner that never finds anything.
   const updaterEnabled = (() => {
@@ -49,6 +77,7 @@ export function installAppMenu(
                 accelerator: 'Cmd+,',
                 click: () => send(IPC.MenuOpenSettings),
               },
+              ...(webAccessItem ? [{ type: 'separator' } as MenuItemConstructorOptions, webAccessItem] : []),
               { type: 'separator' },
               { role: 'services' },
               { type: 'separator' },
@@ -101,6 +130,7 @@ export function installAppMenu(
                 accelerator: 'Ctrl+,',
                 click: () => send(IPC.MenuOpenSettings),
               },
+              ...(webAccessItem ? [webAccessItem] : []),
               { type: 'separator' },
             ] as MenuItemConstructorOptions[])),
         { role: 'togglefullscreen' },

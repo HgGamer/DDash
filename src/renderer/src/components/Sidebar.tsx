@@ -3,6 +3,10 @@ import type { ActiveSelection, Project } from '@shared/types';
 import { compositeKey } from '@shared/ipc';
 import { useStore } from '../store';
 import { removeWorktreeWithConfirm } from '../lib/removeWorktree';
+import { monogramFor } from '../lib/monogram';
+import { FileExplorer } from './FileExplorer';
+import { GitView } from './GitView';
+import { TodoView } from './TodoView';
 
 interface Props {
   activeId: ActiveSelection | null;
@@ -19,17 +23,14 @@ interface ContextMenuState {
   worktreeId: string | null;
 }
 
-const EXPANDED_KEY = 'dash.sidebar.expanded';
+const WIDTH_KEY = 'dash.sidebar.width';
+const MIN_WIDTH = 220;
+const MAX_WIDTH = 640;
+const DEFAULT_WIDTH = 260;
 
-function loadExpanded(): Record<string, boolean> {
-  try {
-    const raw = localStorage.getItem(EXPANDED_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw) as unknown;
-    return parsed && typeof parsed === 'object' ? (parsed as Record<string, boolean>) : {};
-  } catch {
-    return {};
-  }
+function loadWidth(): number {
+  const raw = Number(localStorage.getItem(WIDTH_KEY));
+  return Number.isFinite(raw) && raw >= MIN_WIDTH && raw <= MAX_WIDTH ? raw : DEFAULT_WIDTH;
 }
 
 export function Sidebar({ activeId, onActivate, onAddProject, onRefresh, onNewWorktree }: Props) {
@@ -37,21 +38,43 @@ export function Sidebar({ activeId, onActivate, onAddProject, onRefresh, onNewWo
   const tabs = useStore((s) => s.tabs);
   const clearTab = useStore((s) => s.clearTab);
   const clearProjectAndWorktrees = useStore((s) => s.clearProjectAndWorktrees);
+  const sidebarView = useStore((s) => s.sidebarView);
+  const openDoc = useStore((s) => s.openDoc);
+  const activeDocByKey = useStore((s) => s.activeDocByKey);
 
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
   const [dragId, setDragId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
-  const [expanded, setExpanded] = useState<Record<string, boolean>>(() => loadExpanded());
-
+  const [width, setWidth] = useState(loadWidth);
+  const widthRef = useRef(width);
   useEffect(() => {
-    try {
-      localStorage.setItem(EXPANDED_KEY, JSON.stringify(expanded));
-    } catch {
-      /* ignore quota / disabled storage */
-    }
-  }, [expanded]);
+    widthRef.current = width;
+  }, [width]);
+
+  const onResizeDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = widthRef.current;
+    const onMove = (ev: MouseEvent) => {
+      setWidth(Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, startW + (ev.clientX - startX))));
+    };
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      try {
+        localStorage.setItem(WIDTH_KEY, String(widthRef.current));
+      } catch {
+        /* ignore quota / disabled storage */
+      }
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  };
+  // Optimistic per-project collapse overrides so the chevron feels instant; the
+  // persisted source of truth is `project.worktreesCollapsed` in the store.
+  const [collapseOverride, setCollapseOverride] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     if (!menu) return;
@@ -63,6 +86,23 @@ export function Sidebar({ activeId, onActivate, onAddProject, onRefresh, onNewWo
       window.removeEventListener('blur', close);
     };
   }, [menu]);
+
+  const isCollapsed = (proj: Project): boolean =>
+    collapseOverride[proj.id] ?? proj.worktreesCollapsed ?? false;
+
+  const setCollapsed = (projectId: string, collapsed: boolean) => {
+    setCollapseOverride((s) => ({ ...s, [projectId]: collapsed }));
+    void window.api.projects.setWorktreesCollapsed({ id: projectId, collapsed });
+  };
+
+  /** Count of a project's tabs (primary + worktrees) flagged needsAttention. */
+  const attentionCount = (proj: Project): number => {
+    let n = tabs[compositeKey(proj.id, null)]?.needsAttention ? 1 : 0;
+    for (const wt of proj.worktrees) {
+      if (tabs[compositeKey(proj.id, wt.id)]?.needsAttention) n++;
+    }
+    return n;
+  };
 
   const commitRename = async (id: string) => {
     const name = renameValue.trim();
@@ -157,154 +197,222 @@ export function Sidebar({ activeId, onActivate, onAddProject, onRefresh, onNewWo
     await onRefresh();
   };
 
+  const key = activeId ? compositeKey(activeId.projectId, activeId.worktreeId) : null;
+  const activeDocRel = key ? activeDocByKey[key] ?? null : null;
+
   return (
-    <aside className="sidebar">
-      <div className="sidebar-header">
-        <h1>Projects</h1>
-        <button
-          type="button"
-          className="header-add"
-          onClick={onAddProject}
-          title="Add project"
-          aria-label="Add project"
-        >
-          +
-        </button>
-      </div>
-      <div className="project-list">
-        {projects.map((proj) => {
-          const projKey = compositeKey(proj.id, null);
-          const tab = tabs[projKey];
-          const status = tab?.status ?? 'not-started';
-          const isActive = activeId?.projectId === proj.id && activeId.worktreeId == null;
-          const isRenaming = renamingId === proj.id;
-          const hasWorktrees = proj.worktrees.length > 0;
-          const isExpanded = expanded[proj.id] ?? false;
-          return (
-            <div key={proj.id}>
-              <div
-                className={[
-                  'project-row',
-                  isActive ? 'active' : '',
-                  dragOverId === proj.id ? 'drag-over' : '',
-                  tab?.needsAttention ? 'needs-attention' : '',
-                ]
-                  .filter(Boolean)
-                  .join(' ')}
-                draggable={!isRenaming}
-                onDragStart={(e) => onDragStart(e, proj.id)}
-                onDragOver={(e) => onDragOver(e, proj.id)}
-                onDragLeave={() => setDragOverId((cur) => (cur === proj.id ? null : cur))}
-                onDrop={(e) => onDrop(e, proj.id)}
-                onClick={() => {
-                  if (!isRenaming) onActivate({ projectId: proj.id, worktreeId: null });
-                }}
-                onDoubleClick={() => {
-                  setRenamingId(proj.id);
-                  setRenameValue(proj.name);
-                }}
-                onContextMenu={(e) => {
-                  e.preventDefault();
-                  setMenu({ x: e.clientX, y: e.clientY, projectId: proj.id, worktreeId: null });
-                }}
-                title={proj.path}
-              >
-                <button
-                  type="button"
-                  className={`disclosure ${hasWorktrees ? '' : 'invisible'}`}
-                  aria-label={isExpanded ? 'Collapse' : 'Expand'}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setExpanded((s) => ({ ...s, [proj.id]: !isExpanded }));
+    <aside className="sidebar" style={{ width }}>
+      {(sidebarView === 'projects' || sidebarView === 'files') && (
+        <div className="sidebar-header">
+          <h1>{sidebarView === 'files' ? 'Files' : 'Projects'}</h1>
+          {sidebarView === 'projects' && (
+            <button
+              type="button"
+              className="header-add"
+              onClick={onAddProject}
+              title="Add project"
+              aria-label="Add project"
+            >
+              +
+            </button>
+          )}
+        </div>
+      )}
+      {sidebarView === 'git' ? (
+        <GitView active={activeId} isWorktreeTab={!!activeId?.worktreeId} />
+      ) : sidebarView === 'todos' ? (
+        <TodoView active={activeId} />
+      ) : sidebarView === 'files' ? (
+        activeId ? (
+          <FileExplorer
+            projectId={activeId.projectId}
+            activeRelPath={activeDocRel}
+            onOpenFile={(relPath) => {
+              if (key) openDoc(key, relPath);
+            }}
+          />
+        ) : (
+          <div className="sidebar-empty">
+            <div className="sidebar-empty-card">
+              <p className="sidebar-empty-text">Select a project to browse its files.</p>
+            </div>
+          </div>
+        )
+      ) : projects.length === 0 ? (
+        <div className="sidebar-empty">
+          <div className="sidebar-empty-card">
+            <div className="sidebar-empty-title">No projects yet</div>
+            <p className="sidebar-empty-text">
+              Add a project folder to start a Claude session in it.
+            </p>
+            <button type="button" className="btn-primary" onClick={onAddProject}>
+              Add project
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="project-list">
+          {projects.map((proj) => {
+            const projKey = compositeKey(proj.id, null);
+            const tab = tabs[projKey];
+            const status = tab?.status ?? 'not-started';
+            const isActive = activeId?.projectId === proj.id && activeId.worktreeId == null;
+            const isRenaming = renamingId === proj.id;
+            const hasWorktrees = proj.worktrees.length > 0;
+            const collapsed = isCollapsed(proj);
+            const mono = monogramFor(proj.id, proj.name);
+            const attention = attentionCount(proj);
+            return (
+              <div key={proj.id}>
+                <div
+                  className={[
+                    'sb-row',
+                    isActive ? 'active' : '',
+                    dragOverId === proj.id ? 'drag-over' : '',
+                    tab?.needsAttention ? 'needs-attention' : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' ')}
+                  draggable={!isRenaming}
+                  onDragStart={(e) => onDragStart(e, proj.id)}
+                  onDragOver={(e) => onDragOver(e, proj.id)}
+                  onDragLeave={() => setDragOverId((cur) => (cur === proj.id ? null : cur))}
+                  onDrop={(e) => onDrop(e, proj.id)}
+                  onClick={() => {
+                    if (!isRenaming) onActivate({ projectId: proj.id, worktreeId: null });
                   }}
+                  onDoubleClick={() => {
+                    setRenamingId(proj.id);
+                    setRenameValue(proj.name);
+                  }}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    setMenu({ x: e.clientX, y: e.clientY, projectId: proj.id, worktreeId: null });
+                  }}
+                  title={proj.path}
                 >
-                  {hasWorktrees ? (isExpanded ? '▼' : '▶') : ''}
-                </button>
-                <span className={`status-dot ${status}`} />
-                <div className="name">
-                  {isRenaming ? (
-                    <input
-                      autoFocus
-                      value={renameValue}
-                      onChange={(e) => setRenameValue(e.target.value)}
-                      onBlur={() => void commitRename(proj.id)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') void commitRename(proj.id);
-                        if (e.key === 'Escape') {
-                          setRenamingId(null);
-                          setRenameValue('');
-                        }
-                      }}
-                      onClick={(e) => e.stopPropagation()}
-                    />
-                  ) : (
-                    <>
-                      <div>{proj.name}</div>
-                      <div className="path">{proj.path}</div>
-                    </>
-                  )}
-                </div>
-                {proj.isGitRepo && !isRenaming && (
                   <button
                     type="button"
-                    className="row-action"
-                    title="New worktree"
+                    className={`sb-chevron ${hasWorktrees ? '' : 'invisible'}`}
+                    aria-label={collapsed ? 'Expand' : 'Collapse'}
                     onClick={(e) => {
                       e.stopPropagation();
-                      onNewWorktree(proj.id);
-                      setExpanded((s) => ({ ...s, [proj.id]: true }));
+                      setCollapsed(proj.id, !collapsed);
                     }}
                   >
-                    +
+                    {hasWorktrees ? (collapsed ? '▸' : '▾') : ''}
                   </button>
-                )}
-              </div>
-              {isExpanded &&
-                proj.worktrees.map((wt) => {
-                  const wtKey = compositeKey(proj.id, wt.id);
-                  const wtTab = tabs[wtKey];
-                  const wtStatus = wtTab?.status ?? 'not-started';
-                  const wtActive =
-                    activeId?.projectId === proj.id && activeId.worktreeId === wt.id;
-                  return (
-                    <div
-                      key={wt.id}
-                      className={[
-                        'project-row',
-                        'worktree-row',
-                        wtActive ? 'active' : '',
-                        wtTab?.needsAttention ? 'needs-attention' : '',
-                        wt.status === 'missing' ? 'missing' : '',
-                      ]
-                        .filter(Boolean)
-                        .join(' ')}
-                      onClick={() => onActivate({ projectId: proj.id, worktreeId: wt.id })}
-                      onContextMenu={(e) => {
-                        e.preventDefault();
-                        setMenu({
-                          x: e.clientX,
-                          y: e.clientY,
-                          projectId: proj.id,
-                          worktreeId: wt.id,
-                        });
-                      }}
-                      title={wt.path}
-                    >
-                      <span className="disclosure invisible" />
-                      <span className={`status-dot ${wtStatus}`} />
-                      <div className="name">
-                        <div className="worktree-branch">{wt.branch}</div>
-                        {wt.status === 'missing' && (
-                          <div className="path warn">missing on disk</div>
-                        )}
-                      </div>
+                  <span
+                    className={`sb-avatar status-${status}`}
+                    style={{ background: mono.tint }}
+                    aria-hidden="true"
+                  >
+                    {mono.initials}
+                  </span>
+                  <div className="sb-text">
+                    {isRenaming ? (
+                      <input
+                        className="sb-rename-input"
+                        autoFocus
+                        value={renameValue}
+                        onChange={(e) => setRenameValue(e.target.value)}
+                        onBlur={() => void commitRename(proj.id)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') void commitRename(proj.id);
+                          if (e.key === 'Escape') {
+                            setRenamingId(null);
+                            setRenameValue('');
+                          }
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    ) : (
+                      <>
+                        <div className="sb-name">{proj.name}</div>
+                        <div className="sb-secondary">{proj.path}</div>
+                      </>
+                    )}
+                  </div>
+                  {!isRenaming && (
+                    <div className="sb-meta">
+                      {attention > 0 && (
+                        <span className="sb-chip sb-chip-attention" title="Tabs needing attention">
+                          {attention}
+                        </span>
+                      )}
+                      {hasWorktrees && (
+                        <span className="sb-chip" title="Worktrees">
+                          {proj.worktrees.length}
+                        </span>
+                      )}
+                      {proj.isGitRepo && (
+                        <button
+                          type="button"
+                          className="sb-action"
+                          title="New workspace"
+                          aria-label="New workspace"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onNewWorktree(proj.id);
+                            setCollapsed(proj.id, false);
+                          }}
+                        >
+                          +
+                        </button>
+                      )}
+                      <span className="sb-drag-handle" aria-hidden="true">
+                        ⠿
+                      </span>
                     </div>
-                  );
-                })}
-            </div>
-          );
-        })}
-      </div>
+                  )}
+                </div>
+                {hasWorktrees &&
+                  !collapsed &&
+                  proj.worktrees.map((wt) => {
+                    const wtKey = compositeKey(proj.id, wt.id);
+                    const wtTab = tabs[wtKey];
+                    const wtStatus = wtTab?.status ?? 'not-started';
+                    const wtActive =
+                      activeId?.projectId === proj.id && activeId.worktreeId === wt.id;
+                    return (
+                      <div
+                        key={wt.id}
+                        className={[
+                          'sb-row',
+                          'sb-worktree',
+                          wtActive ? 'active' : '',
+                          wtTab?.needsAttention ? 'needs-attention' : '',
+                          wt.status === 'missing' ? 'missing' : '',
+                        ]
+                          .filter(Boolean)
+                          .join(' ')}
+                        onClick={() => onActivate({ projectId: proj.id, worktreeId: wt.id })}
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          setMenu({
+                            x: e.clientX,
+                            y: e.clientY,
+                            projectId: proj.id,
+                            worktreeId: wt.id,
+                          });
+                        }}
+                        title={wt.path}
+                      >
+                        <span className={`sb-branch-dot status-${wtStatus}`} aria-hidden="true" />
+                        <div className="sb-text">
+                          <div className="sb-name sb-branch">{wt.branch}</div>
+                          {wt.status === 'missing' && (
+                            <div className="sb-secondary warn">missing on disk</div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            );
+          })}
+        </div>
+      )}
       {menu && (
         <ContextMenu
           x={menu.x}
@@ -338,6 +446,11 @@ export function Sidebar({ activeId, onActivate, onAddProject, onRefresh, onNewWo
           }}
         />
       )}
+      <div
+        className="sidebar-resize-handle"
+        onMouseDown={onResizeDown}
+        title="Drag to resize"
+      />
     </aside>
   );
 }

@@ -1,45 +1,43 @@
 import { useStore } from '../store';
 
+/**
+ * Bottom status bar: shows the active project on the left and the integrated
+ * terminal toggle on the right.
+ */
 export function StatusBar() {
-  const gitViewSettings = useStore((s) => s.gitView);
-  const todoViewSettings = useStore((s) => s.todoView);
+  const activeId = useStore((s) => s.activeId);
+  const projects = useStore((s) => s.projects);
   const integratedTerminal = useStore((s) => s.integratedTerminal);
+
+  const proj = activeId ? projects.find((p) => p.id === activeId.projectId) ?? null : null;
+  const worktree =
+    activeId?.worktreeId && proj
+      ? proj.worktrees.find((w) => w.id === activeId.worktreeId) ?? null
+      : null;
 
   return (
     <footer className="statusbar">
-      <div className="statusbar-left" />
+      <div className="statusbar-left">
+        {proj && (
+          <span className="statusbar-project" title={worktree?.path ?? proj.path}>
+            <span className="statusbar-project-name">{proj.name}</span>
+            {worktree && <span className="statusbar-project-branch">⎇ {worktree.branch}</span>}
+          </span>
+        )}
+      </div>
       <div className="statusbar-right">
         {integratedTerminal.enabled && (
           <button
-            className="statusbar-button"
+            type="button"
+            className={`statusbar-button ${integratedTerminal.expanded ? 'active' : ''}`}
             title="Toggle integrated terminal (Cmd/Ctrl+`)"
-            onClick={() => {
+            onClick={() =>
               void window.api.settings.setIntegratedTerminal({
                 expanded: !integratedTerminal.expanded,
-              });
-            }}
+              })
+            }
           >
             {'>_'} {integratedTerminal.expanded ? 'Hide terminal' : 'Terminal'}
-          </button>
-        )}
-        <button
-          className="statusbar-button"
-          title="Toggle todo panel"
-          onClick={() => {
-            void window.api.settings.setTodoView({ expanded: !todoViewSettings.expanded });
-          }}
-        >
-          ☰ {todoViewSettings.expanded ? 'Hide todos' : 'Todos'}
-        </button>
-        {gitViewSettings.enabled && (
-          <button
-            className="statusbar-button"
-            title="Toggle git view"
-            onClick={() => {
-              void window.api.settings.setGitView({ expanded: !gitViewSettings.expanded });
-            }}
-          >
-            ⎇ {gitViewSettings.expanded ? 'Hide git' : 'Git'}
           </button>
         )}
       </div>

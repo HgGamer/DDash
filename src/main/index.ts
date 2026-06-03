@@ -1,4 +1,4 @@
-import { app, BrowserWindow, nativeImage, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, nativeImage, shell } from 'electron';
 import path from 'node:path';
 import { JsonStore } from './store';
 import { ProjectRegistry } from './registry';
@@ -6,12 +6,17 @@ import { PtySessionManager } from './pty-session';
 import { registerIpc } from './ipc';
 import { registerGitIpc } from './git-ipc';
 import { registerShellIpc } from './shell-ipc';
+import { registerDocsIpc } from './docs-ipc';
 import { ShellSessionManager } from './shell-session';
 import { installAppMenu } from './menu';
 import { SettingsManager } from './settings';
 import { attachWindowStatePersistence } from './window-state';
 import { createAutoUpdater, type AutoUpdater } from './auto-updater';
 import { registerAutoUpdateIpc } from './auto-update-ipc';
+import { RemoteServer } from './remote-server';
+import { WebServer } from './web-server';
+import { compositeKey, IPC } from '../shared/ipc';
+import { resolveTerminalStyleOptions, type WebAccessSettings } from '@shared/types';
 
 const isDev = !app.isPackaged;
 
@@ -22,11 +27,36 @@ const isDev = !app.isPackaged;
 const devIconPath = path.join(app.getAppPath(), 'build', 'icon.png');
 
 let mainWindow: BrowserWindow | null = null;
+// Tracks whether the renderer has unsaved file edits, and whether the user has
+// already confirmed discarding them during this close/quit sequence.
+let hasUnsavedChanges = false;
+let unsavedConfirmed = false;
 let store!: JsonStore;
 let registry!: ProjectRegistry;
 const ptyManager = new PtySessionManager();
 const shellManager = new ShellSessionManager();
 let autoUpdater: AutoUpdater | null = null;
+
+/** Returns true if it's OK to proceed with closing (no unsaved changes, or the
+ *  user chose to discard them). Shows a confirm dialog otherwise. */
+function confirmDiscardIfUnsaved(parent?: BrowserWindow): boolean {
+  if (!hasUnsavedChanges || unsavedConfirmed) return true;
+  const opts = {
+    type: 'warning' as const,
+    buttons: ['Discard & Close', 'Cancel'],
+    defaultId: 1,
+    cancelId: 1,
+    title: 'Unsaved changes',
+    message: 'You have unsaved changes.',
+    detail: 'Close anyway? Your unsaved edits will be lost.',
+  };
+  const choice = parent ? dialog.showMessageBoxSync(parent, opts) : dialog.showMessageBoxSync(opts);
+  if (choice === 0) {
+    unsavedConfirmed = true;
+    return true;
+  }
+  return false;
+}
 
 async function createWindow(): Promise<void> {
   const state = store.get();
@@ -51,6 +81,11 @@ async function createWindow(): Promise<void> {
   if (state.window.maximized) win.maximize();
 
   win.on('ready-to-show', () => win.show());
+
+  // Warn before closing the window if there are unsaved file edits.
+  win.on('close', (e) => {
+    if (!confirmDiscardIfUnsaved(win)) e.preventDefault();
+  });
 
   win.webContents.setWindowOpenHandler(({ url }) => {
     void shell.openExternal(url);
@@ -78,18 +113,55 @@ app.whenReady().then(async () => {
     if (!img.isEmpty()) app.dock.setIcon(img);
   }
 
+  ipcMain.on(IPC.AppSetUnsaved, (_e, unsaved: boolean) => {
+    hasUnsavedChanges = !!unsaved;
+    if (!hasUnsavedChanges) unsavedConfirmed = false;
+  });
+
   store = new JsonStore({ dir: app.getPath('userData') });
   await store.load();
   registry = new ProjectRegistry(store);
   await registry.refreshGitMeta();
   const settings = new SettingsManager(store);
 
-  registerIpc({ store, registry, ptyManager, shellManager, settings, getWindow: () => mainWindow });
+  const remoteServer = new RemoteServer({ registry, ptyManager, compositeKey });
+  remoteServer.start(7779);
+
+  const webServer = new WebServer({
+    registry,
+    ptyManager,
+    compositeKey,
+    getTerminalStyle: () => resolveTerminalStyleOptions(settings.getTerminalStyle()),
+  });
+  const applyWebAccess = async (wa: WebAccessSettings) => {
+    // Always stop first so port/password changes are picked up.
+    if (webServer.isRunning()) {
+      await webServer.stop();
+    }
+    if (wa.enabled && wa.password.length > 0) {
+      try {
+        await webServer.start({ port: wa.port, password: wa.password });
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error('[web-server] failed to start:', (err as Error).message);
+      }
+    }
+  };
+  void applyWebAccess(settings.getWebAccess());
+  settings.on('webAccessChanged', (wa) => { void applyWebAccess(wa); });
+
+  registerIpc({
+    store, registry, ptyManager, shellManager, settings,
+    getWindow: () => mainWindow,
+    remoteFeed: (k, d) => remoteServer.feed(k, d),
+    webFeed: (k, d) => webServer.feed(k, d),
+  });
   registerGitIpc({ registry, getWindow: () => mainWindow });
   registerShellIpc({ registry, settings, shellManager, getWindow: () => mainWindow });
+  registerDocsIpc({ registry });
   autoUpdater = createAutoUpdater({ settings, store, getWindow: () => mainWindow });
   registerAutoUpdateIpc({ updater: autoUpdater, settings, store, getWindow: () => mainWindow });
-  installAppMenu(() => mainWindow, () => autoUpdater);
+  installAppMenu(() => mainWindow, () => autoUpdater, settings);
 
   await createWindow();
 
@@ -107,6 +179,11 @@ app.on('window-all-closed', () => {
 let cleanShutdownStarted = false;
 app.on('before-quit', (event) => {
   if (cleanShutdownStarted) return;
+  // Warn about unsaved edits on Cmd/Ctrl+Q (where no window 'close' fires first).
+  if (!confirmDiscardIfUnsaved(mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined)) {
+    event.preventDefault();
+    return;
+  }
   cleanShutdownStarted = true;
   event.preventDefault();
   void (async () => {

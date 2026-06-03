@@ -25,7 +25,7 @@ afterEach(async () => {
 
 describe('ProjectRegistry', () => {
   it('adds a project and persists it', async () => {
-    const proj = registry.add('/tmp/example');
+    const proj = await registry.add('/tmp/example');
     await store.flush();
     expect(proj.name).toBe('example');
     expect(path.isAbsolute(proj.path)).toBe(true);
@@ -38,25 +38,25 @@ describe('ProjectRegistry', () => {
     expect(reg2.list()[0].path).toBe(proj.path);
   });
 
-  it('dedupes by absolute path', () => {
-    const a = registry.add('/tmp/same');
-    const b = registry.add('/tmp/same');
+  it('dedupes by absolute path', async () => {
+    const a = await registry.add('/tmp/same');
+    const b = await registry.add('/tmp/same');
     expect(a.id).toBe(b.id);
     expect(registry.list()).toHaveLength(1);
   });
 
   it('removes a project and repacks order', async () => {
-    const a = registry.add('/tmp/a');
-    const b = registry.add('/tmp/b');
-    const c = registry.add('/tmp/c');
+    const a = await registry.add('/tmp/a');
+    const b = await registry.add('/tmp/b');
+    const c = await registry.add('/tmp/c');
     registry.remove(b.id);
     const list = registry.list();
     expect(list.map((p) => p.id)).toEqual([a.id, c.id]);
     expect(list.map((p) => p.order)).toEqual([0, 1]);
   });
 
-  it('renames a project (trimmed, non-empty)', () => {
-    const a = registry.add('/tmp/a');
+  it('renames a project (trimmed, non-empty)', async () => {
+    const a = await registry.add('/tmp/a');
     registry.rename(a.id, '  New Name  ');
     expect(registry.list()[0].name).toBe('New Name');
 
@@ -65,9 +65,9 @@ describe('ProjectRegistry', () => {
   });
 
   it('reorders projects and persists', async () => {
-    const a = registry.add('/tmp/a');
-    const b = registry.add('/tmp/b');
-    const c = registry.add('/tmp/c');
+    const a = await registry.add('/tmp/a');
+    const b = await registry.add('/tmp/b');
+    const c = await registry.add('/tmp/c');
     registry.reorder([c.id, a.id, b.id]);
     expect(registry.list().map((p) => p.id)).toEqual([c.id, a.id, b.id]);
 
@@ -77,9 +77,9 @@ describe('ProjectRegistry', () => {
     expect(new ProjectRegistry(reloaded).list().map((p) => p.id)).toEqual([c.id, a.id, b.id]);
   });
 
-  it('clears lastActiveProjectId when the active project is removed', () => {
-    const a = registry.add('/tmp/a');
-    registry.setLastActive(a.id);
+  it('clears lastActiveProjectId when the active project is removed', async () => {
+    const a = await registry.add('/tmp/a');
+    registry.setLastActive({ projectId: a.id, worktreeId: null });
     registry.remove(a.id);
     expect(registry.getLastActive()).toBeNull();
   });
@@ -99,7 +99,7 @@ describe('JsonStore atomic write', () => {
   });
 
   it('never leaves a partial file behind when write completes', async () => {
-    registry.add('/tmp/a');
+    await registry.add('/tmp/a');
     await store.flush();
     const filePath = path.join(tmpDir, 'app-state.json');
     const contents = await fs.readFile(filePath, 'utf8');

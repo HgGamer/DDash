@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import {
+  DEFAULT_AGENTS_SETTINGS,
   DEFAULT_APP_STATE,
   DEFAULT_AUTO_UPDATE_SETTINGS,
   DEFAULT_GIT_VIEW_SETTINGS,
@@ -8,15 +9,23 @@ import {
   DEFAULT_NOTIFICATION_SETTINGS,
   DEFAULT_TERMINAL_STYLE,
   DEFAULT_TODO_VIEW_SETTINGS,
+  DEFAULT_DOCS_VIEW_SETTINGS,
+  DEFAULT_WEB_ACCESS_SETTINGS,
+  DEFAULT_WEB_ACCESS_PORT,
   GIT_VIEW_MAX_WIDTH,
   GIT_VIEW_MIN_WIDTH,
   INTEGRATED_TERMINAL_MIN_HEIGHT,
   TERMINAL_STYLE_PRESET_IDS,
   TODO_VIEW_MAX_WIDTH,
   TODO_VIEW_MIN_WIDTH,
+  DOCS_VIEW_MAX_WIDTH,
+  DOCS_VIEW_MIN_WIDTH,
   type ActiveSelection,
+  type AgentDef,
+  type AgentsSettings,
   type AppState,
   type AutoUpdateSettings,
+  type DocsViewSettings,
   type GitViewSettings,
   type IntegratedTerminalSettings,
   type NotificationSettings,
@@ -24,6 +33,7 @@ import {
   type TerminalStyleSettings,
   type Todo,
   type TodoViewSettings,
+  type WebAccessSettings,
   type Worktree,
 } from '@shared/types';
 
@@ -98,17 +108,30 @@ export class JsonStore {
   }
 
   async flush(): Promise<void> {
-    if (this.pendingTimer) {
-      clearTimeout(this.pendingTimer);
-      this.pendingTimer = null;
+    // Drain until no debounced timer is pending and no write is in flight, so
+    // that once this resolves the on-disk file is fully up to date and nothing
+    // is still writing. This matters for teardown paths (and tests) that remove
+    // the directory immediately after: a debounce timer that fires mid-flush
+    // would otherwise start a second write that races the removal.
+    for (;;) {
+      if (this.pendingTimer) {
+        clearTimeout(this.pendingTimer);
+        this.pendingTimer = null;
+      }
+      // Serialize writes so concurrent flushes don't interleave. If a timer
+      // queued its own write while we were awaiting, await that instead of
+      // starting a fresh one.
+      if (this.writeInFlight) {
+        await this.writeInFlight;
+        continue;
+      }
+      const snapshot = JSON.stringify(serializeForDisk(this.state), null, 2);
+      this.writeInFlight = this.writeAtomic(snapshot).finally(() => {
+        this.writeInFlight = null;
+      });
+      await this.writeInFlight;
+      if (!this.pendingTimer && !this.writeInFlight) break;
     }
-    // Serialize writes so concurrent flushes don't interleave.
-    if (this.writeInFlight) await this.writeInFlight;
-    const snapshot = JSON.stringify(serializeForDisk(this.state), null, 2);
-    this.writeInFlight = this.writeAtomic(snapshot).finally(() => {
-      this.writeInFlight = null;
-    });
-    await this.writeInFlight;
   }
 
   private async writeAtomic(contents: string): Promise<void> {
@@ -143,8 +166,11 @@ export class JsonStore {
       notifications: migrateNotifications(r.notifications),
       gitView: migrateGitView(r.gitView),
       todoView: migrateTodoView(r.todoView),
+      docsView: migrateDocsView(r.docsView),
       integratedTerminal: migrateIntegratedTerminal(r.integratedTerminal),
       autoUpdate: migrateAutoUpdate(r.autoUpdate),
+      webAccess: migrateWebAccess(r.webAccess),
+      agents: migrateAgents(r.agents),
     };
   }
 }
@@ -186,6 +212,12 @@ function normalizeProject(raw: unknown): Project | null {
     todos,
   };
   if (typeof r.worktreesRoot === 'string') proj.worktreesRoot = r.worktreesRoot;
+  if (typeof r.worktreesCollapsed === 'boolean') proj.worktreesCollapsed = r.worktreesCollapsed;
+  if (Array.isArray(r.recentBranches)) {
+    proj.recentBranches = (r.recentBranches as unknown[])
+      .filter((b): b is string => typeof b === 'string')
+      .slice(0, 5);
+  }
   return proj;
 }
 
@@ -288,6 +320,16 @@ function migrateTodoView(raw: unknown): TodoViewSettings {
   };
 }
 
+function migrateDocsView(raw: unknown): DocsViewSettings {
+  if (!raw || typeof raw !== 'object') return { ...DEFAULT_DOCS_VIEW_SETTINGS };
+  const r = raw as Partial<DocsViewSettings>;
+  const panelWidth =
+    typeof r.panelWidth === 'number' && Number.isFinite(r.panelWidth)
+      ? Math.min(DOCS_VIEW_MAX_WIDTH, Math.max(DOCS_VIEW_MIN_WIDTH, Math.round(r.panelWidth)))
+      : DEFAULT_DOCS_VIEW_SETTINGS.panelWidth;
+  return { version: 1, panelWidth };
+}
+
 function migrateIntegratedTerminal(raw: unknown): IntegratedTerminalSettings {
   if (!raw || typeof raw !== 'object') return { ...DEFAULT_INTEGRATED_TERMINAL_SETTINGS };
   const r = raw as Partial<IntegratedTerminalSettings>;
@@ -319,6 +361,39 @@ function migrateAutoUpdate(raw: unknown): AutoUpdateSettings {
     enabled: typeof r.enabled === 'boolean' ? r.enabled : DEFAULT_AUTO_UPDATE_SETTINGS.enabled,
     channel,
     lastCheckedAt: typeof r.lastCheckedAt === 'string' ? r.lastCheckedAt : null,
+  };
+}
+
+function migrateAgents(raw: unknown): AgentsSettings {
+  if (!raw || typeof raw !== 'object') return { ...DEFAULT_AGENTS_SETTINGS };
+  const r = raw as Partial<AgentsSettings>;
+  const agents: AgentDef[] = Array.isArray(r.agents)
+    ? (r.agents as unknown[])
+        .map((a): AgentDef | null => {
+          if (!a || typeof a !== 'object') return null;
+          const o = a as Record<string, unknown>;
+          if (typeof o.id !== 'string' || typeof o.name !== 'string' || typeof o.command !== 'string') {
+            return null;
+          }
+          return { id: o.id, name: o.name, command: o.command };
+        })
+        .filter((a): a is AgentDef => a !== null)
+    : [];
+  return { version: 1, agents };
+}
+
+function migrateWebAccess(raw: unknown): WebAccessSettings {
+  if (!raw || typeof raw !== 'object') return { ...DEFAULT_WEB_ACCESS_SETTINGS };
+  const r = raw as Partial<WebAccessSettings>;
+  const port =
+    typeof r.port === 'number' && Number.isFinite(r.port) && r.port >= 1 && r.port <= 65535
+      ? Math.floor(r.port)
+      : DEFAULT_WEB_ACCESS_PORT;
+  return {
+    version: 1,
+    enabled: typeof r.enabled === 'boolean' ? r.enabled : DEFAULT_WEB_ACCESS_SETTINGS.enabled,
+    port,
+    password: typeof r.password === 'string' ? r.password : '',
   };
 }
 

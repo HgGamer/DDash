@@ -1,10 +1,12 @@
 import { useCallback, useEffect } from 'react';
+import { ActivityBar } from './components/ActivityBar';
 import { Sidebar } from './components/Sidebar';
 import { Workspace } from './components/Workspace';
 import { SettingsModal } from './components/SettingsModal';
 import { NewWorktreeModal } from './components/NewWorktreeModal';
 import { StatusBar } from './components/StatusBar';
 import { UpdateBanner } from './components/UpdateBanner';
+import { ToastHost, toast } from './components/Toast';
 import { useStore } from './store';
 import { compositeKey } from '@shared/ipc';
 import type { ActiveSelection } from '@shared/types';
@@ -22,14 +24,23 @@ export function App() {
     setNotifications,
     setGitView,
     setTodoView,
+    setDocsView,
     setIntegratedTerminal,
+    setWebAccess,
+    setAgents,
     openSettings,
     closeSettings,
     settingsModalOpen,
+    sidebarOpen,
     newWorktreeProjectId,
     openNewWorktree,
     closeNewWorktree,
   } = useStore();
+
+  const hasUnsaved = useStore((s) => Object.keys(s.dirtyFiles).length > 0);
+  useEffect(() => {
+    window.api.app.setUnsaved(hasUnsaved);
+  }, [hasUnsaved]);
 
   const newWorktreeFor = newWorktreeProjectId
     ? projects.find((p) => p.id === newWorktreeProjectId) ?? null
@@ -128,12 +139,39 @@ export function App() {
 
   useEffect(() => {
     void (async () => {
+      const current = await window.api.settings.getDocsView();
+      setDocsView(current);
+    })();
+    const off = window.api.settings.onDocsViewChanged((s) => setDocsView(s));
+    return () => off();
+  }, [setDocsView]);
+
+  useEffect(() => {
+    void (async () => {
       const current = await window.api.settings.getIntegratedTerminal();
       setIntegratedTerminal(current);
     })();
     const off = window.api.settings.onIntegratedTerminalChanged((s) => setIntegratedTerminal(s));
     return () => off();
   }, [setIntegratedTerminal]);
+
+  useEffect(() => {
+    void (async () => {
+      const current = await window.api.settings.getWebAccess();
+      setWebAccess(current);
+    })();
+    const off = window.api.settings.onWebAccessChanged((s) => setWebAccess(s));
+    return () => off();
+  }, [setWebAccess]);
+
+  useEffect(() => {
+    void (async () => {
+      const current = await window.api.settings.getAgents();
+      setAgents(current.agents);
+    })();
+    const off = window.api.settings.onAgentsChanged((s) => setAgents(s.agents));
+    return () => off();
+  }, [setAgents]);
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
@@ -271,22 +309,28 @@ export function App() {
     <div className="app">
       <UpdateBanner />
       <div className="app-body">
-        <Sidebar
-          activeId={activeId}
-          onActivate={activate}
-          onAddProject={addProject}
-          onRefresh={refreshProjects}
-          onNewWorktree={(projectId) => openNewWorktree(projectId)}
-        />
+        <ActivityBar />
+        {sidebarOpen && (
+          <Sidebar
+            activeId={activeId}
+            onActivate={activate}
+            onAddProject={addProject}
+            onRefresh={refreshProjects}
+            onNewWorktree={(projectId) => openNewWorktree(projectId)}
+          />
+        )}
         <Workspace activeId={activeId} />
       </div>
       <StatusBar />
+      <ToastHost />
       {settingsModalOpen && <SettingsModal onClose={closeSettings} />}
       {newWorktreeFor && (
         <NewWorktreeModal
           projectId={newWorktreeFor.id}
           projectPath={newWorktreeFor.path}
           worktreesRoot={newWorktreeFor.worktreesRoot}
+          recentBranches={newWorktreeFor.recentBranches}
+          existingWorktreeBranches={newWorktreeFor.worktrees.map((w) => w.branch)}
           onClose={closeNewWorktree}
           onCreated={(wt) => {
             const projectId = newWorktreeFor.id;
@@ -294,6 +338,11 @@ export function App() {
             void (async () => {
               await refreshProjects();
               await activate({ projectId, worktreeId: wt.id });
+              toast({
+                message: 'Workspace created',
+                tone: 'success',
+                action: { label: 'New workspace', onClick: () => openNewWorktree(projectId) },
+              });
             })();
           }}
         />

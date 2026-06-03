@@ -1,5 +1,7 @@
 import { EventEmitter } from 'node:events';
 import type {
+  AgentDef,
+  AgentsSettings,
   AutoUpdateSettings,
   GitViewSettings,
   IntegratedTerminalSettings,
@@ -8,6 +10,8 @@ import type {
   TerminalStylePreset,
   TerminalStyleSettings,
   TodoViewSettings,
+  DocsViewSettings,
+  WebAccessSettings,
 } from '@shared/types';
 import {
   DEFAULT_AUTO_UPDATE_SETTINGS,
@@ -16,12 +20,17 @@ import {
   DEFAULT_NOTIFICATION_SETTINGS,
   DEFAULT_TERMINAL_STYLE,
   DEFAULT_TODO_VIEW_SETTINGS,
+  DEFAULT_DOCS_VIEW_SETTINGS,
+  DEFAULT_WEB_ACCESS_SETTINGS,
+  DEFAULT_WEB_ACCESS_PORT,
   GIT_VIEW_MAX_WIDTH,
   GIT_VIEW_MIN_WIDTH,
   INTEGRATED_TERMINAL_MIN_HEIGHT,
   TERMINAL_STYLE_PRESET_IDS,
   TODO_VIEW_MAX_WIDTH,
   TODO_VIEW_MIN_WIDTH,
+  DOCS_VIEW_MAX_WIDTH,
+  DOCS_VIEW_MIN_WIDTH,
 } from '@shared/types';
 import type { JsonStore } from './store';
 
@@ -30,8 +39,11 @@ export interface SettingsManagerEvents {
   notificationsChanged: (settings: NotificationSettings) => void;
   gitViewChanged: (settings: GitViewSettings) => void;
   todoViewChanged: (settings: TodoViewSettings) => void;
+  docsViewChanged: (settings: DocsViewSettings) => void;
   integratedTerminalChanged: (settings: IntegratedTerminalSettings) => void;
   autoUpdateChanged: (settings: AutoUpdateSettings) => void;
+  webAccessChanged: (settings: WebAccessSettings) => void;
+  agentsChanged: (settings: AgentsSettings) => void;
 }
 
 export class SettingsManager extends EventEmitter {
@@ -178,6 +190,24 @@ export class SettingsManager extends EventEmitter {
     return next;
   }
 
+  getDocsView(): DocsViewSettings {
+    const raw = this.store.get().docsView;
+    if (!raw) return { ...DEFAULT_DOCS_VIEW_SETTINGS };
+    return { ...raw };
+  }
+
+  setDocsView(patch: Partial<Omit<DocsViewSettings, 'version'>>): DocsViewSettings {
+    const current = this.getDocsView();
+    let panelWidth = patch.panelWidth ?? current.panelWidth;
+    panelWidth = Math.min(DOCS_VIEW_MAX_WIDTH, Math.max(DOCS_VIEW_MIN_WIDTH, Math.round(panelWidth)));
+    const next: DocsViewSettings = { version: 1, panelWidth };
+    this.store.update((draft) => {
+      draft.docsView = next;
+    });
+    this.emit('docsViewChanged', next);
+    return next;
+  }
+
   getIntegratedTerminal(): IntegratedTerminalSettings {
     const raw = this.store.get().integratedTerminal;
     if (!raw) return { ...DEFAULT_INTEGRATED_TERMINAL_SETTINGS };
@@ -208,10 +238,59 @@ export class SettingsManager extends EventEmitter {
     return next;
   }
 
+  getAgents(): AgentsSettings {
+    const raw = this.store.get().agents;
+    if (!raw || !Array.isArray(raw.agents)) return { version: 1, agents: [] };
+    return { version: 1, agents: raw.agents.map((a) => ({ ...a })) };
+  }
+
+  setAgents(agents: AgentDef[]): AgentsSettings {
+    // Sanitize: keep only well-formed entries with a non-empty name + command.
+    const cleaned: AgentDef[] = (Array.isArray(agents) ? agents : [])
+      .map((a) => ({
+        id: typeof a?.id === 'string' && a.id ? a.id : '',
+        name: typeof a?.name === 'string' ? a.name.trim() : '',
+        command: typeof a?.command === 'string' ? a.command.trim() : '',
+      }))
+      .filter((a) => a.id && a.name && a.command);
+    const next: AgentsSettings = { version: 1, agents: cleaned };
+    this.store.update((draft) => {
+      draft.agents = next;
+    });
+    this.emit('agentsChanged', next);
+    return next;
+  }
+
   getAutoUpdate(): AutoUpdateSettings {
     const raw = this.store.get().autoUpdate;
     if (!raw) return { ...DEFAULT_AUTO_UPDATE_SETTINGS };
     return { ...raw };
+  }
+
+  getWebAccess(): WebAccessSettings {
+    const raw = this.store.get().webAccess;
+    if (!raw) return { ...DEFAULT_WEB_ACCESS_SETTINGS };
+    return { ...raw };
+  }
+
+  // Password is stored as plaintext; this is a deliberate trade-off for the
+  // LAN-only web access feature (user picked this auth model). Treat the
+  // settings file as a secret on multi-user machines.
+  setWebAccess(patch: Partial<Omit<WebAccessSettings, 'version'>>): WebAccessSettings {
+    const current = this.getWebAccess();
+    let port = typeof patch.port === 'number' ? Math.floor(patch.port) : current.port;
+    if (!Number.isFinite(port) || port < 1 || port > 65535) port = DEFAULT_WEB_ACCESS_PORT;
+    const password =
+      typeof patch.password === 'string' ? patch.password : current.password;
+    let enabled = typeof patch.enabled === 'boolean' ? patch.enabled : current.enabled;
+    // Refuse to be 'enabled' without a non-empty password.
+    if (enabled && password.length === 0) enabled = false;
+    const next: WebAccessSettings = { version: 1, enabled, port, password };
+    this.store.update((draft) => {
+      draft.webAccess = next;
+    });
+    this.emit('webAccessChanged', next);
+    return next;
   }
 
   setAutoUpdate(patch: Partial<Omit<AutoUpdateSettings, 'version'>>): AutoUpdateSettings {

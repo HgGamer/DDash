@@ -1,8 +1,11 @@
 import type {
   ActiveSelection,
+  AgentDef,
+  AgentsSettings,
   AutoUpdateInfo,
   AutoUpdateSettings,
   GitViewSettings,
+  DocsViewSettings,
   IntegratedTerminalSettings,
   NotificationSettings,
   Project,
@@ -13,6 +16,7 @@ import type {
   TerminalStyleSettings,
   Todo,
   TodoViewSettings,
+  WebAccessSettings,
   Worktree,
 } from './types';
 import type {
@@ -33,6 +37,7 @@ export const IPC = {
   ProjectRename: 'project:rename',
   ProjectReorder: 'project:reorder',
   ProjectSetActive: 'project:setActive',
+  ProjectSetWorktreesCollapsed: 'project:setWorktreesCollapsed',
   ProjectPickDirectory: 'project:pickDirectory',
 
   // Worktree management (renderer → main)
@@ -109,6 +114,11 @@ export const IPC = {
   SettingsSetTodoView: 'settings:setTodoView',
   SettingsTodoViewChanged: 'settings:todoViewChanged',
 
+  // Web-access (LAN web UI) settings (renderer ↔ main)
+  SettingsGetWebAccess: 'settings:getWebAccess',
+  SettingsSetWebAccess: 'settings:setWebAccess',
+  SettingsWebAccessChanged: 'settings:webAccessChanged',
+
   // Integrated-terminal settings (renderer ↔ main)
   SettingsGetIntegratedTerminal: 'settings:getIntegratedTerminal',
   SettingsSetIntegratedTerminal: 'settings:setIntegratedTerminal',
@@ -124,6 +134,27 @@ export const IPC = {
   ShellData: 'shell:data',
   ShellExit: 'shell:exit',
 
+  // Docs / file viewer (renderer ↔ main)
+  DocsList: 'docs:list',
+  DocsListDir: 'docs:listDir',
+  DocsRead: 'docs:read',
+  DocsWrite: 'docs:write',
+  DocsOpenExternal: 'docs:openExternal',
+  DocsReveal: 'docs:reveal',
+  DocsRename: 'docs:rename',
+  DocsDelete: 'docs:delete',
+  DocsCreate: 'docs:create',
+
+  // Docs-view settings (renderer ↔ main)
+  SettingsGetDocsView: 'settings:getDocsView',
+  SettingsSetDocsView: 'settings:setDocsView',
+  SettingsDocsViewChanged: 'settings:docsViewChanged',
+
+  // Custom agents settings (renderer ↔ main)
+  SettingsGetAgents: 'settings:getAgents',
+  SettingsSetAgents: 'settings:setAgents',
+  SettingsAgentsChanged: 'settings:agentsChanged',
+
   // Auto-update (renderer ↔ main)
   AutoUpdateGetInfo: 'autoUpdate:getInfo',
   AutoUpdateGetSettings: 'autoUpdate:getSettings',
@@ -132,6 +163,9 @@ export const IPC = {
   AutoUpdateInstallNow: 'autoUpdate:installNow',
   AutoUpdateInfoChanged: 'autoUpdate:infoChanged',
   AutoUpdateSettingsChanged: 'autoUpdate:settingsChanged',
+
+  // App-level (renderer → main)
+  AppSetUnsaved: 'app:setUnsaved',
 
   // Menu/shortcut events (main → renderer)
   MenuAddProject: 'menu:addProject',
@@ -155,6 +189,19 @@ export function parseCompositeKey(key: string): { projectId: string; worktreeId:
   return { projectId: key.slice(0, i), worktreeId: key.slice(i + 1) };
 }
 
+// PTY session key. The built-in Claude Code session uses the bare composite
+// key (no agentId) so it stays identical to historical behavior. Custom agents
+// get their own keyspace suffix so multiple agents can run per selection
+// without colliding with Claude or each other.
+export function agentKey(
+  projectId: string,
+  worktreeId: string | null | undefined,
+  agentId?: string | null,
+): string {
+  const base = compositeKey(projectId, worktreeId);
+  return agentId ? `${base}::agent:${agentId}` : base;
+}
+
 // Request/response payloads
 export interface ProjectAddArgs {
   path: string;
@@ -166,6 +213,10 @@ export interface ProjectRenameArgs {
 }
 export interface ProjectReorderArgs {
   orderedIds: string[];
+}
+export interface ProjectSetWorktreesCollapsedArgs {
+  id: string;
+  collapsed: boolean;
 }
 export interface ProjectPickDirectoryResult {
   path: string | null;
@@ -183,40 +234,49 @@ export type BrowseTerminalStyleResult =
 export interface PtyOpenArgs {
   projectId: string;
   worktreeId?: string | null;
+  /** When set, launch this custom agent (looked up in settings) instead of the
+   *  built-in Claude Code session. */
+  agentId?: string | null;
   cols: number;
   rows: number;
 }
 export interface PtyWriteArgs {
   projectId: string;
   worktreeId?: string | null;
+  agentId?: string | null;
   data: string;
 }
 export interface PtyResizeArgs {
   projectId: string;
   worktreeId?: string | null;
+  agentId?: string | null;
   cols: number;
   rows: number;
 }
 export interface PtyCloseArgs {
   projectId: string;
   worktreeId?: string | null;
+  agentId?: string | null;
 }
 
 // Event payloads
 export interface PtyDataEvent {
   projectId: string;
   worktreeId?: string | null;
+  agentId?: string | null;
   data: string;
 }
 export interface PtyExitEvent {
   projectId: string;
   worktreeId?: string | null;
+  agentId?: string | null;
   exitCode: number | null;
   signal: number | null;
 }
 export interface PtyErrorEvent {
   projectId: string;
   worktreeId?: string | null;
+  agentId?: string | null;
   error: NonNullable<PtySpawnResult['error']>;
 }
 
@@ -468,6 +528,109 @@ export interface TodoRemoveArgs {
   id: string;
 }
 
+// Docs / markdown viewer IPC payloads -----------------------------------
+
+export interface DocsListArgs {
+  projectId: string;
+}
+export interface DocsFileEntry {
+  /** Path relative to the project root, using forward slashes. */
+  relPath: string;
+  /** Modification time, epoch milliseconds. */
+  mtime: number;
+  /** Size in bytes. */
+  size: number;
+}
+export type DocsListResult =
+  | { ok: true; files: DocsFileEntry[] }
+  | { ok: false; reason: 'project-missing' | 'error'; message?: string };
+
+export interface DocsReadArgs {
+  projectId: string;
+  relPath: string;
+}
+export type DocsReadResult =
+  | { ok: true; contents: string }
+  | {
+      ok: false;
+      reason: 'project-missing' | 'escape' | 'not-found' | 'too-large' | 'binary' | 'error';
+      message?: string;
+    };
+
+export interface DocsWriteArgs {
+  projectId: string;
+  relPath: string;
+  contents: string;
+}
+export type DocsWriteResult =
+  | { ok: true }
+  | { ok: false; reason: 'project-missing' | 'escape' | 'too-large' | 'error'; message?: string };
+
+/** One entry in a directory listing for the file explorer. */
+export interface DocsDirEntry {
+  name: string;
+  /** Path relative to the project root, forward slashes. */
+  relPath: string;
+  type: 'dir' | 'file';
+}
+export interface DocsListDirArgs {
+  projectId: string;
+  /** Directory relative to the project root; '' lists the root. */
+  relPath: string;
+}
+export type DocsListDirResult =
+  | { ok: true; entries: DocsDirEntry[] }
+  | { ok: false; reason: 'project-missing' | 'escape' | 'not-found' | 'error'; message?: string };
+
+export interface DocsOpenExternalArgs {
+  url: string;
+}
+
+export interface DocsRevealArgs {
+  projectId: string;
+  relPath: string;
+}
+export type DocsRevealResult =
+  | { ok: true }
+  | { ok: false; reason: 'project-missing' | 'escape' | 'not-found' | 'error'; message?: string };
+
+export interface DocsRenameArgs {
+  projectId: string;
+  relPath: string;
+  /** New base name (no slashes); the entry stays in its current directory. */
+  newName: string;
+}
+export type DocsRenameResult =
+  | { ok: true; relPath: string }
+  | {
+      ok: false;
+      reason: 'project-missing' | 'escape' | 'not-found' | 'exists' | 'invalid' | 'error';
+      message?: string;
+    };
+
+export interface DocsDeleteArgs {
+  projectId: string;
+  relPath: string;
+}
+export type DocsDeleteResult =
+  | { ok: true }
+  | { ok: false; reason: 'project-missing' | 'escape' | 'not-found' | 'error'; message?: string };
+
+export interface DocsCreateArgs {
+  projectId: string;
+  /** Directory to create the entry in, relative to the project root ('' = root). */
+  dirRelPath: string;
+  name: string;
+  type: 'file' | 'dir';
+}
+export type DocsCreateResult =
+  | { ok: true; relPath: string }
+  | {
+      ok: false;
+      reason: 'project-missing' | 'escape' | 'exists' | 'invalid' | 'error';
+      message?: string;
+    };
+
 // The typed API exposed on window.api via contextBridge.
 export interface DashApi {
   projects: {
@@ -477,6 +640,7 @@ export interface DashApi {
     rename(args: ProjectRenameArgs): Promise<void>;
     reorder(args: ProjectReorderArgs): Promise<void>;
     setActive(active: ActiveSelection | null): Promise<void>;
+    setWorktreesCollapsed(args: ProjectSetWorktreesCollapsedArgs): Promise<void>;
     pickDirectory(): Promise<ProjectPickDirectoryResult>;
   };
   worktrees: {
@@ -516,11 +680,22 @@ export interface DashApi {
     getTodoView(): Promise<TodoViewSettings>;
     setTodoView(patch: Partial<Omit<TodoViewSettings, 'version'>>): Promise<TodoViewSettings>;
     onTodoViewChanged(handler: (s: TodoViewSettings) => void): () => void;
+    getDocsView(): Promise<DocsViewSettings>;
+    setDocsView(patch: Partial<Omit<DocsViewSettings, 'version'>>): Promise<DocsViewSettings>;
+    onDocsViewChanged(handler: (s: DocsViewSettings) => void): () => void;
     getIntegratedTerminal(): Promise<IntegratedTerminalSettings>;
     setIntegratedTerminal(
       patch: Partial<Omit<IntegratedTerminalSettings, 'version'>>,
     ): Promise<IntegratedTerminalSettings>;
     onIntegratedTerminalChanged(handler: (s: IntegratedTerminalSettings) => void): () => void;
+    getWebAccess(): Promise<WebAccessSettings>;
+    setWebAccess(
+      patch: Partial<Omit<WebAccessSettings, 'version'>>,
+    ): Promise<WebAccessSettings>;
+    onWebAccessChanged(handler: (s: WebAccessSettings) => void): () => void;
+    getAgents(): Promise<AgentsSettings>;
+    setAgents(agents: AgentDef[]): Promise<AgentsSettings>;
+    onAgentsChanged(handler: (s: AgentsSettings) => void): () => void;
   };
   shell: {
     open(args: ShellOpenArgs): Promise<ShellOpenResult>;
@@ -566,6 +741,17 @@ export interface DashApi {
     update(args: TodoUpdateArgs): Promise<Todo | null>;
     remove(args: TodoRemoveArgs): Promise<void>;
   };
+  docs: {
+    list(args: DocsListArgs): Promise<DocsListResult>;
+    listDir(args: DocsListDirArgs): Promise<DocsListDirResult>;
+    read(args: DocsReadArgs): Promise<DocsReadResult>;
+    write(args: DocsWriteArgs): Promise<DocsWriteResult>;
+    openExternal(url: string): Promise<void>;
+    reveal(args: DocsRevealArgs): Promise<DocsRevealResult>;
+    rename(args: DocsRenameArgs): Promise<DocsRenameResult>;
+    delete(args: DocsDeleteArgs): Promise<DocsDeleteResult>;
+    create(args: DocsCreateArgs): Promise<DocsCreateResult>;
+  };
   autoUpdate: {
     getInfo(): Promise<AutoUpdateInfo>;
     getSettings(): Promise<AutoUpdateSettings>;
@@ -579,6 +765,11 @@ export interface DashApi {
     installNow(): Promise<void>;
     onInfoChanged(handler: (info: AutoUpdateInfo) => void): () => void;
     onSettingsChanged(handler: (settings: AutoUpdateSettings) => void): () => void;
+  };
+  app: {
+    /** Tell the main process whether there are unsaved file edits, so it can
+     *  warn before the window/app closes. */
+    setUnsaved(unsaved: boolean): void;
   };
   menu: {
     onAddProject(handler: () => void): () => void;

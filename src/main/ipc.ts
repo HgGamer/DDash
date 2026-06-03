@@ -2,6 +2,7 @@ import { app, BrowserWindow, dialog, ipcMain, Notification } from 'electron';
 import { promises as fs } from 'node:fs';
 import {
   IPC,
+  agentKey,
   compositeKey,
   type BrowseTerminalStyleResult,
   type NotifyAttentionArgs,
@@ -10,6 +11,7 @@ import {
   type ProjectRemoveResult,
   type ProjectRenameArgs,
   type ProjectReorderArgs,
+  type ProjectSetWorktreesCollapsedArgs,
   type PtyCloseArgs,
   type PtyDataEvent,
   type PtyErrorEvent,
@@ -33,6 +35,9 @@ import type { JsonStore } from './store';
 import type { SettingsManager } from './settings';
 import type {
   ActiveSelection,
+  AgentDef,
+  AgentsSettings,
+  DocsViewSettings,
   GitViewSettings,
   IntegratedTerminalSettings,
   NotificationSettings,
@@ -41,6 +46,7 @@ import type {
   TerminalStyleSettings,
   Todo,
   TodoViewSettings,
+  WebAccessSettings,
   Worktree,
 } from '@shared/types';
 import { PtySessionManager } from './pty-session';
@@ -61,8 +67,10 @@ export function registerIpc(args: {
   shellManager: ShellSessionManager;
   settings: SettingsManager;
   getWindow: () => BrowserWindow | null;
+  remoteFeed?: (key: string, data: string) => void;
+  webFeed?: (key: string, data: string) => void;
 }): void {
-  const { store, registry, ptyManager, shellManager, settings, getWindow } = args;
+  const { store, registry, ptyManager, shellManager, settings, getWindow, remoteFeed, webFeed } = args;
 
   const send = (channel: string, payload: unknown) => {
     const win = getWindow();
@@ -130,6 +138,14 @@ export function registerIpc(args: {
     await store.flush();
   });
 
+  ipcMain.handle(
+    IPC.ProjectSetWorktreesCollapsed,
+    async (_e, a: ProjectSetWorktreesCollapsedArgs) => {
+      registry.setWorktreesCollapsed(a.id, a.collapsed);
+      await store.flush();
+    },
+  );
+
   ipcMain.handle(IPC.ProjectPickDirectory, async (): Promise<ProjectPickDirectoryResult> => {
     const win = getWindow();
     const result = await dialog.showOpenDialog(win ?? undefined!, {
@@ -166,6 +182,7 @@ export function registerIpc(args: {
         return { ok: false, error: r.stderr || r.stdout || `git exited ${r.exitCode}` };
       }
       const wt = registry.addWorktree(a.projectId, { branch: a.branch, path: targetPath });
+      registry.pushRecentBranch(a.projectId, a.branch);
       await store.flush();
       return { ok: true, worktree: wt };
     },
@@ -254,24 +271,47 @@ export function registerIpc(args: {
       }
       cwd = wt.path;
     }
-    const key = compositeKey(args.projectId, args.worktreeId ?? null);
+    const agentId = args.agentId ?? null;
+    // Resolve the command for a custom agent; the built-in Claude session has
+    // no agentId and no command (handled by PtySession.spawn's default path).
+    let command: string | undefined;
+    if (agentId) {
+      const agent = settings.getAgents().agents.find((a) => a.id === agentId);
+      if (!agent) {
+        const ev: PtyErrorEvent = {
+          projectId: args.projectId,
+          worktreeId: args.worktreeId ?? null,
+          agentId,
+          error: { kind: 'path-missing', path: '' },
+        };
+        send(IPC.PtyError, ev);
+        return { ok: false, error: ev.error };
+      }
+      command = agent.command;
+    }
+    const key = agentKey(args.projectId, args.worktreeId ?? null, agentId);
     const result = await ptyManager.spawn({
       key,
       cwd,
       cols: args.cols,
       rows: args.rows,
+      command,
       onData: (data) => {
         const ev: PtyDataEvent = {
           projectId: args.projectId,
           worktreeId: args.worktreeId ?? null,
+          agentId,
           data,
         };
         send(IPC.PtyData, ev);
+        remoteFeed?.(key, data);
+        webFeed?.(key, data);
       },
       onExit: (exitCode, signal) => {
         const ev: PtyExitEvent = {
           projectId: args.projectId,
           worktreeId: args.worktreeId ?? null,
+          agentId,
           exitCode,
           signal,
         };
@@ -283,6 +323,7 @@ export function registerIpc(args: {
       const ev: PtyErrorEvent = {
         projectId: args.projectId,
         worktreeId: args.worktreeId ?? null,
+        agentId,
         error: result.error,
       };
       send(IPC.PtyError, ev);
@@ -291,17 +332,17 @@ export function registerIpc(args: {
   });
 
   ipcMain.on(IPC.PtyWrite, (_e, args: PtyWriteArgs) => {
-    const key = compositeKey(args.projectId, args.worktreeId ?? null);
+    const key = agentKey(args.projectId, args.worktreeId ?? null, args.agentId ?? null);
     ptyManager.get(key)?.write(args.data);
   });
 
   ipcMain.on(IPC.PtyResize, (_e, args: PtyResizeArgs) => {
-    const key = compositeKey(args.projectId, args.worktreeId ?? null);
+    const key = agentKey(args.projectId, args.worktreeId ?? null, args.agentId ?? null);
     ptyManager.get(key)?.resize(args.cols, args.rows);
   });
 
   ipcMain.handle(IPC.PtyClose, async (_e, args: PtyCloseArgs) => {
-    const key = compositeKey(args.projectId, args.worktreeId ?? null);
+    const key = agentKey(args.projectId, args.worktreeId ?? null, args.agentId ?? null);
     const session = ptyManager.get(key);
     if (!session) return;
     ptyManager.delete(key);
@@ -411,6 +452,23 @@ export function registerIpc(args: {
     send(IPC.SettingsGitViewChanged, s);
   });
 
+  ipcMain.handle(IPC.SettingsGetWebAccess, async (): Promise<WebAccessSettings> => {
+    return settings.getWebAccess();
+  });
+
+  ipcMain.handle(
+    IPC.SettingsSetWebAccess,
+    async (_e, patch: Partial<Omit<WebAccessSettings, 'version'>>): Promise<WebAccessSettings> => {
+      const next = settings.setWebAccess(patch);
+      await store.flush();
+      return next;
+    },
+  );
+
+  settings.on('webAccessChanged', (s: WebAccessSettings) => {
+    send(IPC.SettingsWebAccessChanged, s);
+  });
+
   ipcMain.handle(IPC.SettingsGetTodoView, async (): Promise<TodoViewSettings> => {
     return settings.getTodoView();
   });
@@ -426,6 +484,40 @@ export function registerIpc(args: {
 
   settings.on('todoViewChanged', (s: TodoViewSettings) => {
     send(IPC.SettingsTodoViewChanged, s);
+  });
+
+  ipcMain.handle(IPC.SettingsGetDocsView, async (): Promise<DocsViewSettings> => {
+    return settings.getDocsView();
+  });
+
+  ipcMain.handle(
+    IPC.SettingsSetDocsView,
+    async (_e, patch: Partial<Omit<DocsViewSettings, 'version'>>): Promise<DocsViewSettings> => {
+      const next = settings.setDocsView(patch);
+      await store.flush();
+      return next;
+    },
+  );
+
+  settings.on('docsViewChanged', (s: DocsViewSettings) => {
+    send(IPC.SettingsDocsViewChanged, s);
+  });
+
+  ipcMain.handle(IPC.SettingsGetAgents, async (): Promise<AgentsSettings> => {
+    return settings.getAgents();
+  });
+
+  ipcMain.handle(
+    IPC.SettingsSetAgents,
+    async (_e, agents: AgentDef[]): Promise<AgentsSettings> => {
+      const next = settings.setAgents(agents);
+      await store.flush();
+      return next;
+    },
+  );
+
+  settings.on('agentsChanged', (s: AgentsSettings) => {
+    send(IPC.SettingsAgentsChanged, s);
   });
 
   // Todo CRUD ----------------------------------------------------------

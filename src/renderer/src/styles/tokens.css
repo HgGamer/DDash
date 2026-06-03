@@ -1,0 +1,130 @@
+/*
+ * Design tokens — the single source of truth for colors, typography, spacing,
+ * radii, shadows, and motion across the renderer. Imported before every other
+ * stylesheet (see main.tsx) so component CSS resolves `var(--token)` against
+ * these values.
+ *
+ * Rules for component CSS / TSX:
+ *   - Reference tokens via `var(--token-name)`.
+ *   - Do NOT hard-code raw hex colors, raw pixel spacing, or raw motion
+ *     durations. The `lint:colors` script enforces the no-raw-hex part.
+ *
+ * Single dark theme tuned for the terminal-centric UI. A future light theme
+ * would live under `[data-theme="light"]`.
+ */
+
+/*
+ * Inter Variable webfont. Drop `Inter-Variable.woff2` into
+ * `src/renderer/src/assets/fonts/` to enable the bundled typeface. Until then
+ * the `--font-sans` stack falls back to system sans, so the app renders
+ * correctly with or without the binary present. The @font-face is intentionally
+ * commented out so the build does not fail on the missing asset; uncomment once
+ * the woff2 is checked in.
+ */
+/*
+@font-face {
+  font-family: 'Inter';
+  src: url('../assets/fonts/Inter-Variable.woff2') format('woff2-variations');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+*/
+
+:root {
+  color-scheme: dark;
+
+  /* Colors --------------------------------------------------------------- */
+  --color-bg: #0b0b0c; /* app background */
+  --color-terminal-bg: #000000; /* pure black behind the xterm pane */
+  --color-surface: #131316; /* sidebar, cards */
+  --color-surface-2: #1a1a1f; /* hover */
+  --color-border: #25252b;
+  --color-border-strong: #36363f;
+  --color-fg: #e6e6ea;
+  --color-fg-muted: #9a9aa3;
+  --color-fg-subtle: #6e6e78;
+  --color-accent: #5e6ad2; /* Linear-ish indigo */
+  --color-accent-fg: #ffffff;
+  --color-accent-soft: rgba(94, 106, 210, 0.16);
+  --color-danger: #d8576b;
+  --color-danger-soft: rgba(216, 87, 107, 0.14);
+  --color-warn: #d9a55b;
+  --color-warn-soft: rgba(217, 165, 91, 0.16);
+  --color-success: #6ec18b;
+  --color-success-soft: rgba(110, 193, 139, 0.16);
+
+  /* Typography ----------------------------------------------------------- */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'OperatorMono Nerd Font', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas',
+    'Liberation Mono', 'Courier New', monospace;
+
+  --text-xs: 11px;
+  --leading-xs: 16px;
+  --text-sm: 12px;
+  --leading-sm: 18px;
+  --text-md: 13px; /* default */
+  --leading-md: 20px;
+  --text-lg: 15px;
+  --leading-lg: 22px;
+  --text-xl: 18px;
+  --leading-xl: 26px;
+
+  /* Spacing -------------------------------------------------------------- */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+
+  /* Radii ---------------------------------------------------------------- */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+
+  /* Elevation ------------------------------------------------------------ */
+  --shadow-pop: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 12px rgba(0, 0, 0, 0.32);
+
+  /* Motion --------------------------------------------------------------- */
+  --motion-fast: 120ms;
+  --motion-base: 160ms;
+  --ease-out: cubic-bezier(0.2, 0.7, 0.2, 1);
+
+  /* Focus ---------------------------------------------------------------- */
+  --focus-ring: 0 0 0 2px var(--color-bg), 0 0 0 4px var(--color-accent);
+}
+
+/* Standard keyboard focus indication — accent ring visible on every surface
+ * elevation. Mouse focus does not show the ring (`:focus-visible`). */
+:where(button, a, input, textarea, select, [tabindex]):focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* Thin, themed scrollbars across the app (the xterm pane manages its own). */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border-strong) transparent;
+}
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border-strong);
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-fg-subtle);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}

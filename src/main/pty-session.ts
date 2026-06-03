@@ -12,6 +12,9 @@ export interface PtySessionOpts {
   cwd: string;
   cols: number;
   rows: number;
+  /** When set, launch this command line via the user's login shell instead of
+   *  the built-in Claude Code session. */
+  command?: string;
   onData: (data: string) => void;
   onExit: (code: number | null, signal: number | null) => void;
 }
@@ -37,17 +40,38 @@ export class PtySession {
       return { kind: 'path-missing', path: opts.cwd };
     }
 
+    // Reuse the Claude resolver to obtain a login-shell-resolved PATH. Custom
+    // agents don't need the claude binary itself, only the enriched env.
     const { claudePath, env } = await resolveClaudeEnv();
-    if (!claudePath) {
-      return { kind: 'claude-not-found', installUrl: CLAUDE_INSTALL_URL };
+
+    let file: string;
+    let spawnArgs: string[];
+    if (opts.command) {
+      // Run the user-supplied command line through their login shell so PATH,
+      // aliases, and shell functions resolve the same way an interactive
+      // terminal would.
+      const isWin = process.platform === 'win32';
+      if (isWin) {
+        file = process.env.COMSPEC || 'cmd.exe';
+        spawnArgs = ['/d', '/s', '/c', opts.command];
+      } else {
+        file = process.env.SHELL || '/bin/bash';
+        spawnArgs = ['-lc', opts.command];
+      }
+    } else {
+      if (!claudePath) {
+        return { kind: 'claude-not-found', installUrl: CLAUDE_INSTALL_URL };
+      }
+      file = claudePath;
+      spawnArgs = [];
     }
 
     // eslint-disable-next-line no-console
     console.log(
-      `[pty:${opts.key.slice(0, 8)}] spawning claude=${claudePath} cwd=${opts.cwd} cols=${opts.cols} rows=${opts.rows} PATH=${(env.PATH ?? '').slice(0, 60)}…`,
+      `[pty:${opts.key.slice(0, 8)}] spawning ${opts.command ? `command=${opts.command}` : `claude=${file}`} cwd=${opts.cwd} cols=${opts.cols} rows=${opts.rows} PATH=${(env.PATH ?? '').slice(0, 60)}…`,
     );
 
-    const proc = pty.spawn(claudePath, [], {
+    const proc = pty.spawn(file, spawnArgs, {
       name: 'xterm-256color',
       cwd: opts.cwd,
       cols: Math.max(1, opts.cols | 0),
@@ -136,6 +160,7 @@ export class PtySessionManager {
     cwd: string;
     cols: number;
     rows: number;
+    command?: string;
     onData: (data: string) => void;
     onExit: (code: number | null, signal: number | null) => void;
   }): Promise<PtySpawnResult> {

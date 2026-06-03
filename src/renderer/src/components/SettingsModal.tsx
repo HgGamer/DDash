@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type {
+  AgentDef,
   AutoUpdateChannel,
   AutoUpdateState,
   NotificationSettings,
@@ -36,7 +37,14 @@ const CURSOR_STYLES: Array<{ id: TerminalCursorStyle; label: string }> = [
   { id: 'bar', label: 'Bar' },
 ];
 
-type TabId = 'terminal' | 'notifications' | 'git' | 'integrated-terminal' | 'updates';
+type TabId =
+  | 'terminal'
+  | 'notifications'
+  | 'git'
+  | 'integrated-terminal'
+  | 'agents'
+  | 'updates'
+  | 'web-access';
 
 export function SettingsModal({ onClose }: { onClose: () => void }) {
   const tab = useStore((s) => s.settingsModalTab);
@@ -90,10 +98,22 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
             Integrated terminal
           </button>
           <button
+            className={`settings-nav-item${tab === 'agents' ? ' active' : ''}`}
+            onClick={() => setTab('agents')}
+          >
+            Agents
+          </button>
+          <button
             className={`settings-nav-item${tab === 'updates' ? ' active' : ''}`}
             onClick={() => setTab('updates')}
           >
             Updates
+          </button>
+          <button
+            className={`settings-nav-item${tab === 'web-access' ? ' active' : ''}`}
+            onClick={() => setTab('web-access')}
+          >
+            Web access
           </button>
         </nav>
         <div className="settings-body">
@@ -103,8 +123,12 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
             <NotificationsPanel />
           ) : tab === 'integrated-terminal' ? (
             <IntegratedTerminalPanel />
+          ) : tab === 'agents' ? (
+            <AgentsPanel />
           ) : tab === 'updates' ? (
             <UpdatesPanel />
+          ) : tab === 'web-access' ? (
+            <WebAccessPanel />
           ) : (
             <GitPanel />
           )}
@@ -346,6 +370,75 @@ function IntegratedTerminalPanel() {
   );
 }
 
+function AgentsPanel() {
+  // Seed once from the store; this panel is the sole editor while open, so we
+  // keep a local draft (which may hold half-typed rows) and persist a
+  // sanitized copy on every change.
+  const [rows, setRows] = useState<AgentDef[]>(() => useStore.getState().agents.map((a) => ({ ...a })));
+
+  const persist = (next: AgentDef[]) => {
+    setRows(next);
+    void window.api.settings.setAgents(next);
+  };
+
+  const addRow = () => {
+    const id = `a_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+    persist([...rows, { id, name: '', command: '' }]);
+  };
+  const updateRow = (id: string, patch: Partial<AgentDef>) =>
+    persist(rows.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+  const removeRow = (id: string) => persist(rows.filter((r) => r.id !== id));
+
+  return (
+    <div className="settings-panel">
+      <section>
+        <h4>Agents</h4>
+        <p className="preset-desc">
+          Define extra agents to launch from the workspace tab bar alongside Claude Code. Each is
+          run through your login shell in the active project/worktree, so anything on your{' '}
+          <code>PATH</code> works (e.g. <code>opencode</code> or <code>omlx launch opencode</code>).
+        </p>
+        {rows.length === 0 && (
+          <p className="preset-desc">No agents yet. Add one below.</p>
+        )}
+        {rows.map((row) => (
+          <div className="field-row agent-row" key={row.id}>
+            <input
+              className="field-input"
+              type="text"
+              value={row.name}
+              placeholder="Name (e.g. opencode)"
+              aria-label="Agent name"
+              onChange={(e) => updateRow(row.id, { name: e.target.value })}
+            />
+            <input
+              className="field-input"
+              type="text"
+              value={row.command}
+              placeholder="Command (e.g. opencode)"
+              aria-label="Agent command"
+              onChange={(e) => updateRow(row.id, { command: e.target.value })}
+            />
+            <button
+              type="button"
+              className="danger"
+              aria-label={`Remove ${row.name || 'agent'}`}
+              onClick={() => removeRow(row.id)}
+            >
+              Remove
+            </button>
+          </div>
+        ))}
+        <div className="field-row">
+          <button type="button" onClick={addRow}>
+            Add agent
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function describeState(state: AutoUpdateState): string {
   switch (state.kind) {
     case 'idle':
@@ -508,6 +601,86 @@ function NotificationsPanel() {
         <p className="preset-desc">
           The pulsing sidebar indicator always shows; these toggles control the dock and OS
           notification behavior.
+        </p>
+      </section>
+    </div>
+  );
+}
+
+function WebAccessPanel() {
+  const wa = useStore((s) => s.webAccess);
+  const [port, setPortLocal] = useState(String(wa.port));
+  const [password, setPasswordLocal] = useState(wa.password);
+  useEffect(() => { setPortLocal(String(wa.port)); }, [wa.port]);
+  useEffect(() => { setPasswordLocal(wa.password); }, [wa.password]);
+
+  const commitPort = () => {
+    const n = Number(port);
+    if (Number.isFinite(n) && n >= 1 && n <= 65535 && Math.floor(n) !== wa.port) {
+      void window.api.settings.setWebAccess({ port: Math.floor(n) });
+    } else {
+      setPortLocal(String(wa.port));
+    }
+  };
+  const commitPassword = () => {
+    if (password !== wa.password) {
+      void window.api.settings.setWebAccess({ password });
+    }
+  };
+  const canEnable = wa.password.length > 0;
+
+  return (
+    <div className="settings-panel">
+      <section>
+        <h4>Web access (LAN)</h4>
+        <p className="preset-desc">
+          When enabled, Dash serves a mobile-friendly web UI on this machine so you can
+          attach to any active Claude session from another device on the same network.
+          Protected by the password set below. Disabled by default.
+        </p>
+        <div className="field-row">
+          <label className="field-label">Enable</label>
+          <input
+            type="checkbox"
+            checked={wa.enabled}
+            disabled={!canEnable}
+            onChange={(e) => void window.api.settings.setWebAccess({ enabled: e.target.checked })}
+          />
+        </div>
+        {!canEnable && (
+          <p className="preset-desc" style={{ color: 'var(--color-warn)' }}>
+            Set a password before enabling.
+          </p>
+        )}
+        <div className="field-row">
+          <label className="field-label">Password</label>
+          <input
+            className="field-input"
+            type="password"
+            value={password}
+            placeholder="(unset)"
+            onChange={(e) => setPasswordLocal(e.target.value)}
+            onBlur={commitPassword}
+            onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+          />
+        </div>
+        <div className="field-row">
+          <label className="field-label">Port</label>
+          <input
+            className="field-input"
+            type="number"
+            min={1}
+            max={65535}
+            value={port}
+            onChange={(e) => setPortLocal(e.target.value)}
+            onBlur={commitPort}
+            onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+          />
+        </div>
+        <p className="preset-desc">
+          {wa.enabled
+            ? `Listening on port ${wa.port}. Open http://<this-machine-lan-ip>:${wa.port} from another device on your Wi-Fi.`
+            : `Default port ${wa.port} (chosen to avoid common dev servers).`}
         </p>
       </section>
     </div>
