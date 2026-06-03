@@ -3,6 +3,10 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import {
   IPC,
+  type DocsCreateArgs,
+  type DocsCreateResult,
+  type DocsDeleteArgs,
+  type DocsDeleteResult,
   type DocsDirEntry,
   type DocsFileEntry,
   type DocsListArgs,
@@ -12,6 +16,10 @@ import {
   type DocsOpenExternalArgs,
   type DocsReadArgs,
   type DocsReadResult,
+  type DocsRenameArgs,
+  type DocsRenameResult,
+  type DocsRevealArgs,
+  type DocsRevealResult,
   type DocsWriteArgs,
   type DocsWriteResult,
 } from '@shared/ipc';
@@ -32,6 +40,18 @@ const MD_EXT = /\.(md|markdown)$/i;
 function isWithinRoot(root: string, child: string): boolean {
   const rel = path.relative(root, child);
   return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+}
+
+/** A valid single path segment: non-empty, no separators or traversal. */
+function isValidName(name: string): boolean {
+  return (
+    name.length > 0 &&
+    name !== '.' &&
+    name !== '..' &&
+    !name.includes('/') &&
+    !name.includes('\\') &&
+    !name.includes('\0')
+  );
 }
 
 async function walkDocs(root: string): Promise<DocsFileEntry[]> {
@@ -183,6 +203,97 @@ export function registerDocsIpc(args: { registry: ProjectRegistry }): void {
     }
     if (scheme === 'http:' || scheme === 'https:' || scheme === 'mailto:') {
       await shell.openExternal(a.url);
+    }
+  });
+
+  ipcMain.handle(IPC.DocsReveal, async (_e, a: DocsRevealArgs): Promise<DocsRevealResult> => {
+    const proj = registry.getById(a.projectId);
+    if (!proj) return { ok: false, reason: 'project-missing' };
+    const root = path.resolve(proj.path);
+    const resolved = path.resolve(root, a.relPath);
+    if (!isWithinRoot(root, resolved)) return { ok: false, reason: 'escape' };
+    try {
+      await fs.stat(resolved);
+    } catch {
+      return { ok: false, reason: 'not-found' };
+    }
+    shell.showItemInFolder(resolved);
+    return { ok: true };
+  });
+
+  ipcMain.handle(IPC.DocsRename, async (_e, a: DocsRenameArgs): Promise<DocsRenameResult> => {
+    const proj = registry.getById(a.projectId);
+    if (!proj) return { ok: false, reason: 'project-missing' };
+    if (!isValidName(a.newName)) return { ok: false, reason: 'invalid' };
+    const root = path.resolve(proj.path);
+    const from = path.resolve(root, a.relPath);
+    if (!isWithinRoot(root, from) || from === root) return { ok: false, reason: 'escape' };
+    const to = path.join(path.dirname(from), a.newName);
+    if (!isWithinRoot(root, to)) return { ok: false, reason: 'escape' };
+    try {
+      await fs.stat(from);
+    } catch {
+      return { ok: false, reason: 'not-found' };
+    }
+    try {
+      // Guard against clobbering an existing entry (case-insensitive FS aside).
+      await fs.access(to);
+      if (path.basename(from) !== a.newName) return { ok: false, reason: 'exists' };
+    } catch {
+      /* target free — good */
+    }
+    try {
+      await fs.rename(from, to);
+      return { ok: true, relPath: path.relative(root, to).split(path.sep).join('/') };
+    } catch (err) {
+      return { ok: false, reason: 'error', message: (err as Error).message };
+    }
+  });
+
+  ipcMain.handle(IPC.DocsDelete, async (_e, a: DocsDeleteArgs): Promise<DocsDeleteResult> => {
+    const proj = registry.getById(a.projectId);
+    if (!proj) return { ok: false, reason: 'project-missing' };
+    const root = path.resolve(proj.path);
+    const resolved = path.resolve(root, a.relPath);
+    if (!isWithinRoot(root, resolved) || resolved === root) return { ok: false, reason: 'escape' };
+    try {
+      await fs.stat(resolved);
+    } catch {
+      return { ok: false, reason: 'not-found' };
+    }
+    try {
+      // Move to the OS trash rather than unlinking, so deletes are recoverable.
+      await shell.trashItem(resolved);
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, reason: 'error', message: (err as Error).message };
+    }
+  });
+
+  ipcMain.handle(IPC.DocsCreate, async (_e, a: DocsCreateArgs): Promise<DocsCreateResult> => {
+    const proj = registry.getById(a.projectId);
+    if (!proj) return { ok: false, reason: 'project-missing' };
+    if (!isValidName(a.name)) return { ok: false, reason: 'invalid' };
+    const root = path.resolve(proj.path);
+    const dir = path.resolve(root, a.dirRelPath || '.');
+    const target = path.join(dir, a.name);
+    if (!isWithinRoot(root, dir) || !isWithinRoot(root, target)) return { ok: false, reason: 'escape' };
+    try {
+      await fs.access(target);
+      return { ok: false, reason: 'exists' };
+    } catch {
+      /* target free — good */
+    }
+    try {
+      if (a.type === 'dir') {
+        await fs.mkdir(target, { recursive: false });
+      } else {
+        // Fail (wx) rather than truncate if it raced into existence.
+        await fs.writeFile(target, '', { flag: 'wx' });
+      }
+      return { ok: true, relPath: path.relative(root, target).split(path.sep).join('/') };
+    } catch (err) {
+      return { ok: false, reason: 'error', message: (err as Error).message };
     }
   });
 }

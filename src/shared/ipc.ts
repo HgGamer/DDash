@@ -140,6 +140,10 @@ export const IPC = {
   DocsRead: 'docs:read',
   DocsWrite: 'docs:write',
   DocsOpenExternal: 'docs:openExternal',
+  DocsReveal: 'docs:reveal',
+  DocsRename: 'docs:rename',
+  DocsDelete: 'docs:delete',
+  DocsCreate: 'docs:create',
 
   // Docs-view settings (renderer ↔ main)
   SettingsGetDocsView: 'settings:getDocsView',
@@ -582,6 +586,51 @@ export interface DocsOpenExternalArgs {
   url: string;
 }
 
+export interface DocsRevealArgs {
+  projectId: string;
+  relPath: string;
+}
+export type DocsRevealResult =
+  | { ok: true }
+  | { ok: false; reason: 'project-missing' | 'escape' | 'not-found' | 'error'; message?: string };
+
+export interface DocsRenameArgs {
+  projectId: string;
+  relPath: string;
+  /** New base name (no slashes); the entry stays in its current directory. */
+  newName: string;
+}
+export type DocsRenameResult =
+  | { ok: true; relPath: string }
+  | {
+      ok: false;
+      reason: 'project-missing' | 'escape' | 'not-found' | 'exists' | 'invalid' | 'error';
+      message?: string;
+    };
+
+export interface DocsDeleteArgs {
+  projectId: string;
+  relPath: string;
+}
+export type DocsDeleteResult =
+  | { ok: true }
+  | { ok: false; reason: 'project-missing' | 'escape' | 'not-found' | 'error'; message?: string };
+
+export interface DocsCreateArgs {
+  projectId: string;
+  /** Directory to create the entry in, relative to the project root ('' = root). */
+  dirRelPath: string;
+  name: string;
+  type: 'file' | 'dir';
+}
+export type DocsCreateResult =
+  | { ok: true; relPath: string }
+  | {
+      ok: false;
+      reason: 'project-missing' | 'escape' | 'exists' | 'invalid' | 'error';
+      message?: string;
+    };
+
 // The typed API exposed on window.api via contextBridge.
 export interface DashApi {
   projects: {
@@ -698,6 +747,10 @@ export interface DashApi {
     read(args: DocsReadArgs): Promise<DocsReadResult>;
     write(args: DocsWriteArgs): Promise<DocsWriteResult>;
     openExternal(url: string): Promise<void>;
+    reveal(args: DocsRevealArgs): Promise<DocsRevealResult>;
+    rename(args: DocsRenameArgs): Promise<DocsRenameResult>;
+    delete(args: DocsDeleteArgs): Promise<DocsDeleteResult>;
+    create(args: DocsCreateArgs): Promise<DocsCreateResult>;
   };
   autoUpdate: {
     getInfo(): Promise<AutoUpdateInfo>;

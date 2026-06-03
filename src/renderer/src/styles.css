@@ -1044,6 +1044,11 @@ button:hover {
 .context-menu button.danger {
   color: var(--danger);
 }
+.context-menu-sep {
+  height: 1px;
+  margin: 4px 0;
+  background: var(--border);
+}
 
 .btn-add {
   border: 1px dashed var(--border);
