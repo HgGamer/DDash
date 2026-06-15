@@ -73,7 +73,10 @@ export function Workspace({ activeId }: Props) {
             const activeAgent = activeAgentByKey[key] ?? null;
             const openAgents = openAgentsByKey[key] ?? [];
             return (
-              <div key={key} style={{ position: 'absolute', inset: 0 }}>
+              // pointerEvents: 'none' so inactive projects' wrappers (stacked later in
+              // DOM order) don't swallow clicks meant for the active terminal below;
+              // the active child pane re-enables pointer events itself.
+              <div key={key} style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
                 <div
                   style={{
                     position: 'absolute',

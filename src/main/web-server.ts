@@ -1,6 +1,7 @@
-// Mobile-friendly LAN web UI for Dash. Serves an xterm.js-based terminal
-// page protected by a session cookie. PTY I/O flows over a hand-rolled
-// WebSocket (RFC 6455) so we don't add a dependency.
+// Mobile-friendly LAN web UI for Dash. Serves a small single-page app
+// (Projects / Workspace / Git / Settings) protected by a session cookie.
+// PTY I/O flows over a hand-rolled WebSocket (RFC 6455) so we don't add a
+// dependency; everything else is a JSON REST API.
 //
 // Wire protocol (JSON text frames over the WebSocket):
 //
@@ -17,14 +18,32 @@
 //     { type: "data",      data }         // base64 PTY bytes
 //     { type: "error",     message }
 //     { type: "closed" }
+//
+// REST API (all auth-gated, JSON):
+//   GET  /api/tabs                         active PTY sessions
+//   GET  /api/style                        resolved xterm style options
+//   GET  /api/projects                     registry + live session keys + branch
+//   GET  /api/git/status?projectId&worktreeId
+//   GET  /api/git/diff?projectId&worktreeId&path&stage
+//   POST /api/git/stage     { projectId, worktreeId, paths }
+//   POST /api/git/unstage   { projectId, worktreeId, paths }
+//   POST /api/git/commit    { projectId, worktreeId, subject }
+//   GET  /api/files?projectId&worktreeId&path   directory listing
+//   GET  /api/file?projectId&worktreeId&path    file content (capped)
 
 import * as http from 'node:http';
 import * as crypto from 'node:crypto';
 import * as os from 'node:os';
+import * as fs from 'node:fs/promises';
+import * as nodePath from 'node:path';
 import type { Socket } from 'node:net';
 import type { PtySessionManager } from './pty-session';
 import type { ProjectRegistry } from './registry';
 import type { TerminalStyleOptions } from '@shared/types';
+import { runGit, runWriteGit } from './git-runner';
+import { parsePorcelainV2, STATUS_ARGS } from './git-parsers';
+import { APP_HTML, LOGIN_HTML } from './web-ui';
+import { LEGACY_APP_HTML } from './web-ui-legacy';
 
 const WS_GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
 const COOKIE_NAME = 'dash_web';
@@ -145,6 +164,7 @@ export class WebServer {
   private handleHttp(req: http.IncomingMessage, res: http.ServerResponse): void {
     const url = req.url ?? '/';
     const path = url.split('?')[0];
+    const query = new URLSearchParams(url.split('?')[1] ?? '');
 
     if (req.method === 'GET' && path === '/login') {
       this.sendLoginPage(res, null);
@@ -171,20 +191,249 @@ export class WebServer {
 
     if (req.method === 'GET' && (path === '/' || path === '/index.html')) {
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-      res.end(this.renderApp());
+      res.end(this.renderApp(req, query));
       return;
     }
-    if (req.method === 'GET' && path === '/api/tabs') {
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ tabs: this.listTabs() }));
-      return;
-    }
-    if (req.method === 'GET' && path === '/api/style') {
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify(this.deps.getTerminalStyle()));
+    if (path.startsWith('/api/')) {
+      void this.handleApi(req, res, path, query).catch((err: Error) => {
+        if (!res.headersSent) sendJson(res, 500, { ok: false, error: err.message });
+        else res.end();
+      });
       return;
     }
     res.writeHead(404); res.end('not found');
+  }
+
+  // ── REST API ─────────────────────────────────────────────────────────
+
+  private async handleApi(
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    path: string,
+    query: URLSearchParams,
+  ): Promise<void> {
+    if (req.method === 'GET') {
+      switch (path) {
+        case '/api/tabs':
+          sendJson(res, 200, { tabs: this.listTabs() });
+          return;
+        case '/api/style':
+          sendJson(res, 200, this.deps.getTerminalStyle());
+          return;
+        case '/api/projects':
+          sendJson(res, 200, { projects: await this.listProjects() });
+          return;
+        case '/api/git/status':
+          await this.apiGitStatus(res, query);
+          return;
+        case '/api/git/diff':
+          await this.apiGitDiff(res, query);
+          return;
+        case '/api/files':
+          await this.apiFiles(res, query);
+          return;
+        case '/api/file':
+          await this.apiFile(res, query);
+          return;
+      }
+    }
+    if (req.method === 'POST') {
+      switch (path) {
+        case '/api/git/stage':
+        case '/api/git/unstage':
+          await this.apiGitStagePaths(req, res, path === '/api/git/stage');
+          return;
+        case '/api/git/commit':
+          await this.apiGitCommit(req, res);
+          return;
+      }
+    }
+    sendJson(res, 404, { ok: false, error: 'not found' });
+  }
+
+  /** Resolve a project/worktree pair to its working directory. */
+  private resolveCwd(projectId: string, worktreeId: string | null): string | null {
+    const proj = this.deps.registry.getById(projectId);
+    if (!proj) return null;
+    if (!worktreeId) return proj.path;
+    const wt = proj.worktrees.find((w) => w.id === worktreeId);
+    return wt ? wt.path : null;
+  }
+
+  private resolveCwdFromQuery(query: URLSearchParams): string | null {
+    return this.resolveCwd(query.get('projectId') ?? '', query.get('worktreeId') || null);
+  }
+
+  private async listProjects(): Promise<unknown[]> {
+    const keys = this.deps.ptyManager.keys();
+    const keysFor = (base: string): string[] =>
+      keys.filter((k) => k === base || k.startsWith(`${base}::agent:`));
+    return Promise.all(this.deps.registry.list().map(async (p) => {
+      let branch: string | null = null;
+      if (p.isGitRepo !== false) {
+        const r = await runGit(p.path, ['rev-parse', '--abbrev-ref', 'HEAD'], { timeoutMs: 5_000 });
+        if (r.ok) branch = r.stdout.trim() || null;
+      }
+      const rootKeys = keysFor(this.deps.compositeKey(p.id, null));
+      return {
+        id: p.id,
+        name: p.name,
+        path: p.path,
+        lastOpenedAt: p.lastOpenedAt,
+        branch,
+        active: rootKeys.length > 0,
+        sessionKeys: rootKeys,
+        worktrees: p.worktrees.map((w) => {
+          const wtKeys = keysFor(this.deps.compositeKey(p.id, w.id));
+          return {
+            id: w.id,
+            branch: w.branch,
+            lastOpenedAt: w.lastOpenedAt,
+            active: wtKeys.length > 0,
+            sessionKeys: wtKeys,
+          };
+        }),
+      };
+    }));
+  }
+
+  private async apiGitStatus(res: http.ServerResponse, query: URLSearchParams): Promise<void> {
+    const cwd = this.resolveCwdFromQuery(query);
+    if (!cwd) { sendJson(res, 404, { ok: false, error: 'project not found' }); return; }
+    const r = await runGit(cwd, STATUS_ARGS);
+    if (!r.ok) { sendJson(res, 200, { ok: false, error: gitFailMessage(r.stderr, 'git status failed') }); return; }
+    sendJson(res, 200, { ok: true, status: parsePorcelainV2(r.stdout, cwd) });
+  }
+
+  private async apiGitDiff(res: http.ServerResponse, query: URLSearchParams): Promise<void> {
+    const cwd = this.resolveCwdFromQuery(query);
+    if (!cwd) { sendJson(res, 404, { ok: false, error: 'project not found' }); return; }
+    const filePath = query.get('path') ?? '';
+    const stage = query.get('stage') ?? 'unstaged';
+    if (!filePath) { sendJson(res, 400, { ok: false, error: 'path required' }); return; }
+    let args: string[];
+    if (stage === 'untracked') {
+      // `diff --no-index` exits 1 when there are differences — expected here.
+      args = ['diff', '--no-index', '--no-color', '--', '/dev/null', filePath];
+    } else {
+      args = ['diff', '--no-color'];
+      if (stage === 'staged') args.push('--cached');
+      args.push('--', filePath);
+    }
+    const r = await runGit(cwd, args);
+    const acceptableExit = stage === 'untracked' && r.exitCode === 1;
+    if (!r.ok && !acceptableExit) {
+      sendJson(res, 200, { ok: false, error: gitFailMessage(r.stderr, 'git diff failed') });
+      return;
+    }
+    const binary = /^Binary files .* differ$/m.test(r.stdout);
+    sendJson(res, 200, { ok: true, diff: r.stdout, binary });
+  }
+
+  private async apiGitStagePaths(
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    stage: boolean,
+  ): Promise<void> {
+    const body = await readJsonBody(req);
+    if (!body) { sendJson(res, 400, { ok: false, error: 'invalid body' }); return; }
+    const cwd = this.resolveCwd(asString(body.projectId), asString(body.worktreeId) || null);
+    if (!cwd) { sendJson(res, 404, { ok: false, error: 'project not found' }); return; }
+    const paths = Array.isArray(body.paths) ? body.paths.filter((p): p is string => typeof p === 'string') : [];
+    if (paths.length === 0) { sendJson(res, 200, { ok: true }); return; }
+    const args = stage ? ['add', '--', ...paths] : ['restore', '--staged', '--', ...paths];
+    const r = await runWriteGit(cwd, args);
+    if (!r.ok) {
+      sendJson(res, 200, { ok: false, error: gitFailMessage(r.stderr, stage ? 'git add failed' : 'git restore failed') });
+      return;
+    }
+    sendJson(res, 200, { ok: true });
+  }
+
+  private async apiGitCommit(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    const body = await readJsonBody(req);
+    if (!body) { sendJson(res, 400, { ok: false, error: 'invalid body' }); return; }
+    const cwd = this.resolveCwd(asString(body.projectId), asString(body.worktreeId) || null);
+    if (!cwd) { sendJson(res, 404, { ok: false, error: 'project not found' }); return; }
+    const subject = asString(body.subject).trim();
+    if (!subject) { sendJson(res, 400, { ok: false, error: 'commit subject is empty' }); return; }
+    const r = await runWriteGit(cwd, ['commit', '-m', subject]);
+    if (!r.ok) {
+      sendJson(res, 200, { ok: false, error: gitFailMessage(r.stderr || r.stdout, 'git commit failed') });
+      return;
+    }
+    sendJson(res, 200, { ok: true });
+  }
+
+  /** Resolve `rel` inside `root`, rejecting anything that escapes the tree. */
+  private safeJoin(root: string, rel: string): string | null {
+    const abs = nodePath.resolve(root, rel);
+    if (abs !== root && !abs.startsWith(root + nodePath.sep)) return null;
+    return abs;
+  }
+
+  private async apiFiles(res: http.ServerResponse, query: URLSearchParams): Promise<void> {
+    const cwd = this.resolveCwdFromQuery(query);
+    if (!cwd) { sendJson(res, 404, { ok: false, error: 'project not found' }); return; }
+    const abs = this.safeJoin(cwd, query.get('path') ?? '');
+    if (!abs) { sendJson(res, 400, { ok: false, error: 'invalid path' }); return; }
+    let dirents;
+    try {
+      dirents = await fs.readdir(abs, { withFileTypes: true });
+    } catch (err) {
+      sendJson(res, 200, { ok: false, error: (err as Error).message });
+      return;
+    }
+    const entries: Array<{ name: string; dir: boolean; size: number }> = [];
+    for (const d of dirents) {
+      if (d.name === '.git') continue;
+      let size = 0;
+      const dir = d.isDirectory();
+      if (!dir) {
+        try { size = (await fs.stat(nodePath.join(abs, d.name))).size; } catch { /* ignore */ }
+      }
+      entries.push({ name: d.name, dir, size });
+    }
+    entries.sort((a, b) => (a.dir === b.dir ? a.name.localeCompare(b.name) : a.dir ? -1 : 1));
+    sendJson(res, 200, { ok: true, entries });
+  }
+
+  private async apiFile(res: http.ServerResponse, query: URLSearchParams): Promise<void> {
+    const cwd = this.resolveCwdFromQuery(query);
+    if (!cwd) { sendJson(res, 404, { ok: false, error: 'project not found' }); return; }
+    const rel = query.get('path') ?? '';
+    const abs = rel ? this.safeJoin(cwd, rel) : null;
+    if (!abs) { sendJson(res, 400, { ok: false, error: 'invalid path' }); return; }
+    const MAX_BYTES = 256 * 1024;
+    let buf: Buffer;
+    let truncated = false;
+    try {
+      const st = await fs.stat(abs);
+      if (!st.isFile()) { sendJson(res, 400, { ok: false, error: 'not a file' }); return; }
+      if (st.size > MAX_BYTES) {
+        truncated = true;
+        const fh = await fs.open(abs, 'r');
+        try {
+          buf = Buffer.alloc(MAX_BYTES);
+          const { bytesRead } = await fh.read(buf, 0, MAX_BYTES, 0);
+          buf = buf.subarray(0, bytesRead);
+        } finally {
+          await fh.close();
+        }
+      } else {
+        buf = await fs.readFile(abs);
+      }
+    } catch (err) {
+      sendJson(res, 200, { ok: false, error: (err as Error).message });
+      return;
+    }
+    const binary = buf.subarray(0, 8000).includes(0);
+    sendJson(res, 200, {
+      ok: true,
+      binary,
+      truncated,
+      content: binary ? '' : buf.toString('utf8'),
+    });
   }
 
   private handleLogin(req: http.IncomingMessage, res: http.ServerResponse): void {
@@ -417,9 +666,23 @@ export class WebServer {
     catch { this.closeWs(client); }
   }
 
-  private renderApp(): string {
-    return APP_HTML;
+  /**
+   * Pick the UI variant. Old WebKit browsers (BlackBerry 10's stock browser,
+   * older BlackBerry / PlayBook devices) can't run the modern app (ES6,
+   * fetch, CSS custom properties, xterm.js), so they get a self-contained
+   * ES5 page instead. `?ui=legacy` / `?ui=modern` force either variant.
+   */
+  private renderApp(req: http.IncomingMessage, query: URLSearchParams): string {
+    const override = query.get('ui');
+    if (override === 'legacy') return LEGACY_APP_HTML;
+    if (override === 'modern') return APP_HTML;
+    return isLegacyBrowser(req.headers['user-agent']) ? LEGACY_APP_HTML : APP_HTML;
   }
+}
+
+/** Browsers that need the ES5 legacy UI (pre-ES6 WebKit). */
+function isLegacyBrowser(ua: string | undefined): boolean {
+  return !!ua && /BB10|BlackBerry|PlayBook/i.test(ua);
 }
 
 // ── WebSocket frame parser ────────────────────────────────────────────
@@ -457,7 +720,7 @@ function parseFrame(buf: Buffer): ParsedFrame | null {
   return { opcode, payload, consumed: offset + len };
 }
 
-// ── Embedded HTML ─────────────────────────────────────────────────────
+// ── Helpers ──────────────────────────────────────────────────────────
 
 function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => (
@@ -468,291 +731,43 @@ function escapeHtml(s: string): string {
   ));
 }
 
-const LOGIN_HTML = `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Dash — sign in</title>
-<style>
-  :root { color-scheme: dark; }
-  html, body { height: 100%; margin: 0; }
-  body {
-    background: #0c0c0d; color: #eee;
-    font: 15px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    display: grid; place-items: center;
-    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
-  }
-  form {
-    background: #161618; border: 1px solid #2a2a2e; border-radius: 12px;
-    padding: 24px; width: min(360px, 90vw);
-  }
-  h1 { margin: 0 0 12px; font-size: 18px; font-weight: 600; }
-  p.err { color: #ff7676; margin: 0 0 12px; font-size: 13px; }
-  input[type=password] {
-    width: 100%; box-sizing: border-box;
-    padding: 12px 14px; font-size: 16px;
-    background: #0c0c0d; color: #eee;
-    border: 1px solid #2a2a2e; border-radius: 8px;
-    outline: none;
-  }
-  input[type=password]:focus { border-color: #5e5edb; }
-  button {
-    margin-top: 12px; width: 100%; padding: 12px;
-    background: #5e5edb; color: white; border: 0; border-radius: 8px;
-    font-size: 16px; font-weight: 600;
-  }
-</style>
-</head>
-<body>
-<form method="post" action="/login">
-  <h1>Dash · web access</h1>
-  <p class="err">{{ERROR}}</p>
-  <input name="password" type="password" placeholder="Password" autofocus autocomplete="current-password">
-  <button type="submit">Sign in</button>
-</form>
-</body>
-</html>`;
+function sendJson(res: http.ServerResponse, code: number, body: unknown): void {
+  res.writeHead(code, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify(body));
+}
 
-const APP_HTML = `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
-<title>Dash</title>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css">
-<style>
-  :root { color-scheme: dark; --bg:#000; --panel:#111; --border:#222; --fg:#ddd; --accent:#5e5edb; }
-  html, body { margin: 0; background: var(--bg); color: var(--fg);
-    font: 14px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; overscroll-behavior: none; }
-  /* Layout fills the visualViewport — JS keeps --app-h in sync so the
-     on-screen keyboard pushes content up instead of overlaying it. */
-  html, body { height: 100%; }
-  body { position: fixed; inset: 0;
-    display: flex; flex-direction: column;
-    height: var(--app-h, 100dvh);
-    width: 100%;
-  }
-  header { display: flex; align-items: center; gap: 8px; padding: 8px 10px;
-    border-bottom: 1px solid var(--border); background: var(--panel);
-    padding-top: calc(8px + env(safe-area-inset-top)); }
-  header button.icon { background: transparent; color: var(--fg); border: 1px solid var(--border);
-    border-radius: 8px; padding: 8px 10px; font-size: 14px; }
-  header .title { flex: 1; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  #term { flex: 1; min-height: 0; background: #000; }
-  #term .xterm { height: 100%; padding: 4px; }
-  .softrow { display: flex; gap: 6px; padding: 6px 8px; background: var(--panel);
-    border-top: 1px solid var(--border); overflow-x: auto;
-    padding-bottom: calc(6px + env(safe-area-inset-bottom)); }
-  .softrow button { flex: 0 0 auto; padding: 10px 12px; min-width: 44px; min-height: 40px;
-    background: #1a1a1d; color: var(--fg); border: 1px solid var(--border); border-radius: 8px;
-    font-size: 13px; font-weight: 500; }
-  .softrow button:active { background: #2a2a30; }
-  .drawer { position: fixed; inset: 0; background: rgba(0,0,0,0.55); display: none;
-    z-index: 10; }
-  .drawer.open { display: block; }
-  .drawer .panel { position: absolute; top: 0; left: 0; bottom: 0; width: min(320px, 85vw);
-    background: var(--panel); border-right: 1px solid var(--border); display: flex; flex-direction: column;
-    padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
-  .drawer .panel header { background: transparent; }
-  .drawer ul { list-style: none; margin: 0; padding: 4px 0; overflow-y: auto; flex: 1 1 auto; min-height: 0; -webkit-overflow-scrolling: touch; }
-  .drawer li { padding: 14px 16px; border-bottom: 1px solid var(--border); cursor: pointer; }
-  .drawer li.active { background: rgba(94,94,219,0.15); }
-  .drawer .footer { padding: 10px 14px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
-  .drawer .footer a { color: #9090d0; text-decoration: none; font-size: 13px; }
-  .empty { padding: 16px; color: #888; font-size: 13px; }
-</style>
-</head>
-<body>
-<header>
-  <button class="icon" id="menu" aria-label="Tabs">☰</button>
-  <div class="title" id="title">Dash</div>
-  <button class="icon" id="refresh" aria-label="Refresh tabs">↻</button>
-</header>
-<div id="term"></div>
-<div class="softrow" id="softrow">
-  <button data-send="\\u001b">Esc</button>
-  <button data-send="\\t">Tab</button>
-  <button data-send="\\u0003">Ctrl-C</button>
-  <button data-send="\\u0004">Ctrl-D</button>
-  <button data-send="\\u001b[A">↑</button>
-  <button data-send="\\u001b[B">↓</button>
-  <button data-send="\\u001b[D">←</button>
-  <button data-send="\\u001b[C">→</button>
-  <button data-send="\\r">↵</button>
-</div>
-<div class="drawer" id="drawer">
-  <div class="panel">
-    <header><div class="title">Sessions</div><button class="icon" id="closeDrawer">✕</button></header>
-    <ul id="tabs"></ul>
-    <div class="footer">
-      <span style="color:#888;font-size:12px">Dash · web</span>
-      <a href="/logout">Log out</a>
-    </div>
-  </div>
-</div>
-<script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
-<script>
-(async () => {
-  const termEl = document.getElementById('term');
-  const titleEl = document.getElementById('title');
-  const drawer = document.getElementById('drawer');
-  const tabsEl = document.getElementById('tabs');
-  document.getElementById('menu').onclick = () => { drawer.classList.add('open'); refreshTabs(); };
-  document.getElementById('closeDrawer').onclick = () => drawer.classList.remove('open');
-  document.getElementById('refresh').onclick = () => refreshTabs();
-  drawer.addEventListener('click', (e) => { if (e.target === drawer) drawer.classList.remove('open'); });
+/** First stderr line, or a fallback — keeps mobile toasts readable. */
+function gitFailMessage(stderr: string, fallback: string): string {
+  const line = stderr.split('\n').find((l) => l.trim().length > 0);
+  return line ? line.trim() : fallback;
+}
 
-  // Pull the desktop's resolved terminal style so the web view matches.
-  // Falls back to a sensible default if the fetch fails.
-  let styleOpts = {
-    fontFamily: 'Menlo, Monaco, "Courier New", monospace',
-    fontSize: 13,
-    theme: { background: '#000000' },
-  };
-  try {
-    const r = await fetch('/api/style', { credentials: 'same-origin' });
-    if (r.ok) {
-      const s = await r.json();
-      if (s && typeof s === 'object') styleOpts = Object.assign(styleOpts, s);
-    }
-  } catch { /* ignore */ }
+function asString(v: unknown): string {
+  return typeof v === 'string' ? v : '';
+}
 
-  const term = new window.Terminal({
-    fontFamily: styleOpts.fontFamily,
-    fontSize: styleOpts.fontSize,
-    cursorStyle: styleOpts.cursorStyle,
-    cursorBlink: styleOpts.cursorBlink !== false,
-    scrollback: styleOpts.scrollback ?? 1000,
-    theme: styleOpts.theme,
-    convertEol: false,
-  });
-  const fit = new window.FitAddon.FitAddon();
-  term.loadAddon(fit);
-  term.open(termEl);
-
-  let resizeTimer = null;
-  function doFit() {
-    try { fit.fit(); } catch { /* ignore */ }
-    if (ws && ws.readyState === 1 && attachedKey) {
-      ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
-    }
-  }
-  function scheduleFit() {
-    clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(doFit, 80);
-  }
-  // Keep layout sized to the visualViewport so the on-screen keyboard
-  // pushes the terminal up rather than covering it.
-  function applyViewportHeight() {
-    const h = window.visualViewport ? window.visualViewport.height : window.innerHeight;
-    document.documentElement.style.setProperty('--app-h', h + 'px');
-  }
-  applyViewportHeight();
-  setTimeout(doFit, 50);
-  if (window.visualViewport) {
-    window.visualViewport.addEventListener('resize', () => { applyViewportHeight(); scheduleFit(); });
-    window.visualViewport.addEventListener('scroll', applyViewportHeight);
-  }
-  window.addEventListener('resize', () => { applyViewportHeight(); scheduleFit(); });
-
-  let ws = null;
-  let attachedKey = null;
-  let knownTabs = [];
-
-  function b64encode(s) {
-    // s is a string of binary bytes from xterm input. btoa handles latin-1.
-    return btoa(s);
-  }
-  function b64decodeToBytes(b) {
-    const bin = atob(b);
-    const out = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
-    return out;
-  }
-
-  function connect() {
-    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    ws = new WebSocket(proto + '//' + location.host + '/ws');
-    ws.onopen = () => {
-      ws.send(JSON.stringify({ type: 'list' }));
-    };
-    ws.onmessage = (ev) => {
-      let msg; try { msg = JSON.parse(ev.data); } catch { return; }
-      if (msg.type === 'tabs') {
-        knownTabs = msg.tabs || [];
-        renderTabs();
-        if (!attachedKey && knownTabs.length > 0) attachTo(knownTabs[0]);
-      } else if (msg.type === 'attached') {
-        attachedKey = msg.key;
-        const t = knownTabs.find(t => t.key === msg.key);
-        titleEl.textContent = t ? t.title : msg.key;
-        renderTabs();
-        term.reset();
-      } else if (msg.type === 'data') {
-        const bytes = b64decodeToBytes(msg.data);
-        term.write(bytes);
-      } else if (msg.type === 'error') {
-        term.write('\\r\\n\\x1b[31m[' + msg.message + ']\\x1b[0m\\r\\n');
+/** Parse a small JSON request body; null on malformed/oversized input. */
+function readJsonBody(req: http.IncomingMessage): Promise<Record<string, unknown> | null> {
+  return new Promise((resolve) => {
+    let body = '';
+    req.setEncoding('utf8');
+    req.on('data', (chunk: string) => {
+      body += chunk;
+      if (body.length > 1024 * 1024) {
+        resolve(null);
+        req.destroy();
       }
-    };
-    ws.onclose = () => {
-      attachedKey = null;
-      term.write('\\r\\n\\x1b[33m[disconnected — reconnecting…]\\x1b[0m\\r\\n');
-      setTimeout(connect, 1500);
-    };
-  }
-
-  function refreshTabs() {
-    if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'list' }));
-  }
-
-  function renderTabs() {
-    tabsEl.innerHTML = '';
-    if (knownTabs.length === 0) {
-      const li = document.createElement('div');
-      li.className = 'empty';
-      li.textContent = 'No active sessions. Start a tab in the desktop app.';
-      tabsEl.appendChild(li);
-      return;
-    }
-    for (const t of knownTabs) {
-      const li = document.createElement('li');
-      li.textContent = t.title;
-      if (t.key === attachedKey) li.classList.add('active');
-      li.onclick = () => { attachTo(t); drawer.classList.remove('open'); };
-      tabsEl.appendChild(li);
-    }
-  }
-
-  function attachTo(t) {
-    if (!ws || ws.readyState !== 1) return;
-    ws.send(JSON.stringify({ type: 'attach', key: t.key, cols: term.cols, rows: term.rows }));
-  }
-
-  term.onData((d) => {
-    if (ws && ws.readyState === 1 && attachedKey) {
-      ws.send(JSON.stringify({ type: 'input', data: b64encode(d) }));
-    }
-  });
-
-  for (const btn of document.querySelectorAll('.softrow button')) {
-    btn.addEventListener('click', (e) => {
-      e.preventDefault();
-      const raw = btn.getAttribute('data-send') || '';
-      // Decode \\u escapes from the attribute.
-      const s = JSON.parse('"' + raw.replace(/"/g, '\\\\"') + '"');
-      if (ws && ws.readyState === 1 && attachedKey) {
-        ws.send(JSON.stringify({ type: 'input', data: b64encode(s) }));
-      }
-      term.focus();
     });
-  }
-
-  termEl.addEventListener('click', () => term.focus());
-  connect();
-})();
-</script>
-</body>
-</html>`;
+    req.on('end', () => {
+      try {
+        const parsed: unknown = JSON.parse(body);
+        resolve(parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+          ? (parsed as Record<string, unknown>)
+          : null);
+      } catch {
+        resolve(null);
+      }
+    });
+    req.on('error', () => resolve(null));
+  });
+}
