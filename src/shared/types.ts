@@ -387,6 +387,27 @@ export const DEFAULT_APP_STATE: AppState = {
   agents: DEFAULT_AGENTS_SETTINGS,
 };
 
+/** Aggregated Claude Code token usage for a single local calendar day, read
+ *  from the JSONL session transcripts under `~/.claude/projects`. The cost is a
+ *  rough estimate from a built-in price table and is labeled as such in the UI. */
+export interface ClaudeUsageSummary {
+  /** False when `~/.claude/projects` could not be read (Claude Code never run,
+   *  or transcripts disabled). The UI hides the usage line in that case. */
+  available: boolean;
+  /** Local calendar day the figures cover, `YYYY-MM-DD`. */
+  day: string;
+  inputTokens: number;
+  outputTokens: number;
+  cacheCreateTokens: number;
+  cacheReadTokens: number;
+  /** Sum of the four token buckets above. */
+  totalTokens: number;
+  /** Rough estimated spend for the day in USD. */
+  estimatedCostUsd: number;
+  /** Distinct Claude Code sessions that logged usage today. */
+  sessions: number;
+}
+
 export type PtySessionStatus = 'not-started' | 'running' | 'exited';
 
 export type PtySpawnError =

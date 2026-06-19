@@ -9,13 +9,14 @@ import { UpdateBanner } from './components/UpdateBanner';
 import { ToastHost, toast } from './components/Toast';
 import { useStore } from './store';
 import { compositeKey } from '@shared/ipc';
-import type { ActiveSelection } from '@shared/types';
+import type { ActiveSelection, ClaudeUsageSummary } from '@shared/types';
 
 export function App() {
   const {
     projects,
     activeId,
     setProjects,
+    setClaudeUsage,
     setActive,
     upsertTab,
     clearTab,
@@ -165,13 +166,30 @@ export function App() {
   }, [setWebAccess]);
 
   useEffect(() => {
-    void (async () => {
-      const current = await window.api.settings.getAgents();
+    let cancelled = false;
+
+    const refreshAgentsAndUsage = async () => {
+      const current = (await window.api.settings.getAgents()) as Awaited<
+        ReturnType<typeof window.api.settings.getAgents>
+      > & {
+        claudeUsage?: ClaudeUsageSummary;
+      };
+      if (cancelled) return;
       setAgents(current.agents);
-    })();
+      setClaudeUsage(current.claudeUsage ?? null);
+    };
+
+    void refreshAgentsAndUsage();
+    const timer = window.setInterval(() => {
+      void refreshAgentsAndUsage();
+    }, 60_000);
     const off = window.api.settings.onAgentsChanged((s) => setAgents(s.agents));
-    return () => off();
-  }, [setAgents]);
+    return () => {
+      cancelled = true;
+      off();
+      window.clearInterval(timer);
+    };
+  }, [setAgents, setClaudeUsage]);
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => {

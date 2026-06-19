@@ -2,6 +2,7 @@ node_modules/
 out/
 dist/
 release/
+.stage/
 *.log
 .DS_Store
 .vscode/
