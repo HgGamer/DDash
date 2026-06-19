@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type {
   ActiveSelection,
   AgentDef,
+  ClaudeUsageSummary,
   DocsViewSettings,
   GitViewSettings,
   IntegratedTerminalSettings,
@@ -24,6 +25,7 @@ import {
   DEFAULT_WEB_ACCESS_SETTINGS,
 } from '@shared/types';
 import { compositeKey, parseCompositeKey } from '@shared/ipc';
+import { applyTheme, loadTheme, type AppTheme } from './lib/theme';
 
 export interface TabState {
   status: PtySessionStatus;
@@ -85,6 +87,9 @@ interface AppStore {
   mountedKeys: string[];
   tabs: Record<string, TabState>;
   loaded: boolean;
+  /** Active app UI theme. Persisted in localStorage via `lib/theme.ts`. */
+  theme: AppTheme;
+  claudeUsage: ClaudeUsageSummary | null;
   terminalStyle: TerminalStyleSettings;
   notifications: NotificationSettings;
   gitView: GitViewSettings;
@@ -125,6 +130,9 @@ interface AppStore {
   settingsModalTab: 'terminal' | 'notifications' | 'git' | 'integrated-terminal' | 'agents' | 'updates' | 'web-access';
 
   setProjects: (projects: Project[]) => void;
+  /** Switch the app UI theme and persist the choice. */
+  setTheme: (theme: AppTheme) => void;
+  setClaudeUsage: (usage: ClaudeUsageSummary | null) => void;
   setActive: (active: ActiveSelection | null) => void;
   ensureMounted: (key: string) => void;
   upsertTab: (key: string, patch: Partial<TabState>) => void;
@@ -179,6 +187,8 @@ export const useStore = create<AppStore>((set) => ({
   mountedKeys: [],
   tabs: {},
   loaded: false,
+  theme: loadTheme(),
+  claudeUsage: null,
   terminalStyle: { version: 1, preset: 'dash-dark' },
   notifications: { ...DEFAULT_NOTIFICATION_SETTINGS },
   gitView: { ...DEFAULT_GIT_VIEW_SETTINGS },
@@ -203,6 +213,11 @@ export const useStore = create<AppStore>((set) => ({
   settingsModalTab: 'terminal',
 
   setProjects: (projects) => set({ projects, loaded: true }),
+  setTheme: (theme) => {
+    applyTheme(theme);
+    set({ theme });
+  },
+  setClaudeUsage: (usage) => set({ claudeUsage: usage }),
   setActive: (active) =>
     set((s) => {
       const key = active ? compositeKey(active.projectId, active.worktreeId) : null;

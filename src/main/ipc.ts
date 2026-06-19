@@ -30,6 +30,7 @@ import {
   type WorktreeRemoveResult,
 } from '@shared/ipc';
 import { loadStyleFromFile } from './terminal-style-file';
+import { readClaudeUsageToday } from './claude-usage';
 import type { ProjectRegistry } from './registry';
 import type { JsonStore } from './store';
 import type { SettingsManager } from './settings';
@@ -504,7 +505,8 @@ export function registerIpc(args: {
   });
 
   ipcMain.handle(IPC.SettingsGetAgents, async (): Promise<AgentsSettings> => {
-    return settings.getAgents();
+    const usage = await readClaudeUsageToday();
+    return { ...settings.getAgents(), claudeUsage: usage } as AgentsSettings;
   });
 
   ipcMain.handle(

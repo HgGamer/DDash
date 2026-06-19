@@ -11,6 +11,7 @@ export default defineConfig({
       },
     },
     build: {
+      outDir: resolve('.stage/main'),
       rollupOptions: {
         input: resolve('src/main/index.ts'),
       },
@@ -24,6 +25,7 @@ export default defineConfig({
       },
     },
     build: {
+      outDir: resolve('.stage/preload'),
       rollupOptions: {
         input: resolve('src/preload/index.ts'),
       },
@@ -38,6 +40,7 @@ export default defineConfig({
     },
     plugins: [react()],
     build: {
+      outDir: resolve('.stage/renderer'),
       rollupOptions: {
         input: resolve('src/renderer/index.html'),
       },

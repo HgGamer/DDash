@@ -9,7 +9,8 @@
  *   - Do NOT hard-code raw hex colors, raw pixel spacing, or raw motion
  *     durations. The `lint:colors` script enforces the no-raw-hex part.
  *
- * Single dark theme tuned for the terminal-centric UI. A future light theme
+ * Dark theme is the base set in `:root`. Alternate themes override the color
+ * tokens under `[data-theme="…"]` (see `lib/theme.ts`). A future light theme
  * would live under `[data-theme="light"]`.
  */
 
@@ -93,6 +94,35 @@
 
   /* Focus ---------------------------------------------------------------- */
   --focus-ring: 0 0 0 2px var(--color-bg), 0 0 0 4px var(--color-accent);
+}
+
+/*
+ * Pink theme — a rose-tinted dark palette with a hot-pink accent. Only the
+ * color tokens change; typography, spacing, radii, and motion are inherited
+ * from :root. The terminal pane keeps a near-black background so xterm output
+ * stays legible.
+ */
+[data-theme='pink'] {
+  color-scheme: dark;
+
+  --color-bg: #140910; /* app background — very dark plum */
+  --color-terminal-bg: #0a0408; /* near-black behind the xterm pane */
+  --color-surface: #1f0f18; /* sidebar, cards */
+  --color-surface-2: #2c1623; /* hover */
+  --color-border: #3c2030;
+  --color-border-strong: #57293f;
+  --color-fg: #f8e7ef;
+  --color-fg-muted: #cf9fb4;
+  --color-fg-subtle: #9c7184;
+  --color-accent: #ff4fa3; /* hot pink */
+  --color-accent-fg: #ffffff;
+  --color-accent-soft: rgba(255, 79, 163, 0.16);
+  --color-danger: #ff6b81;
+  --color-danger-soft: rgba(255, 107, 129, 0.16);
+  --color-warn: #f0a35e;
+  --color-warn-soft: rgba(240, 163, 94, 0.16);
+  --color-success: #6ec18b;
+  --color-success-soft: rgba(110, 193, 139, 0.16);
 }
 
 /* Standard keyboard focus indication — accent ring visible on every surface
