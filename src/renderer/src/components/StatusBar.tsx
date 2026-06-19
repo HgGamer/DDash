@@ -26,6 +26,7 @@ export function StatusBar() {
   const projects = useStore((s) => s.projects);
   const integratedTerminal = useStore((s) => s.integratedTerminal);
   const claudeUsage = useStore((s) => s.claudeUsage);
+  const planUsage = useStore((s) => s.claudePlanUsage);
   const theme = useStore((s) => s.theme);
   const setTheme = useStore((s) => s.setTheme);
 
@@ -44,6 +45,19 @@ export function StatusBar() {
 
   const nextTheme = theme === 'pink' ? 'dark' : 'pink';
 
+  // Subscription plan usage (the real `/usage` numbers). The bar fills toward
+  // whichever window is closest to its cap, so it grows as the plan is consumed.
+  const fiveH = planUsage?.fiveHour?.utilization ?? null;
+  const sevenD = planUsage?.sevenDay?.utilization ?? null;
+  const showPlan = !!planUsage?.available && (fiveH !== null || sevenD !== null);
+  const planGauge = Math.min(100, Math.max(fiveH ?? 0, sevenD ?? 0));
+  const planLevel = planGauge >= 90 ? 'high' : planGauge >= 70 ? 'mid' : 'low';
+  const fmtReset = (iso: string | null | undefined) =>
+    iso ? new Date(iso).toLocaleString() : 'unknown';
+  const planTitle = planUsage?.available
+    ? `Claude plan usage (from /usage)\n5-hour: ${fiveH !== null ? `${Math.round(fiveH)}%` : '—'} (resets ${fmtReset(planUsage.fiveHour?.resetsAt)})\n7-day: ${sevenD !== null ? `${Math.round(sevenD)}%` : '—'} (resets ${fmtReset(planUsage.sevenDay?.resetsAt)})`
+    : 'Claude plan usage unavailable';
+
   return (
     <footer className="statusbar">
       <div className="statusbar-left">
@@ -52,6 +66,25 @@ export function StatusBar() {
             <span className="statusbar-project-name">{proj.name}</span>
             {worktree && <span className="statusbar-project-branch">⎇ {worktree.branch}</span>}
           </span>
+        )}
+        {showPlan && (
+          <div className="statusbar-usage" title={planTitle}>
+            <div className="statusbar-usage-copy">
+              <span className="statusbar-usage-label">Plan</span>
+              <span className="statusbar-usage-value">
+                {fiveH !== null && `5h ${Math.round(fiveH)}%`}
+                {fiveH !== null && sevenD !== null && ' · '}
+                {sevenD !== null && `7d ${Math.round(sevenD)}%`}
+              </span>
+            </div>
+            <div className="statusbar-plan-bar" aria-hidden="true">
+              <span
+                className="statusbar-plan-fill"
+                data-level={planLevel}
+                style={{ width: `${planGauge}%` }}
+              />
+            </div>
+          </div>
         )}
         {showUsage && claudeUsage && (
           <div

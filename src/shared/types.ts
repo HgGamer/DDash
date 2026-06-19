@@ -408,6 +408,35 @@ export interface ClaudeUsageSummary {
   sessions: number;
 }
 
+/** One rate-limit window from the Anthropic OAuth usage endpoint. */
+export interface ClaudePlanWindow {
+  /** Percent of the window's limit consumed (0–100). */
+  utilization: number;
+  /** ISO timestamp when the window resets, or null if unknown. */
+  resetsAt: string | null;
+}
+
+/**
+ * Subscription plan usage as reported by `/usage` — fetched live from the
+ * Anthropic OAuth usage endpoint using the local Claude Code credentials. This
+ * is the real rate-limit utilization, distinct from {@link ClaudeUsageSummary}
+ * (which only counts today's transcript tokens).
+ */
+export interface ClaudePlanUsage {
+  /** False when no credentials, expired token, rate-limited, or fetch failed. */
+  available: boolean;
+  /** Rolling 5-hour window (the "session" limit). */
+  fiveHour: ClaudePlanWindow | null;
+  /** Rolling 7-day window (the weekly cap). */
+  sevenDay: ClaudePlanWindow | null;
+  /** 7-day Opus-specific window, when the plan reports it. */
+  sevenDayOpus: ClaudePlanWindow | null;
+  /** 7-day Sonnet-specific window, when the plan reports it. */
+  sevenDaySonnet: ClaudePlanWindow | null;
+  /** Why it's unavailable, for diagnostics / UI hints. */
+  reason?: 'no-credentials' | 'expired' | 'rate-limited' | 'error';
+}
+
 export type PtySessionStatus = 'not-started' | 'running' | 'exited';
 
 export type PtySpawnError =

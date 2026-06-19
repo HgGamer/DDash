@@ -15,6 +15,9 @@ export interface PtySessionOpts {
   /** When set, launch this command line via the user's login shell instead of
    *  the built-in Claude Code session. */
   command?: string;
+  /** Windows-only: when set, launch Claude Code / the command through this shell
+   *  (e.g. `powershell.exe`) instead of spawning the binary / cmd.exe directly. */
+  shell?: string;
   onData: (data: string) => void;
   onExit: (code: number | null, signal: number | null) => void;
 }
@@ -44,16 +47,22 @@ export class PtySession {
     // agents don't need the claude binary itself, only the enriched env.
     const { claudePath, env } = await resolveClaudeEnv();
 
+    const isWin = process.platform === 'win32';
+    // Windows-only shell override (e.g. PowerShell). When set, Claude Code and
+    // agent commands launch *through* this shell so PATH/profile resolve the
+    // same way an interactive session would. Empty keeps the direct launch.
+    const winShell = isWin ? opts.shell?.trim() : undefined;
+    const isPwsh = !!winShell && /(powershell|pwsh)/i.test(winShell);
+
     let file: string;
     let spawnArgs: string[];
     if (opts.command) {
       // Run the user-supplied command line through their login shell so PATH,
       // aliases, and shell functions resolve the same way an interactive
       // terminal would.
-      const isWin = process.platform === 'win32';
       if (isWin) {
-        file = process.env.COMSPEC || 'cmd.exe';
-        spawnArgs = ['/d', '/s', '/c', opts.command];
+        file = winShell || process.env.COMSPEC || 'cmd.exe';
+        spawnArgs = isPwsh ? ['-NoLogo', '-Command', opts.command] : ['/d', '/s', '/c', opts.command];
       } else {
         file = process.env.SHELL || '/bin/bash';
         spawnArgs = ['-lc', opts.command];
@@ -62,8 +71,16 @@ export class PtySession {
       if (!claudePath) {
         return { kind: 'claude-not-found', installUrl: CLAUDE_INSTALL_URL };
       }
-      file = claudePath;
-      spawnArgs = [];
+      if (winShell) {
+        // Launch Claude Code through the chosen Windows shell.
+        file = winShell;
+        spawnArgs = isPwsh
+          ? ['-NoLogo', '-Command', `& '${claudePath.replace(/'/g, "''")}'`]
+          : ['/d', '/s', '/c', `"${claudePath}"`];
+      } else {
+        file = claudePath;
+        spawnArgs = [];
+      }
     }
 
     // eslint-disable-next-line no-console
@@ -161,6 +178,7 @@ export class PtySessionManager {
     cols: number;
     rows: number;
     command?: string;
+    shell?: string;
     onData: (data: string) => void;
     onExit: (code: number | null, signal: number | null) => void;
   }): Promise<PtySpawnResult> {

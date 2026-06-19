@@ -470,6 +470,9 @@ export interface ShellOpenArgs {
   cols: number;
   rows: number;
   label?: string;
+  /** Shell executable override for this tab. Falls back to the configured
+   *  default shell (or %COMSPEC%/$SHELL) when omitted. */
+  shell?: string;
 }
 
 export type ShellOpenResult =
@@ -633,6 +636,13 @@ export type DocsCreateResult =
 
 // The typed API exposed on window.api via contextBridge.
 export interface DashApi {
+  /** Host platform, mirrored from `process.platform` (e.g. 'win32', 'darwin', 'linux'). */
+  platform: NodeJS.Platform;
+  /** Native clipboard access (Electron's clipboard module) for the terminals. */
+  clipboard: {
+    readText(): string;
+    writeText(text: string): void;
+  };
   projects: {
     list(): Promise<Project[]>;
     add(args: ProjectAddArgs): Promise<Project | null>;

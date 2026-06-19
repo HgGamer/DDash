@@ -31,6 +31,7 @@ import {
 } from '@shared/ipc';
 import { loadStyleFromFile } from './terminal-style-file';
 import { readClaudeUsageToday } from './claude-usage';
+import { readClaudePlanUsage } from './claude-plan-usage';
 import type { ProjectRegistry } from './registry';
 import type { JsonStore } from './store';
 import type { SettingsManager } from './settings';
@@ -290,6 +291,12 @@ export function registerIpc(args: {
       }
       command = agent.command;
     }
+    // On Windows, if the user picked a default shell (e.g. PowerShell), launch
+    // Claude Code / agent tabs through it too. Empty = keep the direct launch.
+    const winShell =
+      process.platform === 'win32'
+        ? settings.getIntegratedTerminal().defaultShell?.trim() || undefined
+        : undefined;
     const key = agentKey(args.projectId, args.worktreeId ?? null, agentId);
     const result = await ptyManager.spawn({
       key,
@@ -297,6 +304,7 @@ export function registerIpc(args: {
       cols: args.cols,
       rows: args.rows,
       command,
+      shell: winShell,
       onData: (data) => {
         const ev: PtyDataEvent = {
           projectId: args.projectId,
@@ -505,8 +513,11 @@ export function registerIpc(args: {
   });
 
   ipcMain.handle(IPC.SettingsGetAgents, async (): Promise<AgentsSettings> => {
-    const usage = await readClaudeUsageToday();
-    return { ...settings.getAgents(), claudeUsage: usage } as AgentsSettings;
+    const [usage, planUsage] = await Promise.all([
+      readClaudeUsageToday(),
+      readClaudePlanUsage(),
+    ]);
+    return { ...settings.getAgents(), claudeUsage: usage, claudePlanUsage: planUsage } as AgentsSettings;
   });
 
   ipcMain.handle(

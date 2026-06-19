@@ -10,6 +10,7 @@ import {
 } from '@shared/types';
 import { compositeKey } from '@shared/ipc';
 import { useStore } from '../store';
+import { attachTerminalClipboard } from '../lib/terminal-clipboard';
 
 interface Props {
   active: ActiveSelection;
@@ -92,17 +93,21 @@ export function IntegratedTerminalDock({ active, height, workspaceHeight }: Prop
     };
   }, [selectionKey, tabs.length, active.projectId, active.worktreeId, addShellTab]);
 
-  const openNewTab = useCallback(async () => {
-    const tabId = crypto.randomUUID();
-    const r = await window.api.shell.open({
-      projectId: active.projectId,
-      worktreeId: active.worktreeId,
-      tabId,
-      cols: 80,
-      rows: 24,
-    });
-    if (r.ok) addShellTab(selectionKey, r.tab);
-  }, [active.projectId, active.worktreeId, addShellTab, selectionKey]);
+  const openNewTab = useCallback(
+    async (shell?: string) => {
+      const tabId = crypto.randomUUID();
+      const r = await window.api.shell.open({
+        projectId: active.projectId,
+        worktreeId: active.worktreeId,
+        tabId,
+        cols: 80,
+        rows: 24,
+        shell,
+      });
+      if (r.ok) addShellTab(selectionKey, r.tab);
+    },
+    [active.projectId, active.worktreeId, addShellTab, selectionKey],
+  );
 
   const closeTab = useCallback(
     async (tabId: string) => {
@@ -128,7 +133,7 @@ export function IntegratedTerminalDock({ active, height, workspaceHeight }: Prop
           renameShellTab(selectionKey, id, label);
           void window.api.shell.rename({ tabId: id, label });
         }}
-        onNew={() => void openNewTab()}
+        onNew={(shell) => void openNewTab(shell)}
       />
       <div className="integrated-terminal-body">
         {tabs.map((tab) => (
@@ -153,7 +158,79 @@ interface TabStripProps {
   onSelect: (id: string) => void;
   onClose: (id: string) => void;
   onRename: (id: string, label: string) => void;
-  onNew: () => void;
+  onNew: (shell?: string) => void;
+}
+
+// Common Windows shells offered when opening a new integrated-terminal tab.
+// An empty value means "use the configured default shell".
+const WIN_SHELL_CHOICES = [
+  { value: '', label: 'Default shell' },
+  { value: 'powershell.exe', label: 'Windows PowerShell' },
+  { value: 'pwsh.exe', label: 'PowerShell 7+' },
+  { value: 'cmd.exe', label: 'Command Prompt' },
+] as const;
+
+/** "+" new-tab control. On Windows it opens a small menu to pick the shell;
+ *  elsewhere it just opens a tab with the default shell. The menu is positioned
+ *  with `position: fixed` (anchored to the button) so it escapes the tab strip's
+ *  `overflow` clipping. */
+function NewTabButton({ onNew }: { onNew: (shell?: string) => void }) {
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const [menuPos, setMenuPos] = useState<{ left: number; bottom: number } | null>(null);
+
+  if (window.api.platform !== 'win32') {
+    return (
+      <button className="it-tab-new" title="New shell tab" onClick={() => onNew()}>
+        +
+      </button>
+    );
+  }
+
+  const toggle = () => {
+    if (menuPos) {
+      setMenuPos(null);
+      return;
+    }
+    const r = btnRef.current?.getBoundingClientRect();
+    if (r) setMenuPos({ left: r.left, bottom: window.innerHeight - r.top + 4 });
+  };
+
+  return (
+    <>
+      <button
+        ref={btnRef}
+        className="it-tab-new"
+        title="New terminal — choose a shell"
+        onClick={toggle}
+      >
+        +
+      </button>
+      {menuPos && (
+        <>
+          <div className="it-shell-menu-backdrop" onClick={() => setMenuPos(null)} />
+          <div
+            className="it-shell-menu"
+            role="menu"
+            style={{ left: menuPos.left, bottom: menuPos.bottom }}
+          >
+            {WIN_SHELL_CHOICES.map((s) => (
+              <button
+                key={s.value || 'default'}
+                className="it-shell-menu-item"
+                role="menuitem"
+                onClick={() => {
+                  setMenuPos(null);
+                  onNew(s.value || undefined);
+                }}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </>
+  );
 }
 
 function TabStrip({ tabs, activeTabId, onSelect, onClose, onRename, onNew }: TabStripProps) {
@@ -213,9 +290,7 @@ function TabStrip({ tabs, activeTabId, onSelect, onClose, onRename, onNew }: Tab
           </div>
         );
       })}
-      <button className="it-tab-new" title="New shell tab" onClick={onNew}>
-        +
-      </button>
+      <NewTabButton onNew={onNew} />
     </div>
   );
 }
@@ -253,6 +328,7 @@ function ShellTerminalView({ tab, active }: ShellTerminalViewProps) {
     term.open(host);
     termRef.current = term;
     fitRef.current = fit;
+    const detachClipboard = attachTerminalClipboard(term, host);
 
     const safeFit = () => {
       const rect = host.getBoundingClientRect();
@@ -305,6 +381,7 @@ function ShellTerminalView({ tab, active }: ShellTerminalViewProps) {
 
     return () => {
       observer.disconnect();
+      detachClipboard();
       disposeData.dispose();
       disposeResize.dispose();
       offData();

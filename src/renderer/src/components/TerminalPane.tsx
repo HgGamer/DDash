@@ -6,6 +6,7 @@ import type { Project, PtySpawnError, Worktree } from '@shared/types';
 import { resolveTerminalStyleOptions } from '@shared/types';
 import { agentKey, compositeKey } from '@shared/ipc';
 import { useStore } from '../store';
+import { attachTerminalClipboard } from '../lib/terminal-clipboard';
 
 interface Props {
   project: Project;
@@ -59,6 +60,7 @@ export function TerminalPane({ project, worktree, active, agentId, agentLabel }:
     term.open(host);
     termRef.current = term;
     fitRef.current = fit;
+    const detachClipboard = attachTerminalClipboard(term, host);
 
     const safeFit = () => {
       const rect = host.getBoundingClientRect();
@@ -194,6 +196,7 @@ export function TerminalPane({ project, worktree, active, agentId, agentLabel }:
 
     return () => {
       observer.disconnect();
+      detachClipboard();
       host.removeEventListener('dragover', onDragOver);
       host.removeEventListener('drop', onDrop);
       disposeData.dispose();

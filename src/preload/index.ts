@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
+import { clipboard, contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
 import {
   IPC,
   type DashApi,
@@ -73,6 +73,11 @@ function subscribe<T>(channel: string, handler: (payload: T) => void): () => voi
 }
 
 const api: DashApi = {
+  platform: process.platform,
+  clipboard: {
+    readText: () => clipboard.readText(),
+    writeText: (text: string) => clipboard.writeText(text),
+  },
   projects: {
     list: () => ipcRenderer.invoke(IPC.ProjectList),
     add: (args: ProjectAddArgs) => ipcRenderer.invoke(IPC.ProjectAdd, args),

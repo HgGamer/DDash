@@ -15,6 +15,18 @@ import type { ProjectRegistry } from './registry';
 import type { SettingsManager } from './settings';
 import { ShellSessionManager, resolveDefaultShell } from './shell-session';
 
+/** Friendly, human-readable name for a shell executable path. */
+function shellDisplayName(shell: string): string {
+  const base = path.basename(shell).toLowerCase();
+  if (base.includes('pwsh')) return 'pwsh';
+  if (base.includes('powershell')) return 'PowerShell';
+  if (base.includes('cmd')) return 'Command Prompt';
+  if (base.includes('bash')) return 'bash';
+  if (base.includes('zsh')) return 'zsh';
+  if (base.includes('fish')) return 'fish';
+  return path.basename(shell) || 'shell';
+}
+
 export function registerShellIpc(args: {
   registry: ProjectRegistry;
   settings: SettingsManager;
@@ -45,8 +57,15 @@ export function registerShellIpc(args: {
       const cwd = resolveCwd(req.projectId, worktreeId);
       if (!cwd) return { ok: false, reason: 'tab-missing' };
 
-      const shell = resolveDefaultShell(settings.getIntegratedTerminal().defaultShell);
-      const label = req.label ?? path.basename(cwd);
+      // A per-tab override (chosen from the "new terminal" shell picker) wins;
+      // otherwise fall back to the configured default shell.
+      const shell =
+        req.shell && req.shell.trim().length > 0
+          ? req.shell
+          : resolveDefaultShell(settings.getIntegratedTerminal().defaultShell);
+      // Label the tab by its shell so it's obvious which one launched (the cwd
+      // is still shown in the tab's hover tooltip).
+      const label = req.label ?? shellDisplayName(shell);
 
       const result = await shellManager.spawn({
         tabId: req.tabId,

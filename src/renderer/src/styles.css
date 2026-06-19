@@ -276,6 +276,37 @@ button:hover {
   color: var(--fg);
   border-color: var(--accent);
 }
+.it-shell-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 99;
+}
+.it-shell-menu {
+  position: fixed;
+  z-index: 100;
+  min-width: 170px;
+  padding: 4px 0;
+  background: var(--bg-sidebar);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
+}
+.it-shell-menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--fg);
+  padding: 6px 12px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.it-shell-menu-item:hover {
+  background: var(--bg-row-hover);
+  color: var(--fg);
+}
 .it-term-view {
   position: absolute;
   inset: 0;
