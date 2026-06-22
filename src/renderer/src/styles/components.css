@@ -1030,6 +1030,26 @@
 .statusbar-usage-segment.cache-read {
   background: var(--color-fg-subtle);
 }
+.statusbar-plan-bar {
+  width: 112px;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--color-surface-2);
+}
+.statusbar-plan-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--color-success);
+  transition: width 0.4s ease;
+}
+.statusbar-plan-fill[data-level='mid'] {
+  background: var(--color-warn);
+}
+.statusbar-plan-fill[data-level='high'] {
+  background: var(--color-danger);
+}
 .statusbar-button {
   padding: 1px var(--space-2);
   font: inherit;

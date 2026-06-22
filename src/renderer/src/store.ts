@@ -3,6 +3,7 @@ import type {
   ActiveSelection,
   AgentDef,
   ClaudeUsageSummary,
+  ClaudePlanUsage,
   DocsViewSettings,
   GitViewSettings,
   IntegratedTerminalSettings,
@@ -90,6 +91,7 @@ interface AppStore {
   /** Active app UI theme. Persisted in localStorage via `lib/theme.ts`. */
   theme: AppTheme;
   claudeUsage: ClaudeUsageSummary | null;
+  claudePlanUsage: ClaudePlanUsage | null;
   terminalStyle: TerminalStyleSettings;
   notifications: NotificationSettings;
   gitView: GitViewSettings;
@@ -133,6 +135,7 @@ interface AppStore {
   /** Switch the app UI theme and persist the choice. */
   setTheme: (theme: AppTheme) => void;
   setClaudeUsage: (usage: ClaudeUsageSummary | null) => void;
+  setClaudePlanUsage: (usage: ClaudePlanUsage | null) => void;
   setActive: (active: ActiveSelection | null) => void;
   ensureMounted: (key: string) => void;
   upsertTab: (key: string, patch: Partial<TabState>) => void;
@@ -189,6 +192,7 @@ export const useStore = create<AppStore>((set) => ({
   loaded: false,
   theme: loadTheme(),
   claudeUsage: null,
+  claudePlanUsage: null,
   terminalStyle: { version: 1, preset: 'dash-dark' },
   notifications: { ...DEFAULT_NOTIFICATION_SETTINGS },
   gitView: { ...DEFAULT_GIT_VIEW_SETTINGS },
@@ -218,6 +222,7 @@ export const useStore = create<AppStore>((set) => ({
     set({ theme });
   },
   setClaudeUsage: (usage) => set({ claudeUsage: usage }),
+  setClaudePlanUsage: (usage) => set({ claudePlanUsage: usage }),
   setActive: (active) =>
     set((s) => {
       const key = active ? compositeKey(active.projectId, active.worktreeId) : null;

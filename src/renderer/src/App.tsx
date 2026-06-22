@@ -9,7 +9,7 @@ import { UpdateBanner } from './components/UpdateBanner';
 import { ToastHost, toast } from './components/Toast';
 import { useStore } from './store';
 import { compositeKey } from '@shared/ipc';
-import type { ActiveSelection, ClaudeUsageSummary } from '@shared/types';
+import type { ActiveSelection, ClaudeUsageSummary, ClaudePlanUsage } from '@shared/types';
 
 export function App() {
   const {
@@ -17,6 +17,7 @@ export function App() {
     activeId,
     setProjects,
     setClaudeUsage,
+    setClaudePlanUsage,
     setActive,
     upsertTab,
     clearTab,
@@ -173,10 +174,12 @@ export function App() {
         ReturnType<typeof window.api.settings.getAgents>
       > & {
         claudeUsage?: ClaudeUsageSummary;
+        claudePlanUsage?: ClaudePlanUsage;
       };
       if (cancelled) return;
       setAgents(current.agents);
       setClaudeUsage(current.claudeUsage ?? null);
+      setClaudePlanUsage(current.claudePlanUsage ?? null);
     };
 
     void refreshAgentsAndUsage();
@@ -189,7 +192,7 @@ export function App() {
       off();
       window.clearInterval(timer);
     };
-  }, [setAgents, setClaudeUsage]);
+  }, [setAgents, setClaudeUsage, setClaudePlanUsage]);
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => {

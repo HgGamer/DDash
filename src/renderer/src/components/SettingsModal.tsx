@@ -330,6 +330,66 @@ function GitPanel() {
   );
 }
 
+// Common Windows shells offered as one-click presets. An empty value means
+// "use %COMSPEC%" (Command Prompt). `pwsh.exe` (PowerShell 7+) only resolves if
+// the user installed it, but spawning falls back gracefully if it's missing.
+const WIN_SHELL_PRESETS = [
+  { value: '', label: 'Command Prompt (cmd.exe) — default' },
+  { value: 'powershell.exe', label: 'Windows PowerShell' },
+  { value: 'pwsh.exe', label: 'PowerShell 7+ (pwsh.exe)' },
+] as const;
+
+const WIN_CUSTOM = '__custom__';
+
+/** Windows-only shell picker: presets in a dropdown plus a custom-path escape hatch. */
+function WindowsShellField({ value }: { value: string }) {
+  const isPreset = WIN_SHELL_PRESETS.some((p) => p.value === value);
+  const [custom, setCustom] = useState(!isPreset && value.length > 0);
+
+  const apply = (next: string) =>
+    void window.api.settings.setIntegratedTerminal({ defaultShell: next || undefined });
+
+  return (
+    <>
+      <div className="field-row">
+        <label className="field-label">Default shell</label>
+        <select
+          className="field-input"
+          value={custom ? WIN_CUSTOM : value}
+          onChange={(e) => {
+            const v = e.target.value;
+            if (v === WIN_CUSTOM) {
+              setCustom(true);
+            } else {
+              setCustom(false);
+              apply(v);
+            }
+          }}
+        >
+          {WIN_SHELL_PRESETS.map((p) => (
+            <option key={p.value || 'default'} value={p.value}>
+              {p.label}
+            </option>
+          ))}
+          <option value={WIN_CUSTOM}>Custom…</option>
+        </select>
+      </div>
+      {custom && (
+        <div className="field-row">
+          <label className="field-label">Custom shell path</label>
+          <input
+            className="field-input"
+            type="text"
+            value={value}
+            placeholder="e.g. C:\Program Files\Git\bin\bash.exe"
+            onChange={(e) => apply(e.target.value)}
+          />
+        </div>
+      )}
+    </>
+  );
+}
+
 function IntegratedTerminalPanel() {
   const it = useStore((s) => s.integratedTerminal);
   return (
@@ -346,24 +406,38 @@ function IntegratedTerminalPanel() {
             }
           />
         </div>
-        <div className="field-row">
-          <label className="field-label">Default shell</label>
-          <input
-            className="field-input"
-            type="text"
-            value={it.defaultShell ?? ''}
-            placeholder="$SHELL (e.g. /bin/zsh)"
-            onChange={(e) =>
-              void window.api.settings.setIntegratedTerminal({
-                defaultShell: e.target.value || undefined,
-              })
-            }
-          />
-        </div>
+        {window.api.platform === 'win32' ? (
+          <WindowsShellField value={it.defaultShell ?? ''} />
+        ) : (
+          <div className="field-row">
+            <label className="field-label">Default shell</label>
+            <input
+              className="field-input"
+              type="text"
+              value={it.defaultShell ?? ''}
+              placeholder="$SHELL (e.g. /bin/zsh)"
+              onChange={(e) =>
+                void window.api.settings.setIntegratedTerminal({
+                  defaultShell: e.target.value || undefined,
+                })
+              }
+            />
+          </div>
+        )}
         <p className="preset-desc">
-          Leave blank to use the value of <code>$SHELL</code> (or <code>%COMSPEC%</code> on
-          Windows). Shortcut: <code>Ctrl/Cmd+`</code> toggles the panel;{' '}
-          <code>Ctrl/Cmd+Shift+`</code> opens a new tab.
+          {window.api.platform === 'win32' ? (
+            <>
+              Pick the shell new terminal tabs launch. Choose <code>Custom…</code> to point at any
+              executable (e.g. Git Bash). Leaving it on the default uses <code>%COMSPEC%</code>.
+            </>
+          ) : (
+            <>
+              Leave blank to use the value of <code>$SHELL</code> (or <code>%COMSPEC%</code> on
+              Windows).
+            </>
+          )}{' '}
+          Shortcut: <code>Ctrl/Cmd+`</code> toggles the panel; <code>Ctrl/Cmd+Shift+`</code> opens a
+          new tab.
         </p>
       </section>
     </div>
