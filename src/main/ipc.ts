@@ -382,7 +382,7 @@ export function registerIpc(args: {
     if (prefs.systemNotifications && Notification.isSupported()) {
       new Notification({
         title: args.projectName,
-        body: 'Claude is waiting for input.',
+        body: args.kind === 'done' ? 'Claude is done.' : 'Claude is waiting for input.',
         silent: false,
       }).show();
     }

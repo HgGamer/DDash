@@ -498,10 +498,11 @@
   padding: 0 var(--space-3);
   background: var(--color-surface);
   border-bottom: 1px solid var(--color-border);
-  /* Establish a stacking context above the terminal panes below (which are
-   * absolutely positioned), so the agent-launcher dropdown overlays them. */
+  /* Establish a stacking context above the terminal panes AND their overlays
+   * (error/exited overlays are z-index:10; ties lose to them by DOM order, which
+   * was occluding the agent-launcher dropdown). Stay below modals (z-index:100+). */
   position: relative;
-  z-index: 10;
+  z-index: 20;
 }
 /* Content tabs (Claude Code ↔ open documents). */
 .ws-tabs {

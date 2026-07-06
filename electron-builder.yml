@@ -16,6 +16,11 @@ files:
 asarUnpack:
   - "**/node_modules/node-pty/**/*"
 
+# Menu-bar (Tray) icon needs a real file at runtime; ship it as a resource.
+extraResources:
+  - from: build/icon.png
+    to: icon.png
+
 win:
   target:
     - target: portable

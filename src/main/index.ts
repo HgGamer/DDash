@@ -15,6 +15,8 @@ import { createAutoUpdater, type AutoUpdater } from './auto-updater';
 import { registerAutoUpdateIpc } from './auto-update-ipc';
 import { RemoteServer } from './remote-server';
 import { WebServer } from './web-server';
+import { ClaudeHooks } from './claude-hooks';
+import { ClaudeTray } from './tray';
 import { compositeKey, IPC } from '../shared/ipc';
 import { resolveTerminalStyleOptions, type WebAccessSettings } from '@shared/types';
 
@@ -36,6 +38,8 @@ let registry!: ProjectRegistry;
 const ptyManager = new PtySessionManager();
 const shellManager = new ShellSessionManager();
 let autoUpdater: AutoUpdater | null = null;
+let claudeHooks: ClaudeHooks | null = null;
+let claudeTray: ClaudeTray | null = null;
 
 /** Returns true if it's OK to proceed with closing (no unsaved changes, or the
  *  user chose to discard them). Shows a confirm dialog otherwise. */
@@ -150,6 +154,20 @@ app.whenReady().then(async () => {
   void applyWebAccess(settings.getWebAccess());
   settings.on('webAccessChanged', (wa) => { void applyWebAccess(wa); });
 
+  // Reliable "done" / "needs input" signals via Claude Code hooks. Auto-installs
+  // its hook into ~/.claude/settings.json and forwards state to the renderer.
+  claudeTray = new ClaudeTray(() => mainWindow);
+  claudeTray.start();
+  claudeHooks = new ClaudeHooks({
+    registry,
+    onState: (ev) => {
+      claudeTray?.update(compositeKey(ev.projectId, ev.worktreeId), ev.state);
+      const win = mainWindow;
+      if (win && !win.isDestroyed()) win.webContents.send(IPC.ClaudeHookState, ev);
+    },
+  });
+  void claudeHooks.start();
+
   registerIpc({
     store, registry, ptyManager, shellManager, settings,
     getWindow: () => mainWindow,
@@ -190,6 +208,8 @@ app.on('before-quit', (event) => {
     try {
       await ptyManager.killAll();
       shellManager.killAll();
+      claudeTray?.destroy();
+      await claudeHooks?.stop();
       if (store) await store.flush();
     } catch {
       // best-effort cleanup; fall through to exit either way

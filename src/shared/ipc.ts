@@ -74,6 +74,10 @@ export const IPC = {
   NotifyAttention: 'notify:attention',
   NotifyAttentionClear: 'notify:attentionClear',
 
+  // Claude Code hook state (main → renderer). Driven by hooks merged into
+  // ~/.claude/settings.json — reliable "done" / "needs input" signals.
+  ClaudeHookState: 'claude:hookState',
+
   // Git view (renderer ↔ main)
   GitIsRepo: 'git:isRepo',
   GitStatus: 'git:status',
@@ -284,6 +288,19 @@ export interface NotifyAttentionArgs {
   projectId: string;
   worktreeId?: string | null;
   projectName: string;
+  /** Controls the notification body. 'done' = Claude finished; 'input' =
+   *  Claude is waiting for input/permission. Defaults to 'input'. */
+  kind?: 'done' | 'input';
+}
+
+/** Emitted by the Claude Code hook listener when a session changes state.
+ *  'busy' = a prompt was submitted (working); 'done' = Stop fired; 'input' =
+ *  Notification fired (permission / idle). */
+export interface ClaudeHookStateEvent {
+  projectId: string;
+  worktreeId: string | null;
+  projectName: string;
+  state: 'busy' | 'done' | 'input';
 }
 
 // Worktree IPC payloads
@@ -720,6 +737,9 @@ export interface DashApi {
   notify: {
     attention(args: NotifyAttentionArgs): void;
     attentionClear(key: string): void;
+  };
+  claude: {
+    onHookState(handler: (ev: ClaudeHookStateEvent) => void): () => void;
   };
   git: {
     isRepo(args: GitTabRef): Promise<GitIsRepoResult>;

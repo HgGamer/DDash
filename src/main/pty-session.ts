@@ -45,7 +45,16 @@ export class PtySession {
 
     // Reuse the Claude resolver to obtain a login-shell-resolved PATH. Custom
     // agents don't need the claude binary itself, only the enriched env.
-    const { claudePath, env } = await resolveClaudeEnv();
+    const { claudePath, env: baseEnv } = await resolveClaudeEnv();
+    const env = { ...baseEnv };
+
+    // Backstop against a misbehaving third-party Stop hook (e.g. a plugin whose
+    // background daemon is dead) that keeps failing and blocking the turn from
+    // ending — that spins Claude up to the default cap (~9) of noisy retries.
+    // Cap it low so a stuck hook recovers fast inside dash. User override wins.
+    // ponytail: also throttles a *legitimately* blocking Stop hook to 2 retries;
+    // raise/remove if a real hook workflow needs more.
+    if (!env.CLAUDE_CODE_STOP_HOOK_BLOCK_CAP) env.CLAUDE_CODE_STOP_HOOK_BLOCK_CAP = '2';
 
     const isWin = process.platform === 'win32';
     // Windows-only shell override (e.g. PowerShell). When set, Claude Code and

@@ -240,10 +240,40 @@ export function App() {
     const offErr = window.api.pty.onError(({ projectId, worktreeId, error }) => {
       upsertTab(compositeKey(projectId, worktreeId ?? null), { status: 'exited', error });
     });
+    // Reliable state from Claude Code hooks (main → renderer). Mirrors the
+    // bell/regex heuristic in TerminalPane but driven by real hook events.
+    const offHook = window.api.claude.onHookState(({ projectId, worktreeId, projectName, state }) => {
+      const key = compositeKey(projectId, worktreeId ?? null);
+      const st = useStore.getState();
+      if (state === 'busy') {
+        if (st.tabs[key]?.needsAttention) {
+          st.upsertTab(key, { needsAttention: false });
+          window.api.notify.attentionClear(key);
+        }
+        return;
+      }
+      // 'done' or 'input' → flag the tab. Skip the sidebar dot only for the tab
+      // you're actively looking at (active tab + focused window); otherwise show
+      // it. The dock badge / OS notification is gated on window focus in main, so
+      // always report — that's what drives the "N Claudes need you" badge.
+      const cur = st.activeId;
+      const isActiveTab =
+        !!cur && cur.projectId === projectId && (cur.worktreeId ?? null) === (worktreeId ?? null);
+      if (!(isActiveTab && document.hasFocus())) {
+        st.upsertTab(key, { needsAttention: true });
+      }
+      window.api.notify.attention({
+        projectId,
+        worktreeId,
+        projectName,
+        kind: state === 'done' ? 'done' : 'input',
+      });
+    });
     return () => {
       offData();
       offExit();
       offErr();
+      offHook();
     };
   }, [upsertTab]);
 

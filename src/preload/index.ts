@@ -35,6 +35,7 @@ import {
   type PtyResizeArgs,
   type PtyWriteArgs,
   type NotifyAttentionArgs,
+  type ClaudeHookStateEvent,
   type ShellDataEvent,
   type ShellExitEvent,
   type ShellListArgs,
@@ -194,6 +195,9 @@ const api: DashApi = {
   notify: {
     attention: (args: NotifyAttentionArgs) => ipcRenderer.send(IPC.NotifyAttention, args),
     attentionClear: (key: string) => ipcRenderer.send(IPC.NotifyAttentionClear, key),
+  },
+  claude: {
+    onHookState: (h) => subscribe<ClaudeHookStateEvent>(IPC.ClaudeHookState, h),
   },
   docs: {
     list: (args: DocsListArgs) => ipcRenderer.invoke(IPC.DocsList, args),
