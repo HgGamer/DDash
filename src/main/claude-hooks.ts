@@ -40,7 +40,7 @@ function hookCommand(): string {
 interface HookPayload {
   hook_event_name?: string;
   cwd?: string;
-  notification_type?: string;
+  message?: string;
 }
 
 export interface ClaudeHooksDeps {
@@ -124,8 +124,11 @@ export class ClaudeHooks {
         state = 'input';
         break;
       case 'Notification':
-        // auth_success is informational, not a "needs you" signal.
-        if (p.notification_type === 'auth_success') return;
+        // Notification fires for permission prompts AND the 60s idle timeout
+        // ("waiting for your input"). Only the permission case means Claude is
+        // actually blocked on you; the idle one would leave the ● dot stuck
+        // after a turn ends since nothing clears it until the next prompt.
+        if (!/permission/i.test(p.message ?? '')) return;
         state = 'input';
         break;
       default:
