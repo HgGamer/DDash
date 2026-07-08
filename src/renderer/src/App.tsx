@@ -8,7 +8,7 @@ import { StatusBar } from './components/StatusBar';
 import { UpdateBanner } from './components/UpdateBanner';
 import { ToastHost, toast } from './components/Toast';
 import { useStore } from './store';
-import { compositeKey } from '@shared/ipc';
+import { agentKey, compositeKey } from '@shared/ipc';
 import type { ActiveSelection, ClaudeUsageSummary, ClaudePlanUsage } from '@shared/types';
 
 export function App() {
@@ -234,11 +234,11 @@ export function App() {
     const offData = window.api.pty.onData(() => {
       // xterm components handle their own data; nothing to do here.
     });
-    const offExit = window.api.pty.onExit(({ projectId, worktreeId, exitCode }) => {
-      upsertTab(compositeKey(projectId, worktreeId ?? null), { status: 'exited', exitCode });
+    const offExit = window.api.pty.onExit(({ projectId, worktreeId, agentId, exitCode }) => {
+      upsertTab(agentKey(projectId, worktreeId ?? null, agentId), { status: 'exited', exitCode });
     });
-    const offErr = window.api.pty.onError(({ projectId, worktreeId, error }) => {
-      upsertTab(compositeKey(projectId, worktreeId ?? null), { status: 'exited', error });
+    const offErr = window.api.pty.onError(({ projectId, worktreeId, agentId, error }) => {
+      upsertTab(agentKey(projectId, worktreeId ?? null, agentId), { status: 'exited', error });
     });
     // Reliable state from Claude Code hooks (main → renderer). Mirrors the
     // bell/regex heuristic in TerminalPane but driven by real hook events.
