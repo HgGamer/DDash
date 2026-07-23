@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process';
 import type { GitError, GitErrorCode } from '@shared/git';
+import { resolveClaudeEnv } from './claude-resolver';
 
 export interface RunGitResult {
   ok: boolean;
@@ -76,14 +77,22 @@ export async function runWriteGit(
   return withWriteLock(cwd, () => runGit(cwd, args, opts));
 }
 
-function spawnGit(args: string[], cwd: string | undefined, opts: RunOptions): Promise<RunGitResult> {
+async function spawnGit(
+  args: string[],
+  cwd: string | undefined,
+  opts: RunOptions,
+): Promise<RunGitResult> {
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT;
   const maxBuffer = opts.maxBuffer ?? DEFAULT_MAX_BUFFER;
+  // Launched from Finder/Dock, the Electron process only has the minimal launchd
+  // PATH — so git hooks (e.g. Git LFS's pre-push) can't find /opt/homebrew tools.
+  // Reuse the login-shell-enriched env the terminals use (cached).
+  const { env } = await resolveClaudeEnv();
   return new Promise((resolve) => {
     const child = execFile(
       'git',
       args,
-      { cwd, maxBuffer, timeout: timeoutMs, killSignal: 'SIGKILL' },
+      { cwd, env, maxBuffer, timeout: timeoutMs, killSignal: 'SIGKILL' },
       (err, stdout, stderr) => {
         const stdoutStr = typeof stdout === 'string' ? stdout : String(stdout ?? '');
         const stderrStr = typeof stderr === 'string' ? stderr : String(stderr ?? '');
