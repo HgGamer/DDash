@@ -46,6 +46,14 @@ export function Workspace({ activeId }: Props) {
     }
   }, [board, ensureMounted]);
 
+  // Selections with restored extra Claude windows must be mounted so those
+  // windows' panes render (and respawn) after a reload.
+  useEffect(() => {
+    for (const [k, ids] of Object.entries(openAgentsByKey)) {
+      if (ids.length) ensureMounted(k);
+    }
+  }, [openAgentsByKey, ensureMounted]);
+
   const showIntegratedTerminal =
     !boardMode && integratedTerminal.enabled && integratedTerminal.expanded && !!activeId;
   useShellTabs(activeId, integratedTerminal.enabled);

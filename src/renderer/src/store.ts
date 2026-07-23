@@ -78,6 +78,42 @@ function selectionOf(sessionKey: string): string {
   return i < 0 ? sessionKey : sessionKey.slice(0, i);
 }
 
+// Extra Claude windows live in openAgentsByKey/activeAgentByKey, which are
+// otherwise in-memory — so a reload (or Vite HMR resetting this module) drops
+// them. Persist just the claude: markers so added windows survive; custom
+// agents stay session-only as before.
+const WINDOWS_KEY = 'dash.windows';
+function loadWindows(): {
+  open: Record<string, string[]>;
+  active: Record<string, string | null>;
+} {
+  try {
+    const v = JSON.parse(localStorage.getItem(WINDOWS_KEY) ?? '{}');
+    return {
+      open: v.open && typeof v.open === 'object' ? v.open : {},
+      active: v.active && typeof v.active === 'object' ? v.active : {},
+    };
+  } catch {
+    return { open: {}, active: {} };
+  }
+}
+function saveWindows(
+  open: Record<string, string[]>,
+  active: Record<string, string | null>,
+) {
+  const fOpen: Record<string, string[]> = {};
+  for (const [k, ids] of Object.entries(open)) {
+    const claude = ids.filter(isClaudeAgentId);
+    if (claude.length) fOpen[k] = claude;
+  }
+  const fActive: Record<string, string> = {};
+  for (const [k, id] of Object.entries(active)) {
+    if (id && isClaudeAgentId(id)) fActive[k] = id;
+  }
+  localStorage.setItem(WINDOWS_KEY, JSON.stringify({ open: fOpen, active: fActive }));
+}
+const RESTORED_WINDOWS = loadWindows();
+
 export interface TabState {
   status: PtySessionStatus;
   error?: PtySpawnError;
@@ -286,8 +322,8 @@ export const useStore = create<AppStore>((set) => ({
   docTabs: {},
   activeDocByKey: {},
   agents: [],
-  openAgentsByKey: {},
-  activeAgentByKey: {},
+  openAgentsByKey: RESTORED_WINDOWS.open,
+  activeAgentByKey: RESTORED_WINDOWS.active,
   sidebarView: 'projects',
   board: loadBoard(),
   boardSizes: loadBoardSizes(),
@@ -653,6 +689,16 @@ export const useStore = create<AppStore>((set) => ({
     set((s) => ({ settingsModalOpen: true, settingsModalTab: tab ?? s.settingsModalTab })),
   closeSettings: () => set({ settingsModalOpen: false }),
 }));
+
+// Persist extra Claude windows whenever they change, so they survive reloads.
+useStore.subscribe((s, prev) => {
+  if (
+    s.openAgentsByKey !== prev.openAgentsByKey ||
+    s.activeAgentByKey !== prev.activeAgentByKey
+  ) {
+    saveWindows(s.openAgentsByKey, s.activeAgentByKey);
+  }
+});
 
 export function worktreesByProject(projects: Project[], projectId: string): Worktree[] {
   return projects.find((p) => p.id === projectId)?.worktrees ?? [];
