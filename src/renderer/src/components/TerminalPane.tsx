@@ -57,6 +57,13 @@ export function TerminalPane({ project, worktree, active, agentId, agentLabel }:
       theme: initialStyle.theme,
       fontFamily: initialStyle.fontFamily,
       fontSize: initialStyle.fontSize,
+      // Default the render-critical metrics — passing `undefined` here overrides
+      // xterm's own defaults and yields NaN cell sizes (tiny/cramped output).
+      fontWeight: initialStyle.fontWeight ?? 'normal',
+      fontWeightBold: initialStyle.fontWeightBold ?? 'bold',
+      lineHeight: initialStyle.lineHeight ?? 1.0,
+      letterSpacing: initialStyle.letterSpacing ?? 0,
+      macOptionIsMeta: initialStyle.macOptionIsMeta ?? false,
       // Light theme: force a minimum contrast so dim/gray output (incl. 256-color
       // grays the palette can't remap) stays readable on the light bg. xterm halves
       // the ratio for SGR-dim cells (DomRendererRowFactory), so 9 → dim clears ~4.5:1.
@@ -182,8 +189,12 @@ export function TerminalPane({ project, worktree, active, agentId, agentLabel }:
       if (haveSize) safeFit();
       const cols = term.cols || 80;
       const rows = term.rows || 24;
+      // Only the primary Claude tab (no agent) asks to resume; main gates it to
+      // the first spawn per key and picks the session id. Extra windows / custom
+      // agents always start fresh.
+      const resume = aid === null && useStore.getState().restoreSession;
       void (async () => {
-        const res = await window.api.pty.open({ projectId: project.id, worktreeId, agentId: aid, cols, rows });
+        const res = await window.api.pty.open({ projectId: project.id, worktreeId, agentId: aid, resume, cols, rows });
         if (res.ok) {
           upsertTab(key, { status: 'running' });
           setLocalError(null);
@@ -231,8 +242,13 @@ export function TerminalPane({ project, worktree, active, agentId, agentLabel }:
     term.options.minimumContrastRatio = appTheme === 'light' ? 9 : 1;
     term.options.fontFamily = opts.fontFamily;
     term.options.fontSize = opts.fontSize;
+    term.options.fontWeight = opts.fontWeight ?? 'normal';
+    term.options.fontWeightBold = opts.fontWeightBold ?? 'bold';
+    term.options.lineHeight = opts.lineHeight ?? 1.0;
+    term.options.letterSpacing = opts.letterSpacing ?? 0;
     term.options.cursorStyle = opts.cursorStyle;
     term.options.cursorBlink = opts.cursorBlink ?? true;
+    term.options.macOptionIsMeta = opts.macOptionIsMeta ?? false;
     if (typeof opts.scrollback === 'number') term.options.scrollback = opts.scrollback;
     try {
       fit?.fit();

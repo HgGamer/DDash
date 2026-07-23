@@ -179,6 +179,13 @@ app.whenReady().then(async () => {
       const win = mainWindow;
       if (win && !win.isDestroyed()) win.webContents.send(IPC.ClaudeHookState, ev);
     },
+    onSession: (loc, sessionId) => {
+      const k = compositeKey(loc.projectId, loc.worktreeId);
+      if (store.get().claudeSessions[k] === sessionId) return;
+      store.update((s) => {
+        s.claudeSessions[k] = sessionId;
+      });
+    },
   });
   void claudeHooks.start();
 

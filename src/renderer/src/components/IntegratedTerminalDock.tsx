@@ -328,6 +328,13 @@ function ShellTerminalView({ tab, active }: ShellTerminalViewProps) {
       theme: initialStyle.theme,
       fontFamily: initialStyle.fontFamily,
       fontSize: initialStyle.fontSize,
+      // Default the render-critical metrics — passing `undefined` here overrides
+      // xterm's own defaults and yields NaN cell sizes (tiny/cramped output).
+      fontWeight: initialStyle.fontWeight ?? 'normal',
+      fontWeightBold: initialStyle.fontWeightBold ?? 'bold',
+      lineHeight: initialStyle.lineHeight ?? 1.0,
+      letterSpacing: initialStyle.letterSpacing ?? 0,
+      macOptionIsMeta: initialStyle.macOptionIsMeta ?? false,
       minimumContrastRatio: useStore.getState().theme === 'light' ? 9 : 1,
     });
     const fit = new FitAddon();
@@ -411,8 +418,13 @@ function ShellTerminalView({ tab, active }: ShellTerminalViewProps) {
     term.options.minimumContrastRatio = appTheme === 'light' ? 9 : 1;
     term.options.fontFamily = opts.fontFamily;
     term.options.fontSize = opts.fontSize;
+    term.options.fontWeight = opts.fontWeight ?? 'normal';
+    term.options.fontWeightBold = opts.fontWeightBold ?? 'bold';
+    term.options.lineHeight = opts.lineHeight ?? 1.0;
+    term.options.letterSpacing = opts.letterSpacing ?? 0;
     term.options.cursorStyle = opts.cursorStyle;
     term.options.cursorBlink = opts.cursorBlink ?? true;
+    term.options.macOptionIsMeta = opts.macOptionIsMeta ?? false;
     if (typeof opts.scrollback === 'number') term.options.scrollback = opts.scrollback;
     try {
       fit?.fit();

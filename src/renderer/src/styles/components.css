@@ -1411,6 +1411,58 @@ html.is-mac .ws-header a {
   justify-content: center;
   z-index: 200;
 }
+.command-palette {
+  position: fixed;
+  top: 14vh;
+  width: min(560px, 90vw);
+  max-height: 60vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--glass-popover);
+  -webkit-backdrop-filter: var(--glass-blur-strong);
+  backdrop-filter: var(--glass-blur-strong);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-pop);
+  overflow: hidden;
+}
+.command-palette-input {
+  border: none;
+  border-bottom: 1px solid var(--color-border);
+  background: transparent;
+  color: var(--color-fg);
+  font: inherit;
+  font-size: var(--text-lg);
+  padding: var(--space-3) var(--space-4);
+  outline: none;
+}
+.command-palette-list {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-1);
+  overflow-y: auto;
+}
+.command-palette-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+.command-palette-item.active {
+  background: var(--color-accent);
+  color: var(--color-accent-fg);
+}
+.command-palette-hint {
+  font-size: var(--text-sm);
+  opacity: 0.6;
+}
+.command-palette-empty {
+  padding: var(--space-3);
+  opacity: 0.6;
+}
 .modal-card {
   min-width: 420px;
   max-width: 560px;
@@ -1457,6 +1509,16 @@ html.is-mac .ws-header a {
 }
 .field-input.field-narrow {
   flex: 0 0 120px;
+}
+.keybinding {
+  flex: 0 0 auto;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-1) var(--space-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  white-space: nowrap;
 }
 .field-input:focus {
   outline: none;

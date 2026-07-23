@@ -9,6 +9,7 @@ import type {
   TerminalStylePreset,
 } from '@shared/types';
 import { resolveTerminalStyleOptions } from '@shared/types';
+import type { AppTheme } from '../lib/theme';
 import { useStore } from '../store';
 import { useAutoUpdate } from '../hooks/useAutoUpdate';
 
@@ -27,7 +28,7 @@ const BUILTIN_OPTIONS: PresetOption[] = [
   {
     id: 'dash-dark',
     label: 'Dash dark',
-    description: 'Black background, SF Mono / Menlo font stack, 13px.',
+    description: 'Black background, SF Mono / Menlo font stack, 14px.',
   },
 ];
 
@@ -38,6 +39,8 @@ const CURSOR_STYLES: Array<{ id: TerminalCursorStyle; label: string }> = [
 ];
 
 type TabId =
+  | 'appearance'
+  | 'startup'
   | 'terminal'
   | 'notifications'
   | 'git'
@@ -45,7 +48,8 @@ type TabId =
   | 'agents'
   | 'updates'
   | 'web-access'
-  | 'board';
+  | 'board'
+  | 'keybindings';
 
 export function SettingsModal({ onClose }: { onClose: () => void }) {
   const tab = useStore((s) => s.settingsModalTab);
@@ -74,6 +78,18 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
       >
         <nav className="settings-nav">
           <div className="settings-nav-title">Settings</div>
+          <button
+            className={`settings-nav-item${tab === 'appearance' ? ' active' : ''}`}
+            onClick={() => setTab('appearance')}
+          >
+            Appearance
+          </button>
+          <button
+            className={`settings-nav-item${tab === 'startup' ? ' active' : ''}`}
+            onClick={() => setTab('startup')}
+          >
+            Startup
+          </button>
           <button
             className={`settings-nav-item${tab === 'terminal' ? ' active' : ''}`}
             onClick={() => setTab('terminal')}
@@ -122,9 +138,19 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
           >
             Web access
           </button>
+          <button
+            className={`settings-nav-item${tab === 'keybindings' ? ' active' : ''}`}
+            onClick={() => setTab('keybindings')}
+          >
+            Keybindings
+          </button>
         </nav>
         <div className="settings-body">
-          {tab === 'terminal' ? (
+          {tab === 'appearance' ? (
+            <AppearancePanel />
+          ) : tab === 'startup' ? (
+            <StartupPanel />
+          ) : tab === 'terminal' ? (
             <TerminalPanel />
           ) : tab === 'notifications' ? (
             <NotificationsPanel />
@@ -136,6 +162,8 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
             <UpdatesPanel />
           ) : tab === 'web-access' ? (
             <WebAccessPanel />
+          ) : tab === 'keybindings' ? (
+            <KeybindingsPanel />
           ) : tab === 'board' ? (
             <BoardPanel />
           ) : (
@@ -146,6 +174,129 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+const APP_THEME_OPTIONS: Array<{ id: AppTheme; label: string; description: string }> = [
+  { id: 'dark', label: 'Dark', description: 'The default dark token set.' },
+  {
+    id: 'light',
+    label: 'Light',
+    description: 'Bright surfaces; the terminal also switches to a light palette.',
+  },
+  { id: 'pink', label: 'Pink', description: 'Dark base with a pink accent.' },
+];
+
+function StartupPanel() {
+  const restoreSession = useStore((s) => s.restoreSession);
+  const setRestoreSession = useStore((s) => s.setRestoreSession);
+  return (
+    <div className="settings-panel">
+      <section>
+        <h4>On launch</h4>
+        <div className="field-row">
+          <label className="field-label">Reopen the last session and resume Claude</label>
+          <input
+            type="checkbox"
+            checked={restoreSession}
+            onChange={(e) => setRestoreSession(e.target.checked)}
+          />
+        </div>
+        <p className="preset-desc">
+          Reopens the project/worktree you last had active (plus any board-pinned windows) and
+          continues each one&rsquo;s most recent Claude conversation via{' '}
+          <code>claude --continue</code>. When off, Dash opens to your most recent project with a
+          fresh Claude session.
+        </p>
+      </section>
+    </div>
+  );
+}
+
+function AppearancePanel() {
+  const theme = useStore((s) => s.theme);
+  const setTheme = useStore((s) => s.setTheme);
+
+  return (
+    <div className="settings-panel">
+      <section>
+        <h4>Theme</h4>
+        <div className="preset-list">
+          {APP_THEME_OPTIONS.map((opt) => (
+            <label key={opt.id} className="preset-row">
+              <input
+                type="radio"
+                name="app-theme"
+                value={opt.id}
+                checked={theme === opt.id}
+                onChange={() => setTheme(opt.id)}
+              />
+              <div>
+                <div className="preset-label">{opt.label}</div>
+                <div className="preset-desc">{opt.description}</div>
+              </div>
+            </label>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+// Read-only reference. Keep in sync with the accelerators in `main/menu.ts`
+// and the renderer key handlers in `App.tsx` / `MarkdownViewer.tsx` — there's
+// no rebind engine yet, so this is hand-maintained.
+const KEYBINDING_GROUPS: Array<{
+  title: string;
+  items: Array<{ mac: string; other: string; desc: string }>;
+}> = [
+  {
+    title: 'General',
+    items: [
+      { mac: '⌘ ,', other: 'Ctrl+,', desc: 'Open settings' },
+      { mac: '⌘ O', other: 'Ctrl+O', desc: 'Add project' },
+      { mac: '⌘ ⌫', other: 'Ctrl+Delete', desc: 'Remove active project' },
+      { mac: '⌃ ⌘ F', other: 'F11', desc: 'Toggle full screen' },
+    ],
+  },
+  {
+    title: 'Tabs',
+    items: [
+      { mac: '⌘ ⌥ →', other: 'Ctrl+Tab', desc: 'Next tab' },
+      { mac: '⌘ ⌥ ←', other: 'Ctrl+Shift+Tab', desc: 'Previous tab' },
+      { mac: '⌘ 1–9', other: 'Ctrl+1–9', desc: 'Select tab by number' },
+    ],
+  },
+  {
+    title: 'Integrated terminal',
+    items: [
+      { mac: '⌘ `', other: 'Ctrl+`', desc: 'Toggle the terminal panel' },
+      { mac: '⌘ ⇧ `', other: 'Ctrl+Shift+`', desc: 'Open a new terminal tab' },
+    ],
+  },
+  {
+    title: 'Editor',
+    items: [{ mac: '⌘ S', other: 'Ctrl+S', desc: 'Save the open Markdown file' }],
+  },
+];
+
+function KeybindingsPanel() {
+  const isMac = window.api.platform === 'darwin';
+  return (
+    <div className="settings-panel">
+      {KEYBINDING_GROUPS.map((group) => (
+        <section key={group.title}>
+          <h4>{group.title}</h4>
+          {group.items.map((item) => (
+            <div className="field-row" key={item.desc}>
+              <label className="field-label">{item.desc}</label>
+              <kbd className="keybinding">{isMac ? item.mac : item.other}</kbd>
+            </div>
+          ))}
+        </section>
+      ))}
+      <p className="preset-desc">Shortcuts are fixed for now and cannot be remapped.</p>
     </div>
   );
 }
@@ -262,6 +413,70 @@ function TerminalPanel() {
             }}
           />
         </div>
+        <div className="field-row">
+          <label className="field-label">Weight</label>
+          <input
+            className="field-input field-narrow"
+            type="number"
+            min={100}
+            max={900}
+            step={100}
+            placeholder="normal"
+            value={effective.fontWeight ?? ''}
+            onChange={(e) => {
+              const v = e.target.value === '' ? undefined : Number(e.target.value);
+              void patchOverrides({ fontWeight: v });
+            }}
+          />
+        </div>
+        <div className="field-row">
+          <label className="field-label">Bold weight</label>
+          <input
+            className="field-input field-narrow"
+            type="number"
+            min={100}
+            max={900}
+            step={100}
+            placeholder="bold"
+            value={effective.fontWeightBold ?? ''}
+            onChange={(e) => {
+              const v = e.target.value === '' ? undefined : Number(e.target.value);
+              void patchOverrides({ fontWeightBold: v });
+            }}
+          />
+        </div>
+        <div className="field-row">
+          <label className="field-label">Line height</label>
+          <input
+            className="field-input field-narrow"
+            type="number"
+            min={0.5}
+            max={3}
+            step={0.05}
+            placeholder="1.0"
+            value={effective.lineHeight ?? ''}
+            onChange={(e) => {
+              const v = e.target.value === '' ? undefined : Number(e.target.value);
+              void patchOverrides({ lineHeight: v });
+            }}
+          />
+        </div>
+        <div className="field-row">
+          <label className="field-label">Letter spacing (px)</label>
+          <input
+            className="field-input field-narrow"
+            type="number"
+            min={-2}
+            max={10}
+            step={0.5}
+            placeholder="0"
+            value={effective.letterSpacing ?? ''}
+            onChange={(e) => {
+              const v = e.target.value === '' ? undefined : Number(e.target.value);
+              void patchOverrides({ letterSpacing: v });
+            }}
+          />
+        </div>
       </section>
 
       <section>
@@ -310,6 +525,24 @@ function TerminalPanel() {
           />
         </div>
       </section>
+
+      {window.api.platform === 'darwin' && (
+        <section>
+          <h4>Keyboard</h4>
+          <div className="field-row">
+            <label className="field-label">Use Option as Meta key</label>
+            <input
+              type="checkbox"
+              checked={effective.macOptionIsMeta ?? false}
+              onChange={(e) => void patchOverrides({ macOptionIsMeta: e.target.checked })}
+            />
+          </div>
+          <p className="preset-desc">
+            When on, the Option key sends Meta (e.g. Option+B jumps a word) instead of composing
+            accented characters.
+          </p>
+        </section>
+      )}
     </div>
   );
 }

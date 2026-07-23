@@ -41,11 +41,18 @@ interface HookPayload {
   hook_event_name?: string;
   cwd?: string;
   message?: string;
+  session_id?: string;
 }
 
 export interface ClaudeHooksDeps {
   registry: ProjectRegistry;
   onState: (ev: ClaudeHookStateEvent) => void;
+  /** Called whenever a hook reports the active Claude session id for a cwd, so
+   *  the session can be resumed (`--resume <id>`) on next launch. */
+  onSession?: (
+    loc: Pick<ClaudeHookStateEvent, 'projectId' | 'worktreeId'>,
+    sessionId: string,
+  ) => void;
 }
 
 export class ClaudeHooks {
@@ -110,6 +117,11 @@ export class ClaudeHooks {
     if (!p.cwd) return;
     const tab = this.tabForCwd(p.cwd);
     if (!tab) return; // cwd isn't a known project/worktree (e.g. user cd'd away)
+
+    // Record the session id from any event so a later launch can resume it.
+    if (p.session_id) {
+      this.deps.onSession?.({ projectId: tab.projectId, worktreeId: tab.worktreeId }, p.session_id);
+    }
 
     let state: ClaudeHookStateEvent['state'] | null = null;
     switch (p.hook_event_name) {
