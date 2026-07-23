@@ -272,6 +272,9 @@ export interface PtyOpenArgs {
   /** When set, launch this custom agent (looked up in settings) instead of the
    *  built-in Claude Code session. */
   agentId?: string | null;
+  /** Resume the most recent Claude conversation in this cwd (`claude --continue`).
+   *  Only honored on the built-in Claude path (no agentId command). */
+  resume?: boolean;
   cols: number;
   rows: number;
 }

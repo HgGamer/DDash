@@ -83,9 +83,19 @@ export interface TerminalStyleOptions {
   theme?: TerminalStyleTheme;
   fontFamily?: string;
   fontSize?: number;
+  /** xterm font-weight for normal text (100–900, or 400/700 for normal/bold). */
+  fontWeight?: number;
+  /** xterm font-weight for bold text. */
+  fontWeightBold?: number;
+  /** Line height as a multiple of the font size (xterm default 1.0). */
+  lineHeight?: number;
+  /** Extra horizontal space between cells, in pixels (xterm default 0). */
+  letterSpacing?: number;
   cursorStyle?: TerminalCursorStyle;
   cursorBlink?: boolean;
   scrollback?: number;
+  /** macOS: treat the Option key as Meta instead of composing characters. */
+  macOptionIsMeta?: boolean;
 }
 
 export interface TerminalStyleSettings {
@@ -134,9 +144,14 @@ export function resolveTerminalStyleOptions(s: TerminalStyleSettings): TerminalS
       theme: custom.theme ?? fallback.theme,
       fontFamily: custom.fontFamily ?? fallback.fontFamily,
       fontSize: custom.fontSize ?? fallback.fontSize,
+      fontWeight: custom.fontWeight,
+      fontWeightBold: custom.fontWeightBold,
+      lineHeight: custom.lineHeight,
+      letterSpacing: custom.letterSpacing,
       cursorStyle: custom.cursorStyle,
       cursorBlink: custom.cursorBlink,
       scrollback: custom.scrollback,
+      macOptionIsMeta: custom.macOptionIsMeta,
     };
   } else {
     base = TERMINAL_STYLE_PRESETS[s.preset];
@@ -150,9 +165,14 @@ export function resolveTerminalStyleOptions(s: TerminalStyleSettings): TerminalS
     theme: o.theme ?? base.theme,
     fontFamily: o.fontFamily ?? base.fontFamily,
     fontSize: o.fontSize ?? base.fontSize,
+    fontWeight: o.fontWeight ?? base.fontWeight,
+    fontWeightBold: o.fontWeightBold ?? base.fontWeightBold,
+    lineHeight: o.lineHeight ?? base.lineHeight,
+    letterSpacing: o.letterSpacing ?? base.letterSpacing,
     cursorStyle: o.cursorStyle ?? base.cursorStyle,
     cursorBlink: o.cursorBlink ?? base.cursorBlink,
     scrollback: o.scrollback ?? base.scrollback,
+    macOptionIsMeta: o.macOptionIsMeta ?? base.macOptionIsMeta,
   };
 }
 
@@ -348,6 +368,9 @@ export interface AppState {
   autoUpdate: AutoUpdateSettings;
   webAccess: WebAccessSettings;
   agents: AgentsSettings;
+  /** Latest Claude Code session id seen (via hooks) per selection compositeKey,
+   *  used to `claude --resume <id>` when restoring a session on launch. */
+  claudeSessions: Record<string, string>;
 }
 
 export const DEFAULT_WINDOW_STATE: WindowState = {
@@ -372,6 +395,7 @@ export const DEFAULT_APP_STATE: AppState = {
   autoUpdate: DEFAULT_AUTO_UPDATE_SETTINGS,
   webAccess: DEFAULT_WEB_ACCESS_SETTINGS,
   agents: DEFAULT_AGENTS_SETTINGS,
+  claudeSessions: {},
 };
 
 /** Aggregated Claude Code token usage for a single local calendar day, read

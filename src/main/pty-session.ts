@@ -7,6 +7,36 @@ import { CLAUDE_INSTALL_URL, resolveClaudeEnv } from './claude-resolver';
 // eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports
 const pty: typeof NodePty = require('node-pty');
 
+/**
+ * Build the file + argv for launching Claude Code. With a known session id we
+ * `--resume <id>` it exactly; otherwise `--continue` resumes the latest
+ * conversation in cwd (or starts fresh if there's none). When a Windows shell
+ * is chosen, Claude is launched through it so PATH/profile resolve. Pure so the
+ * arg-quoting across cmd/pwsh/unix stays under test.
+ */
+export function buildClaudeLaunch(
+  claudePath: string,
+  opts: { winShell?: string; resume?: boolean; resumeSessionId?: string },
+): { file: string; args: string[] } {
+  // Guard the id before it goes into a shell command string (winShell path).
+  const sid =
+    opts.resumeSessionId && /^[A-Za-z0-9-]+$/.test(opts.resumeSessionId)
+      ? opts.resumeSessionId
+      : undefined;
+  const args = sid ? ['--resume', sid] : opts.resume ? ['--continue'] : [];
+  if (opts.winShell) {
+    const isPwsh = /(powershell|pwsh)/i.test(opts.winShell);
+    const tail = args.length ? ` ${args.join(' ')}` : '';
+    return {
+      file: opts.winShell,
+      args: isPwsh
+        ? ['-NoLogo', '-Command', `& '${claudePath.replace(/'/g, "''")}'${tail}`]
+        : ['/d', '/s', '/c', `"${claudePath}"${tail}`],
+    };
+  }
+  return { file: claudePath, args };
+}
+
 export interface PtySessionOpts {
   key: string;
   cwd: string;
@@ -18,6 +48,12 @@ export interface PtySessionOpts {
   /** Windows-only: when set, launch Claude Code / the command through this shell
    *  (e.g. `powershell.exe`) instead of spawning the binary / cmd.exe directly. */
   shell?: string;
+  /** Resume the latest Claude conversation in cwd (`claude --continue`). Only
+   *  applies to the built-in Claude path (ignored when `command` is set). */
+  resume?: boolean;
+  /** Resume this exact Claude session (`claude --resume <id>`); wins over
+   *  `resume`. Only applies to the built-in Claude path. */
+  resumeSessionId?: string;
   onData: (data: string) => void;
   onExit: (code: number | null, signal: number | null) => void;
 }
@@ -80,16 +116,11 @@ export class PtySession {
       if (!claudePath) {
         return { kind: 'claude-not-found', installUrl: CLAUDE_INSTALL_URL };
       }
-      if (winShell) {
-        // Launch Claude Code through the chosen Windows shell.
-        file = winShell;
-        spawnArgs = isPwsh
-          ? ['-NoLogo', '-Command', `& '${claudePath.replace(/'/g, "''")}'`]
-          : ['/d', '/s', '/c', `"${claudePath}"`];
-      } else {
-        file = claudePath;
-        spawnArgs = [];
-      }
+      ({ file, args: spawnArgs } = buildClaudeLaunch(claudePath, {
+        winShell,
+        resume: opts.resume,
+        resumeSessionId: opts.resumeSessionId,
+      }));
     }
 
     // eslint-disable-next-line no-console
@@ -188,6 +219,8 @@ export class PtySessionManager {
     rows: number;
     command?: string;
     shell?: string;
+    resume?: boolean;
+    resumeSessionId?: string;
     onData: (data: string) => void;
     onExit: (code: number | null, signal: number | null) => void;
   }): Promise<PtySpawnResult> {

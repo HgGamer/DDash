@@ -4,11 +4,12 @@ import { Sidebar } from './components/Sidebar';
 import { Workspace } from './components/Workspace';
 import { GitClient } from './components/GitClient';
 import { SettingsModal } from './components/SettingsModal';
+import { CommandPalette } from './components/CommandPalette';
 import { NewWorktreeModal } from './components/NewWorktreeModal';
 import { StatusBar } from './components/StatusBar';
 import { UpdateBanner } from './components/UpdateBanner';
 import { ToastHost, toast } from './components/Toast';
-import { useStore } from './store';
+import { useStore, loadSavedActive } from './store';
 import { agentKey, compositeKey } from '@shared/ipc';
 import type { ActiveSelection, ClaudeUsageSummary, ClaudePlanUsage } from '@shared/types';
 
@@ -39,6 +40,8 @@ export function App() {
     newWorktreeProjectId,
     openNewWorktree,
     closeNewWorktree,
+    paletteOpen,
+    setPaletteOpen,
   } = useStore();
 
   const hasUnsaved = useStore((s) => Object.keys(s.dirtyFiles).length > 0);
@@ -90,6 +93,17 @@ export function App() {
       }
       // Re-pull projects so reconcile-marked statuses propagate.
       await refreshProjects();
+      // Restore the exact last selection (project + worktree) when enabled and
+      // it still exists; otherwise fall back to the most-recently-opened project.
+      const saved = useStore.getState().restoreSession ? loadSavedActive() : null;
+      const savedProj = saved && list.find((p) => p.id === saved.projectId);
+      const savedOk =
+        savedProj &&
+        (!saved.worktreeId || savedProj.worktrees.some((w) => w.id === saved.worktreeId));
+      if (savedOk) {
+        setActive(saved);
+        return;
+      }
       const lastActive = list
         .filter((p) => p.lastOpenedAt)
         .sort((a, b) => (b.lastOpenedAt ?? '').localeCompare(a.lastOpenedAt ?? ''))[0];
@@ -194,6 +208,12 @@ export function App() {
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
       const modifier = e.metaKey || e.ctrlKey;
+      if (modifier && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault();
+        const s = useStore.getState();
+        s.setPaletteOpen(!s.paletteOpen);
+        return;
+      }
       if (!modifier || e.key !== '`') return;
       e.preventDefault();
       const cur = useStore.getState().integratedTerminal;
@@ -379,6 +399,9 @@ export function App() {
       <StatusBar />
       <ToastHost />
       {settingsModalOpen && <SettingsModal onClose={closeSettings} />}
+      {paletteOpen && (
+        <CommandPalette onClose={() => setPaletteOpen(false)} onActivate={activate} />
+      )}
       {newWorktreeFor && (
         <NewWorktreeModal
           projectId={newWorktreeFor.id}

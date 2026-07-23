@@ -172,6 +172,10 @@ export class JsonStore {
       autoUpdate: migrateAutoUpdate(r.autoUpdate),
       webAccess: migrateWebAccess(r.webAccess),
       agents: migrateAgents(r.agents),
+      claudeSessions:
+        r.claudeSessions && typeof r.claudeSessions === 'object'
+          ? (r.claudeSessions as Record<string, string>)
+          : {},
     };
   }
 }

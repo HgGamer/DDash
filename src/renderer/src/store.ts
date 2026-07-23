@@ -114,6 +114,26 @@ function saveWindows(
 }
 const RESTORED_WINDOWS = loadWindows();
 
+// Restore-last-session: reopen the previously active selection on launch and
+// resume its Claude conversation (`claude --continue`). Default on.
+const RESTORE_SESSION_KEY = 'dash.restoreSession';
+function loadRestoreSession(): boolean {
+  return localStorage.getItem(RESTORE_SESSION_KEY) !== 'false';
+}
+const ACTIVE_ID_KEY = 'dash.activeId';
+export function loadSavedActive(): ActiveSelection | null {
+  try {
+    const v = JSON.parse(localStorage.getItem(ACTIVE_ID_KEY) ?? 'null');
+    return v && typeof v.projectId === 'string' ? v : null;
+  } catch {
+    return null;
+  }
+}
+function saveActive(active: ActiveSelection | null) {
+  if (active) localStorage.setItem(ACTIVE_ID_KEY, JSON.stringify(active));
+  else localStorage.removeItem(ACTIVE_ID_KEY);
+}
+
 export interface TabState {
   status: PtySessionStatus;
   error?: PtySpawnError;
@@ -230,7 +250,11 @@ interface AppStore {
    *  unsaved-changes warning on app close. */
   dirtyFiles: Record<string, true>;
   settingsModalOpen: boolean;
-  settingsModalTab: 'terminal' | 'notifications' | 'git' | 'integrated-terminal' | 'agents' | 'updates' | 'web-access' | 'board';
+  settingsModalTab: 'appearance' | 'terminal' | 'notifications' | 'git' | 'integrated-terminal' | 'agents' | 'updates' | 'web-access' | 'board' | 'keybindings' | 'startup';
+  /** Reopen the last session and resume Claude on launch. Persisted. */
+  restoreSession: boolean;
+  /** Whether the command palette (Cmd/Ctrl+K) is open. */
+  paletteOpen: boolean;
 
   setProjects: (projects: Project[]) => void;
   setFolders: (folders: ProjectFolder[]) => void;
@@ -294,8 +318,10 @@ interface AppStore {
   /** Rename a Claude window (empty string reverts to the default label). */
   setWindowLabel: (sessionKey: string, label: string) => void;
   setFileDirty: (id: string, dirty: boolean) => void;
-  openSettings: (tab?: 'terminal' | 'notifications' | 'git' | 'integrated-terminal' | 'agents' | 'updates' | 'web-access' | 'board') => void;
+  openSettings: (tab?: 'terminal' | 'notifications' | 'git' | 'integrated-terminal' | 'agents' | 'updates' | 'web-access' | 'board' | 'startup') => void;
   closeSettings: () => void;
+  setRestoreSession: (on: boolean) => void;
+  setPaletteOpen: (open: boolean) => void;
 }
 
 export const useStore = create<AppStore>((set) => ({
@@ -334,6 +360,8 @@ export const useStore = create<AppStore>((set) => ({
   dirtyFiles: {},
   settingsModalOpen: false,
   settingsModalTab: 'terminal',
+  restoreSession: loadRestoreSession(),
+  paletteOpen: false,
 
   setProjects: (projects) => set({ projects, loaded: true }),
   setFolders: (folders) => set({ folders }),
@@ -345,6 +373,7 @@ export const useStore = create<AppStore>((set) => ({
   setClaudePlanUsage: (usage) => set({ claudePlanUsage: usage }),
   setActive: (active) =>
     set((s) => {
+      saveActive(active);
       const key = active ? compositeKey(active.projectId, active.worktreeId) : null;
       let tabs = s.tabs;
       if (key && s.tabs[key]?.needsAttention) {
@@ -688,6 +717,11 @@ export const useStore = create<AppStore>((set) => ({
   openSettings: (tab) =>
     set((s) => ({ settingsModalOpen: true, settingsModalTab: tab ?? s.settingsModalTab })),
   closeSettings: () => set({ settingsModalOpen: false }),
+  setRestoreSession: (on) => {
+    localStorage.setItem(RESTORE_SESSION_KEY, String(on));
+    set({ restoreSession: on });
+  },
+  setPaletteOpen: (open) => set({ paletteOpen: open }),
 }));
 
 // Persist extra Claude windows whenever they change, so they survive reloads.

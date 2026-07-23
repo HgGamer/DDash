@@ -75,6 +75,11 @@ export function registerIpc(args: {
 }): void {
   const { store, registry, ptyManager, shellManager, settings, getWindow, remoteFeed, webFeed } = args;
 
+  // Composite keys whose primary Claude tab has already spawned this app run.
+  // Resume (`--resume <id>`) fires only on the FIRST open per key, so switching
+  // back to a project or hitting "restart" never re-resumes.
+  const spawnedClaudeKeys = new Set<string>();
+
   const send = (channel: string, payload: unknown) => {
     const win = getWindow();
     if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
@@ -336,6 +341,13 @@ export function registerIpc(args: {
         ? settings.getIntegratedTerminal().defaultShell?.trim() || undefined
         : undefined;
     const key = agentKey(args.projectId, args.worktreeId ?? null, agentId);
+    // Resume only the built-in Claude path (custom agents ignore it), only when
+    // the renderer allows it (restore-session setting), and only the first time
+    // this key spawns this run. Prefer the exact session id captured via hooks,
+    // falling back to --continue.
+    const compKey = compositeKey(args.projectId, args.worktreeId ?? null);
+    const doResume = !command && !!args.resume && !spawnedClaudeKeys.has(key);
+    if (!command) spawnedClaudeKeys.add(key);
     const result = await ptyManager.spawn({
       key,
       cwd,
@@ -343,6 +355,8 @@ export function registerIpc(args: {
       rows: args.rows,
       command,
       shell: winShell,
+      resume: doResume,
+      resumeSessionId: doResume ? store.get().claudeSessions[compKey] : undefined,
       onData: (data) => {
         const ev: PtyDataEvent = {
           projectId: args.projectId,
