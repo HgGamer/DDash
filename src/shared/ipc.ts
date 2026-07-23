@@ -208,6 +208,17 @@ export function agentKey(
   return agentId ? `${base}::agent:${agentId}` : base;
 }
 
+// Extra Claude Code windows reuse the agent tab machinery, but their agentId
+// carries this prefix so main spawns Claude (no command) instead of resolving a
+// configured agent. `null` agentId is still the implicit first Claude tab.
+export const CLAUDE_AGENT_PREFIX = 'claude:';
+export function isClaudeAgentId(agentId: string | null | undefined): boolean {
+  return !!agentId && agentId.startsWith(CLAUDE_AGENT_PREFIX);
+}
+export function newClaudeAgentId(): string {
+  return `${CLAUDE_AGENT_PREFIX}${crypto.randomUUID()}`;
+}
+
 // Request/response payloads
 export interface ProjectAddArgs {
   path: string;

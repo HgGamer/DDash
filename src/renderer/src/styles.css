@@ -227,19 +227,34 @@ html.is-mac .workspace {
 .board-cell-title {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
   text-align: left;
   background: none;
   border: none;
-  color: var(--color-fg-muted);
-  font-size: 11px;
   padding: 2px 4px;
   cursor: pointer;
+}
+.board-cell-window {
+  max-width: 100%;
+  font-size: 11px;
+  color: var(--color-fg);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.board-cell-title:hover {
-  color: var(--color-fg);
+.board-cell-project {
+  max-width: 100%;
+  font-size: 10px;
+  color: var(--color-fg-subtle);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.board-cell-title:hover .board-cell-window {
+  color: var(--color-accent);
 }
 .board-cell-unpin {
   flex: 0 0 auto;
@@ -1811,7 +1826,11 @@ html.is-mac .git-client-toolbar input {
 }
 .git-overview-row {
   display: grid;
-  grid-template-columns: minmax(120px, 1.4fr) minmax(80px, 1fr) auto auto;
+  /* Fixed trailing tracks so the flexible columns are identical on every row —
+     each row is its own grid, so `auto` status widths ("39 changes" vs "clean")
+     would otherwise shift the branch column. ponytail: 130px fits up to ~"9999
+     changes"; wider clips (nowrap), bump if repos ever exceed that. */
+  grid-template-columns: minmax(120px, 1.4fr) minmax(80px, 1fr) 130px 48px;
   align-items: center;
   gap: 14px;
   width: 100%;

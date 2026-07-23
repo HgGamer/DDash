@@ -24,7 +24,7 @@ import {
   DEFAULT_NOTIFICATION_SETTINGS,
   DEFAULT_WEB_ACCESS_SETTINGS,
 } from '@shared/types';
-import { compositeKey, parseCompositeKey } from '@shared/ipc';
+import { compositeKey, parseCompositeKey, agentKey, isClaudeAgentId } from '@shared/ipc';
 import { applyTheme, loadTheme, type AppTheme } from './lib/theme';
 
 const BOARD_KEY = 'dash.board';
@@ -59,6 +59,23 @@ function loadBoardSizes(): Record<string, { w: number; h: number }> {
 }
 function saveBoardSizes(sizes: Record<string, { w: number; h: number }>) {
   localStorage.setItem(BOARD_SIZES_KEY, JSON.stringify(sizes));
+}
+const WINDOW_LABELS_KEY = 'dash.windowLabels';
+function loadWindowLabels(): Record<string, string> {
+  try {
+    const v = JSON.parse(localStorage.getItem(WINDOW_LABELS_KEY) ?? '{}');
+    return v && typeof v === 'object' ? v : {};
+  } catch {
+    return {};
+  }
+}
+function saveWindowLabels(labels: Record<string, string>) {
+  localStorage.setItem(WINDOW_LABELS_KEY, JSON.stringify(labels));
+}
+/** The selection a session/board key belongs to (strips any ::agent: suffix). */
+function selectionOf(sessionKey: string): string {
+  const i = sessionKey.indexOf('::agent:');
+  return i < 0 ? sessionKey : sessionKey.slice(0, i);
 }
 
 export interface TabState {
@@ -168,6 +185,9 @@ interface AppStore {
   boardLayout: 'free' | 'tile';
   /** Columns for 'tile' layout; 0 = auto (√count). */
   boardColumns: number;
+  /** Custom names for Claude windows, keyed by session key (compositeKey for
+   *  the primary tab, agentKey for extra Claude windows). Persisted. */
+  windowLabels: Record<string, string>;
   /** Whether the side panel is expanded. */
   sidebarOpen: boolean;
   /** Open files with unsaved edits, keyed by an opaque id. Used for the
@@ -235,6 +255,8 @@ interface AppStore {
   setBoardLayout: (layout: 'free' | 'tile') => void;
   /** Set the tile-layout column count (0 = auto). */
   setBoardColumns: (columns: number) => void;
+  /** Rename a Claude window (empty string reverts to the default label). */
+  setWindowLabel: (sessionKey: string, label: string) => void;
   setFileDirty: (id: string, dirty: boolean) => void;
   openSettings: (tab?: 'terminal' | 'notifications' | 'git' | 'integrated-terminal' | 'agents' | 'updates' | 'web-access' | 'board') => void;
   closeSettings: () => void;
@@ -271,6 +293,7 @@ export const useStore = create<AppStore>((set) => ({
   boardSizes: loadBoardSizes(),
   boardLayout: loadBoardLayout(),
   boardColumns: loadBoardColumns(),
+  windowLabels: loadWindowLabels(),
   sidebarOpen: true,
   dirtyFiles: {},
   settingsModalOpen: false,
@@ -392,17 +415,20 @@ export const useStore = create<AppStore>((set) => ({
   setAgents: (agents) =>
     set((s) => {
       // If a configured agent was removed, drop any open tabs referencing it.
+      // Extra Claude windows (claude: markers) aren't configured agents, so keep
+      // them regardless of the agent list.
       const valid = new Set(agents.map((a) => a.id));
+      const keep = (id: string) => isClaudeAgentId(id) || valid.has(id);
       let changedOpen = false;
       const openAgentsByKey: Record<string, string[]> = {};
       for (const [k, ids] of Object.entries(s.openAgentsByKey)) {
-        const next = ids.filter((id) => valid.has(id));
+        const next = ids.filter(keep);
         if (next.length !== ids.length) changedOpen = true;
         openAgentsByKey[k] = next;
       }
       const activeAgentByKey: Record<string, string | null> = {};
       for (const [k, id] of Object.entries(s.activeAgentByKey)) {
-        activeAgentByKey[k] = id && valid.has(id) ? id : null;
+        activeAgentByKey[k] = id && keep(id) ? id : null;
       }
       return changedOpen
         ? { agents, openAgentsByKey, activeAgentByKey }
@@ -547,9 +573,16 @@ export const useStore = create<AppStore>((set) => ({
       // Kill the underlying session.
       const { projectId, worktreeId } = parseCompositeKey(selectionKey);
       void window.api.pty.close({ projectId, worktreeId, agentId });
+      // Closing a window also unpins it from the board.
+      const sessionKey = agentKey(projectId, worktreeId, agentId);
+      const board = s.board.includes(sessionKey)
+        ? s.board.filter((k) => k !== sessionKey)
+        : s.board;
+      if (board !== s.board) saveBoard(board);
       return {
         openAgentsByKey: { ...s.openAgentsByKey, [selectionKey]: open },
         activeAgentByKey: { ...s.activeAgentByKey, [selectionKey]: nextActive },
+        board,
       };
     }),
   setActiveAgent: (selectionKey, agentId) =>
@@ -565,8 +598,9 @@ export const useStore = create<AppStore>((set) => ({
         ? s.board.filter((k) => k !== key)
         : [...s.board, key];
       saveBoard(board);
-      // Pinning must mount the selection so its terminal pane exists to render.
-      const mountedKeys = s.mountedKeys.includes(key) ? s.mountedKeys : [...s.mountedKeys, key];
+      // Pinning must mount the window's selection so its pane exists to render.
+      const selKey = selectionOf(key);
+      const mountedKeys = s.mountedKeys.includes(selKey) ? s.mountedKeys : [...s.mountedKeys, selKey];
       return { board, mountedKeys };
     }),
   reorderBoard: (fromKey, toKey) =>
@@ -596,6 +630,15 @@ export const useStore = create<AppStore>((set) => ({
     localStorage.setItem(BOARD_COLUMNS_KEY, String(n));
     set({ boardColumns: n });
   },
+  setWindowLabel: (sessionKey, label) =>
+    set((s) => {
+      const trimmed = label.trim();
+      const windowLabels = { ...s.windowLabels };
+      if (trimmed) windowLabels[sessionKey] = trimmed;
+      else delete windowLabels[sessionKey];
+      saveWindowLabels(windowLabels);
+      return { windowLabels };
+    }),
   setFileDirty: (id, dirty) =>
     set((s) => {
       if (dirty) {

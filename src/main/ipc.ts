@@ -4,6 +4,7 @@ import {
   IPC,
   agentKey,
   compositeKey,
+  isClaudeAgentId,
   type BrowseTerminalStyleResult,
   type NotifyAttentionArgs,
   type ProjectAddArgs,
@@ -311,8 +312,10 @@ export function registerIpc(args: {
     const agentId = args.agentId ?? null;
     // Resolve the command for a custom agent; the built-in Claude session has
     // no agentId and no command (handled by PtySession.spawn's default path).
+    // Extra Claude windows carry a `claude:` agentId for their own PTY keyspace
+    // but still spawn Claude (no command), so skip the agent lookup for them.
     let command: string | undefined;
-    if (agentId) {
+    if (agentId && !isClaudeAgentId(agentId)) {
       const agent = settings.getAgents().agents.find((a) => a.id === agentId);
       if (!agent) {
         const ev: PtyErrorEvent = {

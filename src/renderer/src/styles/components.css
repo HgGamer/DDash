@@ -682,6 +682,40 @@ html.is-mac .ws-header a {
   color: var(--color-fg);
   background: var(--color-surface-2);
 }
+.ws-tab-pin {
+  background: transparent;
+  border: none;
+  color: var(--color-fg-subtle);
+  font-size: var(--text-xs);
+  line-height: 1;
+  padding: 2px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--motion-fast) var(--ease-out);
+}
+.ws-tab-doc:hover .ws-tab-pin,
+.ws-tab-doc.active .ws-tab-pin {
+  opacity: 1;
+}
+.ws-tab-pin.pinned {
+  opacity: 1;
+  color: var(--color-accent);
+}
+.ws-tab-pin:hover {
+  color: var(--color-fg);
+  background: var(--color-surface-2);
+}
+.ws-tab-rename {
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-fg);
+  font: inherit;
+  padding: 0 4px;
+  max-width: 160px;
+  outline: none;
+}
 /* Unsaved-changes dot (VS Code style): sits over the close button's slot and
  * swaps to the × on hover, so the tab width never jumps. */
 .ws-tab-dot {
