@@ -3,9 +3,9 @@ import { Terminal } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
 import { WebLinksAddon } from 'xterm-addon-web-links';
 import type { Project, PtySpawnError, Worktree } from '@shared/types';
-import { resolveTerminalStyleOptions } from '@shared/types';
 import { agentKey, compositeKey } from '@shared/ipc';
 import { useStore } from '../store';
+import { effectiveTerminalOptions } from '../lib/theme';
 import { attachTerminalClipboard } from '../lib/terminal-clipboard';
 
 interface Props {
@@ -38,13 +38,17 @@ export function TerminalPane({ project, worktree, active, agentId, agentLabel }:
   const upsertTab = useStore((s) => s.upsertTab);
   const tab = useStore((s) => s.tabs[key]);
   const termStyle = useStore((s) => s.terminalStyle);
+  const appTheme = useStore((s) => s.theme);
   const [localError, setLocalError] = useState<PtySpawnError | null>(null);
 
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
 
-    const initialStyle = resolveTerminalStyleOptions(useStore.getState().terminalStyle);
+    const initialStyle = effectiveTerminalOptions(
+      useStore.getState().terminalStyle,
+      useStore.getState().theme,
+    );
     const term = new Terminal({
       cursorBlink: initialStyle.cursorBlink ?? true,
       cursorStyle: initialStyle.cursorStyle,
@@ -53,6 +57,10 @@ export function TerminalPane({ project, worktree, active, agentId, agentLabel }:
       theme: initialStyle.theme,
       fontFamily: initialStyle.fontFamily,
       fontSize: initialStyle.fontSize,
+      // Light theme: force a minimum contrast so dim/gray output (incl. 256-color
+      // grays the palette can't remap) stays readable on the light bg. xterm halves
+      // the ratio for SGR-dim cells (DomRendererRowFactory), so 9 → dim clears ~4.5:1.
+      minimumContrastRatio: useStore.getState().theme === 'light' ? 9 : 1,
     });
     const fit = new FitAddon();
     term.loadAddon(fit);
@@ -218,8 +226,9 @@ export function TerminalPane({ project, worktree, active, agentId, agentLabel }:
     const term = termRef.current;
     const fit = fitRef.current;
     if (!term) return;
-    const opts = resolveTerminalStyleOptions(termStyle);
+    const opts = effectiveTerminalOptions(termStyle, appTheme);
     term.options.theme = opts.theme;
+    term.options.minimumContrastRatio = appTheme === 'light' ? 9 : 1;
     term.options.fontFamily = opts.fontFamily;
     term.options.fontSize = opts.fontSize;
     term.options.cursorStyle = opts.cursorStyle;
@@ -230,7 +239,7 @@ export function TerminalPane({ project, worktree, active, agentId, agentLabel }:
     } catch {
       /* no-op */
     }
-  }, [termStyle]);
+  }, [termStyle, appTheme]);
 
   useEffect(() => {
     if (!active) return;
@@ -271,7 +280,7 @@ export function TerminalPane({ project, worktree, active, agentId, agentLabel }:
 
   const exited = tab?.status === 'exited';
   const displayedError = localError ?? tab?.error ?? null;
-  const bg = resolveTerminalStyleOptions(termStyle).theme?.background;
+  const bg = effectiveTerminalOptions(termStyle, appTheme).theme?.background;
 
   return (
     <div className="terminal-host" style={bg ? { background: bg } : undefined}>
@@ -324,7 +333,7 @@ export function TerminalPane({ project, worktree, active, agentId, agentLabel }:
       {!displayedError && exited && (
         <div className="error-overlay">
           <div className="error-card">
-            <h3 style={{ color: 'var(--warn)' }}>Session exited</h3>
+            <h3 style={{ color: 'var(--color-warn)' }}>Session exited</h3>
             <p>The {sessionLabel} session for this {worktree ? 'worktree' : 'project'} has exited.</p>
             <div className="actions">
               <button onClick={restart}>Start new session</button>

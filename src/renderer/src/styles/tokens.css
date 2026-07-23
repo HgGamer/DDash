@@ -38,16 +38,27 @@
   /* Colors --------------------------------------------------------------- */
   --color-bg: #0b0b0c; /* app background */
   --color-terminal-bg: #000000; /* pure black behind the xterm pane */
-  --color-surface: #131316; /* sidebar, cards */
-  --color-surface-2: #1a1a1f; /* hover */
-  --color-border: #25252b;
-  --color-border-strong: #36363f;
-  --color-fg: #e6e6ea;
+  --color-surface: #131316; /* opaque cards / panels */
+  --color-surface-2: rgba(255, 255, 255, 0.06); /* hover / active — translucent so it reads on glass */
+  --color-border: rgba(255, 255, 255, 0.08); /* hairline */
+  --color-border-strong: rgba(255, 255, 255, 0.14);
+  --color-fg: #e9e9ee;
   --color-fg-muted: #9a9aa3;
   --color-fg-subtle: #6e6e78;
   --color-accent: #5e6ad2; /* Linear-ish indigo */
   --color-accent-fg: #ffffff;
   --color-accent-soft: rgba(94, 106, 210, 0.16);
+
+  /* Glass — translucent chrome layered over the macOS window vibrancy. On
+     non-mac these read as slightly-lighter solids over --color-bg. */
+  --glass-chrome: rgba(42, 42, 48, 0.5); /* sidebar + activity rail */
+  --glass-bar: rgba(34, 34, 40, 0.42); /* workspace header, status bar */
+  --glass-content: rgba(24, 24, 28, 0.28); /* workspace frost where no terminal */
+  --glass-popover: rgba(46, 46, 52, 0.72); /* menus, dropdowns, context menus */
+  --glass-blur: saturate(180%) blur(40px);
+  --glass-blur-strong: saturate(180%) blur(60px);
+  /* Selection material for source-list rows (macOS sidebar highlight). */
+  --sidebar-sel: rgba(255, 255, 255, 0.1);
   --color-danger: #d8576b;
   --color-danger-soft: rgba(216, 87, 107, 0.14);
   --color-warn: #d9a55b;
@@ -80,12 +91,13 @@
   --space-6: 32px;
 
   /* Radii ---------------------------------------------------------------- */
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 10px;
+  --radius-sm: 5px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
 
   /* Elevation ------------------------------------------------------------ */
-  --shadow-pop: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 12px rgba(0, 0, 0, 0.32);
+  --shadow-pop: 0 2px 6px rgba(0, 0, 0, 0.4), 0 12px 32px rgba(0, 0, 0, 0.4);
 
   /* Motion --------------------------------------------------------------- */
   --motion-fast: 120ms;
@@ -94,6 +106,48 @@
 
   /* Focus ---------------------------------------------------------------- */
   --focus-ring: 0 0 0 2px var(--color-bg), 0 0 0 4px var(--color-accent);
+}
+
+/*
+ * Light theme — a bright, frosted macOS palette. Surfaces go near-white, text
+ * dark, borders become dark hairlines, and the glass materials turn light so
+ * the window vibrancy reads as frosted white. The terminal pane keeps a dark
+ * background so xterm output stays legible (a dark code panel in a light app,
+ * as in most macOS editors).
+ */
+[data-theme='light'] {
+  color-scheme: light;
+
+  --color-bg: #ececee;
+  --color-terminal-bg: #e9e9ec;
+  --color-surface: #ffffff;
+  --color-surface-2: rgba(0, 0, 0, 0.06);
+  --color-border: rgba(0, 0, 0, 0.1);
+  --color-border-strong: rgba(0, 0, 0, 0.18);
+  --color-fg: #1c1c1e;
+  /* Darkened so muted/subtle text clears WCAG AA on the light surfaces —
+     the old #6b6b70 / #9a9aa0 grays were too faint to read. */
+  --color-fg-muted: #55555c;
+  --color-fg-subtle: #74747c;
+  --color-accent: #3b5bdb;
+  --color-accent-fg: #ffffff;
+  --color-accent-soft: rgba(59, 91, 219, 0.14);
+  --color-danger: #d33a4b;
+  --color-danger-soft: rgba(211, 58, 75, 0.12);
+  --color-warn: #b3791f;
+  --color-warn-soft: rgba(179, 121, 31, 0.14);
+  --color-success: #2f9e56;
+  --color-success-soft: rgba(47, 158, 86, 0.14);
+
+  /* Higher opacity than the dark theme: macOS vibrancy follows the *system*
+     appearance, so a dark-mode desktop behind a light UI would otherwise
+     muddy these surfaces and hurt contrast. Stay mostly opaque, keep a hint
+     of frost. */
+  --glass-chrome: rgba(244, 244, 247, 0.86);
+  --glass-bar: rgba(238, 238, 242, 0.84);
+  --glass-content: rgba(250, 250, 252, 0.72);
+  --glass-popover: rgba(250, 250, 252, 0.94);
+  --sidebar-sel: rgba(0, 0, 0, 0.06);
 }
 
 /*
@@ -123,6 +177,12 @@
   --color-warn-soft: rgba(240, 163, 94, 0.16);
   --color-success: #6ec18b;
   --color-success-soft: rgba(110, 193, 139, 0.16);
+
+  --glass-chrome: rgba(56, 28, 44, 0.5);
+  --glass-bar: rgba(44, 22, 34, 0.42);
+  --glass-content: rgba(34, 16, 26, 0.28);
+  --glass-popover: rgba(60, 30, 46, 0.72);
+  --sidebar-sel: rgba(255, 120, 190, 0.14);
 }
 
 /* Standard keyboard focus indication — accent ring visible on every surface

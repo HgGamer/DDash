@@ -83,6 +83,24 @@ describe('ProjectRegistry', () => {
     registry.remove(a.id);
     expect(registry.getLastActive()).toBeNull();
   });
+
+  it('files projects into folders and orphans them back to root on delete', async () => {
+    const proj = await registry.add('/tmp/a');
+    const folder = registry.createFolder('  Work  ');
+    expect(folder.name).toBe('Work');
+
+    registry.setProjectFolder(proj.id, folder.id);
+    expect(registry.getById(proj.id)?.folderId).toBe(folder.id);
+
+    // Unknown folder ids are ignored (no stranding).
+    registry.setProjectFolder(proj.id, 'nope');
+    expect(registry.getById(proj.id)?.folderId).toBe(folder.id);
+
+    // Deleting the folder moves its projects back to the ungrouped root.
+    registry.removeFolder(folder.id);
+    expect(registry.listFolders()).toHaveLength(0);
+    expect(registry.getById(proj.id)?.folderId).toBeNull();
+  });
 });
 
 describe('JsonStore atomic write', () => {

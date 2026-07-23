@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { v4 as uuid } from 'uuid';
-import type { ActiveSelection, Project, Todo, Worktree } from '@shared/types';
+import type { ActiveSelection, Project, ProjectFolder, Worktree } from '@shared/types';
 import type { JsonStore } from './store';
 import { isGitRepo } from './git';
 
@@ -38,7 +38,6 @@ export class ProjectRegistry {
         lastOpenedAt: null,
         order: maxOrder + 1,
         worktrees: [],
-        todos: [],
       };
       draft.projects.push(created);
     });
@@ -116,6 +115,71 @@ export class ProjectRegistry {
     });
   }
 
+  // Folders — flat, one-level grouping of projects in the sidebar. -----------
+
+  listFolders(): ProjectFolder[] {
+    return [...(this.store.get().folders ?? [])].sort((a, b) => a.order - b.order);
+  }
+
+  createFolder(name: string): ProjectFolder {
+    const trimmed = name.trim() || 'New folder';
+    let created!: ProjectFolder;
+    this.store.update((draft) => {
+      if (!Array.isArray(draft.folders)) draft.folders = [];
+      const maxOrder = draft.folders.reduce((m, f) => Math.max(m, f.order), -1);
+      created = { id: uuid(), name: trimmed, order: maxOrder + 1 };
+      draft.folders.push(created);
+    });
+    return created;
+  }
+
+  renameFolder(id: string, name: string): void {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    this.store.update((draft) => {
+      const folder = draft.folders?.find((f) => f.id === id);
+      if (folder) folder.name = trimmed;
+    });
+  }
+
+  removeFolder(id: string): void {
+    this.store.update((draft) => {
+      draft.folders = (draft.folders ?? []).filter((f) => f.id !== id);
+      // Orphaned projects fall back to the ungrouped root.
+      for (const proj of draft.projects) {
+        if (proj.folderId === id) proj.folderId = null;
+      }
+    });
+  }
+
+  setFolderCollapsed(id: string, collapsed: boolean): void {
+    this.store.update((draft) => {
+      const folder = draft.folders?.find((f) => f.id === id);
+      if (folder) folder.collapsed = collapsed;
+    });
+  }
+
+  reorderFolders(orderedIds: string[]): void {
+    this.store.update((draft) => {
+      const positions = new Map(orderedIds.map((id, i) => [id, i]));
+      for (const folder of draft.folders ?? []) {
+        const pos = positions.get(folder.id);
+        if (pos !== undefined) folder.order = pos;
+      }
+    });
+  }
+
+  /** File a project under a folder (or null to move it back to the root). */
+  setProjectFolder(projectId: string, folderId: string | null): void {
+    this.store.update((draft) => {
+      const proj = draft.projects.find((p) => p.id === projectId);
+      if (!proj) return;
+      // Ignore unknown folder ids so a stale drop can't strand the project.
+      if (folderId && !draft.folders?.some((f) => f.id === folderId)) return;
+      proj.folderId = folderId;
+    });
+  }
+
   /** Push a branch onto a project's recently-used list: dedup to the front,
    *  most-recent first, capped at five entries. */
   pushRecentBranch(id: string, branch: string): void {
@@ -170,59 +234,6 @@ export class ProjectRegistry {
 
   findWorktree(projectId: string, worktreeId: string): Worktree | undefined {
     return this.getById(projectId)?.worktrees.find((w) => w.id === worktreeId);
-  }
-
-  listTodos(projectId: string): Todo[] {
-    const proj = this.getById(projectId);
-    return proj?.todos ?? [];
-  }
-
-  addTodo(projectId: string, text: string): Todo | null {
-    const trimmed = text.trim();
-    if (!trimmed) return null;
-    let created: Todo | null = null;
-    this.store.update((draft) => {
-      const proj = draft.projects.find((p) => p.id === projectId);
-      if (!proj) return;
-      if (!Array.isArray(proj.todos)) proj.todos = [];
-      created = {
-        id: uuid(),
-        text: trimmed,
-        done: false,
-        createdAt: new Date().toISOString(),
-      };
-      proj.todos.push(created);
-    });
-    return created;
-  }
-
-  updateTodo(
-    projectId: string,
-    todoId: string,
-    patch: Partial<Pick<Todo, 'text' | 'done'>>,
-  ): Todo | null {
-    let updated: Todo | null = null;
-    this.store.update((draft) => {
-      const proj = draft.projects.find((p) => p.id === projectId);
-      if (!proj || !Array.isArray(proj.todos)) return;
-      const todo = proj.todos.find((t) => t.id === todoId);
-      if (!todo) return;
-      if (typeof patch.text === 'string') {
-        const trimmed = patch.text.trim();
-        if (trimmed) todo.text = trimmed;
-      }
-      if (typeof patch.done === 'boolean') todo.done = patch.done;
-      updated = { ...todo };
-    });
-    return updated;
-  }
-
-  removeTodo(projectId: string, todoId: string): void {
-    this.store.update((draft) => {
-      const proj = draft.projects.find((p) => p.id === projectId);
-      if (!proj || !Array.isArray(proj.todos)) return;
-      proj.todos = proj.todos.filter((t) => t.id !== todoId);
-    });
   }
 
   setWorktreeStatus(projectId: string, worktreeId: string, status: 'missing' | undefined): void {

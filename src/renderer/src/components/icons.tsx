@@ -56,15 +56,31 @@ export function GitIcon() {
   );
 }
 
-export function TodosIcon() {
+export function CopyIcon() {
   return (
     <svg {...base} aria-hidden="true">
-      <path d="M9 6h11" />
-      <path d="M9 12h11" />
-      <path d="M9 18h11" />
-      <path d="M4 6l1 1 2-2" />
-      <path d="M4 12l1 1 2-2" />
-      <path d="M4 18l1 1 2-2" />
+      <rect x="9" y="9" width="13" height="13" rx="2" />
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+    </svg>
+  );
+}
+
+export function RevealIcon() {
+  return (
+    <svg {...base} aria-hidden="true">
+      <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+      <path d="M9 13l2 2 4-4" />
+    </svg>
+  );
+}
+
+export function WrapIcon() {
+  return (
+    <svg {...base} aria-hidden="true">
+      <path d="M3 6h18" />
+      <path d="M3 12h13a3 3 0 0 1 0 6h-4" />
+      <polyline points="14 15 12 18 14 21" />
+      <path d="M3 18h5" />
     </svg>
   );
 }

@@ -9,7 +9,6 @@ import type {
   TerminalStyleOptions,
   TerminalStylePreset,
   TerminalStyleSettings,
-  TodoViewSettings,
   DocsViewSettings,
   WebAccessSettings,
 } from '@shared/types';
@@ -19,7 +18,6 @@ import {
   DEFAULT_INTEGRATED_TERMINAL_SETTINGS,
   DEFAULT_NOTIFICATION_SETTINGS,
   DEFAULT_TERMINAL_STYLE,
-  DEFAULT_TODO_VIEW_SETTINGS,
   DEFAULT_DOCS_VIEW_SETTINGS,
   DEFAULT_WEB_ACCESS_SETTINGS,
   DEFAULT_WEB_ACCESS_PORT,
@@ -27,8 +25,6 @@ import {
   GIT_VIEW_MIN_WIDTH,
   INTEGRATED_TERMINAL_MIN_HEIGHT,
   TERMINAL_STYLE_PRESET_IDS,
-  TODO_VIEW_MAX_WIDTH,
-  TODO_VIEW_MIN_WIDTH,
   DOCS_VIEW_MAX_WIDTH,
   DOCS_VIEW_MIN_WIDTH,
 } from '@shared/types';
@@ -38,7 +34,6 @@ export interface SettingsManagerEvents {
   terminalStyleChanged: (settings: TerminalStyleSettings) => void;
   notificationsChanged: (settings: NotificationSettings) => void;
   gitViewChanged: (settings: GitViewSettings) => void;
-  todoViewChanged: (settings: TodoViewSettings) => void;
   docsViewChanged: (settings: DocsViewSettings) => void;
   integratedTerminalChanged: (settings: IntegratedTerminalSettings) => void;
   autoUpdateChanged: (settings: AutoUpdateSettings) => void;
@@ -165,28 +160,6 @@ export class SettingsManager extends EventEmitter {
       draft.gitView = next;
     });
     this.emit('gitViewChanged', next);
-    return next;
-  }
-
-  getTodoView(): TodoViewSettings {
-    const raw = this.store.get().todoView;
-    if (!raw) return { ...DEFAULT_TODO_VIEW_SETTINGS };
-    return { ...raw };
-  }
-
-  setTodoView(patch: Partial<Omit<TodoViewSettings, 'version'>>): TodoViewSettings {
-    const current = this.getTodoView();
-    let panelWidth = patch.panelWidth ?? current.panelWidth;
-    panelWidth = Math.min(TODO_VIEW_MAX_WIDTH, Math.max(TODO_VIEW_MIN_WIDTH, Math.round(panelWidth)));
-    const next: TodoViewSettings = {
-      version: 1,
-      expanded: patch.expanded ?? current.expanded,
-      panelWidth,
-    };
-    this.store.update((draft) => {
-      draft.todoView = next;
-    });
-    this.emit('todoViewChanged', next);
     return next;
   }
 

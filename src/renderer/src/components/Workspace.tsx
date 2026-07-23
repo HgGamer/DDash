@@ -175,6 +175,7 @@ function WorkspaceContentTabs({ activeId }: { activeId: ActiveSelection }) {
   const openAgent = useStore((s) => s.openAgent);
   const closeAgent = useStore((s) => s.closeAgent);
   const setActiveAgent = useStore((s) => s.setActiveAgent);
+  const dirtyFiles = useStore((s) => s.dirtyFiles);
 
   const key = compositeKey(activeId.projectId, activeId.worktreeId);
   const docTabs = docTabsByKey[key] ?? [];
@@ -231,39 +232,43 @@ function WorkspaceContentTabs({ activeId }: { activeId: ActiveSelection }) {
             </span>
           );
         })}
-        {docTabs.map((relPath) => (
-          <span
-            key={relPath}
-            className={`ws-tab ws-tab-doc ${activeDoc === relPath ? 'active' : ''}`}
-            onAuxClick={(e) => {
-              // Middle-click closes the tab.
-              if (e.button === 1) {
-                e.preventDefault();
-                closeDoc(key, relPath);
-              }
-            }}
-          >
-            <button
-              type="button"
-              className="ws-tab-label"
-              title={relPath}
-              onClick={() => setActiveDoc(key, relPath)}
-            >
-              {basename(relPath)}
-            </button>
-            <button
-              type="button"
-              className="ws-tab-close"
-              aria-label={`Close ${basename(relPath)}`}
-              onClick={(e) => {
-                e.stopPropagation();
-                closeDoc(key, relPath);
+        {docTabs.map((relPath) => {
+          const isDirty = !!dirtyFiles[`${activeId.projectId}::${relPath}`];
+          return (
+            <span
+              key={relPath}
+              className={`ws-tab ws-tab-doc ${activeDoc === relPath ? 'active' : ''} ${isDirty ? 'dirty' : ''}`}
+              onAuxClick={(e) => {
+                // Middle-click closes the tab.
+                if (e.button === 1) {
+                  e.preventDefault();
+                  closeDoc(key, relPath);
+                }
               }}
             >
-              ✕
-            </button>
-          </span>
-        ))}
+              <button
+                type="button"
+                className="ws-tab-label"
+                title={relPath}
+                onClick={() => setActiveDoc(key, relPath)}
+              >
+                {basename(relPath)}
+              </button>
+              {isDirty && <span className="ws-tab-dot" aria-hidden="true" />}
+              <button
+                type="button"
+                className="ws-tab-close"
+                aria-label={`Close ${basename(relPath)}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  closeDoc(key, relPath);
+                }}
+              >
+                ✕
+              </button>
+            </span>
+          );
+        })}
       </div>
       <div className="ws-header-actions">
         <AgentLauncher

@@ -18,7 +18,6 @@ export interface Project {
   lastOpenedAt: string | null;
   order: number;
   worktrees: Worktree[];
-  todos: Todo[];
   /** Optional override for where this project's worktrees live on disk.
    * When unset, defaults to `<project.path>.worktrees`. */
   worktreesRoot?: string;
@@ -30,13 +29,18 @@ export interface Project {
   recentBranches?: string[];
   /** Runtime-only cache populated after launch. Never persisted. */
   isGitRepo?: boolean;
+  /** Id of the folder this project is filed under, or null/undefined when it
+   * sits ungrouped at the sidebar root. */
+  folderId?: string | null;
 }
 
-export interface Todo {
+/** A flat, one-level grouping of projects in the sidebar. */
+export interface ProjectFolder {
   id: string;
-  text: string;
-  done: boolean;
-  createdAt: string;
+  name: string;
+  order: number;
+  /** Whether the folder is collapsed in the sidebar; defaults to expanded. */
+  collapsed?: boolean;
 }
 
 export interface WindowState {
@@ -186,23 +190,6 @@ export const DEFAULT_GIT_VIEW_SETTINGS: GitViewSettings = {
 export const GIT_VIEW_MIN_WIDTH = 240;
 export const GIT_VIEW_MAX_WIDTH = 720;
 
-export interface TodoViewSettings {
-  version: 1;
-  /** Whether the panel is expanded. Persisted globally, not per-project. */
-  expanded: boolean;
-  /** Width in pixels of the expanded panel. */
-  panelWidth: number;
-}
-
-export const DEFAULT_TODO_VIEW_SETTINGS: TodoViewSettings = {
-  version: 1,
-  expanded: false,
-  panelWidth: 320,
-};
-
-export const TODO_VIEW_MIN_WIDTH = 240;
-export const TODO_VIEW_MAX_WIDTH = 720;
-
 export interface DocsViewSettings {
   version: 1;
   /** Width in pixels of the Docs (markdown viewer) panel. */
@@ -350,12 +337,12 @@ export interface ActiveSelection {
 export interface AppState {
   version: 2;
   projects: Project[];
+  folders: ProjectFolder[];
   lastActive: ActiveSelection | null;
   window: WindowState;
   terminalStyle: TerminalStyleSettings;
   notifications: NotificationSettings;
   gitView: GitViewSettings;
-  todoView: TodoViewSettings;
   docsView: DocsViewSettings;
   integratedTerminal: IntegratedTerminalSettings;
   autoUpdate: AutoUpdateSettings;
@@ -374,12 +361,12 @@ export const DEFAULT_WINDOW_STATE: WindowState = {
 export const DEFAULT_APP_STATE: AppState = {
   version: 2,
   projects: [],
+  folders: [],
   lastActive: null,
   window: DEFAULT_WINDOW_STATE,
   terminalStyle: DEFAULT_TERMINAL_STYLE,
   notifications: DEFAULT_NOTIFICATION_SETTINGS,
   gitView: DEFAULT_GIT_VIEW_SETTINGS,
-  todoView: DEFAULT_TODO_VIEW_SETTINGS,
   docsView: DEFAULT_DOCS_VIEW_SETTINGS,
   integratedTerminal: DEFAULT_INTEGRATED_TERMINAL_SETTINGS,
   autoUpdate: DEFAULT_AUTO_UPDATE_SETTINGS,

@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
-import type { ActiveSelection, Project } from '@shared/types';
+import { createPortal } from 'react-dom';
+import type { ActiveSelection, Project, ProjectFolder } from '@shared/types';
 import { compositeKey } from '@shared/ipc';
 import { useStore } from '../store';
 import { removeWorktreeWithConfirm } from '../lib/removeWorktree';
 import { monogramFor } from '../lib/monogram';
 import { FileExplorer } from './FileExplorer';
 import { GitView } from './GitView';
-import { TodoView } from './TodoView';
 
 interface Props {
   activeId: ActiveSelection | null;
@@ -35,6 +35,7 @@ function loadWidth(): number {
 
 export function Sidebar({ activeId, onActivate, onAddProject, onRefresh, onNewWorktree }: Props) {
   const projects = useStore((s) => s.projects);
+  const folders = useStore((s) => s.folders);
   const tabs = useStore((s) => s.tabs);
   const clearTab = useStore((s) => s.clearTab);
   const clearProjectAndWorktrees = useStore((s) => s.clearProjectAndWorktrees);
@@ -45,8 +46,14 @@ export function Sidebar({ activeId, onActivate, onAddProject, onRefresh, onNewWo
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
+  const [folderMenu, setFolderMenu] = useState<{ x: number; y: number; folderId: string } | null>(
+    null,
+  );
+  const [renamingFolderId, setRenamingFolderId] = useState<string | null>(null);
+  const [folderRenameValue, setFolderRenameValue] = useState('');
   const [dragId, setDragId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
+  const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null);
   const [width, setWidth] = useState(loadWidth);
   const widthRef = useRef(width);
   useEffect(() => {
@@ -77,15 +84,18 @@ export function Sidebar({ activeId, onActivate, onAddProject, onRefresh, onNewWo
   const [collapseOverride, setCollapseOverride] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
-    if (!menu) return;
-    const close = () => setMenu(null);
+    if (!menu && !folderMenu) return;
+    const close = () => {
+      setMenu(null);
+      setFolderMenu(null);
+    };
     window.addEventListener('click', close);
     window.addEventListener('blur', close);
     return () => {
       window.removeEventListener('click', close);
       window.removeEventListener('blur', close);
     };
-  }, [menu]);
+  }, [menu, folderMenu]);
 
   const isCollapsed = (proj: Project): boolean =>
     collapseOverride[proj.id] ?? proj.worktreesCollapsed ?? false;
@@ -165,6 +175,48 @@ export function Sidebar({ activeId, onActivate, onAddProject, onRefresh, onNewWo
     clearTab(compositeKey(projectId, worktreeId));
   };
 
+  // Folders -----------------------------------------------------------------
+
+  const createFolder = async (assignProjectId?: string) => {
+    const folder = await window.api.folders.create({ name: 'New folder' });
+    if (assignProjectId) {
+      await window.api.projects.setFolder({ projectId: assignProjectId, folderId: folder.id });
+    }
+    await onRefresh();
+    // Drop straight into rename so the user can name it.
+    setRenamingFolderId(folder.id);
+    setFolderRenameValue(folder.name);
+  };
+
+  const commitFolderRename = async (id: string) => {
+    const name = folderRenameValue.trim();
+    if (name) await window.api.folders.rename({ id, name });
+    setRenamingFolderId(null);
+    setFolderRenameValue('');
+    await onRefresh();
+  };
+
+  const removeFolder = async (id: string) => {
+    const folder = folders.find((f) => f.id === id);
+    if (!folder) return;
+    const ok = window.confirm(
+      `Delete folder "${folder.name}"?\n\nProjects inside it move back to the top level; nothing on disk is removed.`,
+    );
+    if (!ok) return;
+    await window.api.folders.remove(id);
+    await onRefresh();
+  };
+
+  const toggleFolderCollapsed = async (id: string, collapsed: boolean) => {
+    await window.api.folders.setCollapsed({ id, collapsed });
+    await onRefresh();
+  };
+
+  const assignToFolder = async (projectId: string, folderId: string | null) => {
+    await window.api.projects.setFolder({ projectId, folderId });
+    await onRefresh();
+  };
+
   const onDragStart = (e: React.DragEvent, id: string) => {
     setDragId(id);
     e.dataTransfer.effectAllowed = 'move';
@@ -200,28 +252,198 @@ export function Sidebar({ activeId, onActivate, onAddProject, onRefresh, onNewWo
   const key = activeId ? compositeKey(activeId.projectId, activeId.worktreeId) : null;
   const activeDocRel = key ? activeDocByKey[key] ?? null : null;
 
+  const renderProject = (proj: Project) => {
+    const projKey = compositeKey(proj.id, null);
+    const tab = tabs[projKey];
+    const status = tab?.status ?? 'not-started';
+    const isActive = activeId?.projectId === proj.id && activeId.worktreeId == null;
+    const isRenaming = renamingId === proj.id;
+    const hasWorktrees = proj.worktrees.length > 0;
+    const collapsed = isCollapsed(proj);
+    const mono = monogramFor(proj.id, proj.name);
+    const attention = attentionCount(proj);
+    return (
+      <div key={proj.id}>
+        <div
+          className={[
+            'sb-row',
+            isActive ? 'active' : '',
+            dragOverId === proj.id ? 'drag-over' : '',
+            tab?.needsAttention ? 'needs-attention' : '',
+          ]
+            .filter(Boolean)
+            .join(' ')}
+          draggable={!isRenaming}
+          onDragStart={(e) => onDragStart(e, proj.id)}
+          onDragOver={(e) => onDragOver(e, proj.id)}
+          onDragLeave={() => setDragOverId((cur) => (cur === proj.id ? null : cur))}
+          onDrop={(e) => onDrop(e, proj.id)}
+          onClick={() => {
+            if (!isRenaming) onActivate({ projectId: proj.id, worktreeId: null });
+          }}
+          onDoubleClick={() => {
+            setRenamingId(proj.id);
+            setRenameValue(proj.name);
+          }}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            setMenu({ x: e.clientX, y: e.clientY, projectId: proj.id, worktreeId: null });
+          }}
+          title={proj.path}
+        >
+          <button
+            type="button"
+            className={`sb-chevron ${hasWorktrees ? '' : 'invisible'}`}
+            aria-label={collapsed ? 'Expand' : 'Collapse'}
+            onClick={(e) => {
+              e.stopPropagation();
+              setCollapsed(proj.id, !collapsed);
+            }}
+          >
+            {hasWorktrees ? (collapsed ? '▸' : '▾') : ''}
+          </button>
+          <span
+            className={`sb-avatar status-${status}`}
+            style={{ background: mono.tint }}
+            aria-hidden="true"
+          >
+            {mono.initials}
+          </span>
+          <div className="sb-text">
+            {isRenaming ? (
+              <input
+                className="sb-rename-input"
+                autoFocus
+                value={renameValue}
+                onChange={(e) => setRenameValue(e.target.value)}
+                onBlur={() => void commitRename(proj.id)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') void commitRename(proj.id);
+                  if (e.key === 'Escape') {
+                    setRenamingId(null);
+                    setRenameValue('');
+                  }
+                }}
+                onClick={(e) => e.stopPropagation()}
+              />
+            ) : (
+              <>
+                <div className="sb-name">{proj.name}</div>
+                <div className="sb-secondary">{proj.path}</div>
+              </>
+            )}
+          </div>
+          {!isRenaming && (
+            <div className="sb-meta">
+              {attention > 0 && (
+                <span className="sb-chip sb-chip-attention" title="Tabs needing attention">
+                  {attention}
+                </span>
+              )}
+              {hasWorktrees && (
+                <span className="sb-chip" title="Worktrees">
+                  {proj.worktrees.length}
+                </span>
+              )}
+              {proj.isGitRepo && (
+                <button
+                  type="button"
+                  className="sb-action"
+                  title="New workspace"
+                  aria-label="New workspace"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onNewWorktree(proj.id);
+                    setCollapsed(proj.id, false);
+                  }}
+                >
+                  +
+                </button>
+              )}
+              <span className="sb-drag-handle" aria-hidden="true">
+                ⠿
+              </span>
+            </div>
+          )}
+        </div>
+        {hasWorktrees &&
+          !collapsed &&
+          proj.worktrees.map((wt) => {
+            const wtKey = compositeKey(proj.id, wt.id);
+            const wtTab = tabs[wtKey];
+            const wtStatus = wtTab?.status ?? 'not-started';
+            const wtActive = activeId?.projectId === proj.id && activeId.worktreeId === wt.id;
+            return (
+              <div
+                key={wt.id}
+                className={[
+                  'sb-row',
+                  'sb-worktree',
+                  wtActive ? 'active' : '',
+                  wtTab?.needsAttention ? 'needs-attention' : '',
+                  wt.status === 'missing' ? 'missing' : '',
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
+                onClick={() => onActivate({ projectId: proj.id, worktreeId: wt.id })}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  setMenu({ x: e.clientX, y: e.clientY, projectId: proj.id, worktreeId: wt.id });
+                }}
+                title={wt.path}
+              >
+                <span className={`sb-branch-dot status-${wtStatus}`} aria-hidden="true" />
+                <div className="sb-text">
+                  <div className="sb-name sb-branch">{wt.branch}</div>
+                  {wt.status === 'missing' && (
+                    <div className="sb-secondary warn">missing on disk</div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+      </div>
+    );
+  };
+
+  // Group projects by folder for the sidebar. Unknown/blank folderId → root.
+  const sortedFolders = [...folders].sort((a, b) => a.order - b.order);
+  const folderIds = new Set(sortedFolders.map((f) => f.id));
+  const projectsInFolder = (folderId: string) =>
+    projects.filter((p) => p.folderId === folderId);
+  const ungroupedProjects = projects.filter((p) => !p.folderId || !folderIds.has(p.folderId));
+
   return (
     <aside className="sidebar" style={{ width }}>
       {(sidebarView === 'projects' || sidebarView === 'files') && (
         <div className="sidebar-header">
           <h1>{sidebarView === 'files' ? 'Files' : 'Projects'}</h1>
           {sidebarView === 'projects' && (
-            <button
-              type="button"
-              className="header-add"
-              onClick={onAddProject}
-              title="Add project"
-              aria-label="Add project"
-            >
-              +
-            </button>
+            <div className="header-actions">
+              <button
+                type="button"
+                className="header-add"
+                onClick={() => void createFolder()}
+                title="New folder"
+                aria-label="New folder"
+              >
+                ▤
+              </button>
+              <button
+                type="button"
+                className="header-add"
+                onClick={onAddProject}
+                title="Add project"
+                aria-label="Add project"
+              >
+                +
+              </button>
+            </div>
           )}
         </div>
       )}
       {sidebarView === 'git' ? (
         <GitView active={activeId} isWorktreeTab={!!activeId?.worktreeId} />
-      ) : sidebarView === 'todos' ? (
-        <TodoView active={activeId} />
       ) : sidebarView === 'files' ? (
         activeId ? (
           <FileExplorer
@@ -252,168 +474,109 @@ export function Sidebar({ activeId, onActivate, onAddProject, onRefresh, onNewWo
         </div>
       ) : (
         <div className="project-list">
-          {projects.map((proj) => {
-            const projKey = compositeKey(proj.id, null);
-            const tab = tabs[projKey];
-            const status = tab?.status ?? 'not-started';
-            const isActive = activeId?.projectId === proj.id && activeId.worktreeId == null;
-            const isRenaming = renamingId === proj.id;
-            const hasWorktrees = proj.worktrees.length > 0;
-            const collapsed = isCollapsed(proj);
-            const mono = monogramFor(proj.id, proj.name);
-            const attention = attentionCount(proj);
+          {sortedFolders.map((folder) => {
+            const fCollapsed = folder.collapsed ?? false;
+            const inFolder = projectsInFolder(folder.id);
+            const isRenamingF = renamingFolderId === folder.id;
             return (
-              <div key={proj.id}>
+              <div key={folder.id}>
                 <div
-                  className={[
-                    'sb-row',
-                    isActive ? 'active' : '',
-                    dragOverId === proj.id ? 'drag-over' : '',
-                    tab?.needsAttention ? 'needs-attention' : '',
-                  ]
+                  className={['sb-folder', dragOverFolderId === folder.id ? 'drag-over' : '']
                     .filter(Boolean)
                     .join(' ')}
-                  draggable={!isRenaming}
-                  onDragStart={(e) => onDragStart(e, proj.id)}
-                  onDragOver={(e) => onDragOver(e, proj.id)}
-                  onDragLeave={() => setDragOverId((cur) => (cur === proj.id ? null : cur))}
-                  onDrop={(e) => onDrop(e, proj.id)}
-                  onClick={() => {
-                    if (!isRenaming) onActivate({ projectId: proj.id, worktreeId: null });
+                  onClick={() => void toggleFolderCollapsed(folder.id, !fCollapsed)}
+                  onDragOver={(e) => {
+                    if (!dragId) return;
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'move';
+                    setDragOverFolderId(folder.id);
                   }}
-                  onDoubleClick={() => {
-                    setRenamingId(proj.id);
-                    setRenameValue(proj.name);
+                  onDragLeave={() =>
+                    setDragOverFolderId((cur) => (cur === folder.id ? null : cur))
+                  }
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setDragOverFolderId(null);
+                    const pid = dragId;
+                    setDragId(null);
+                    if (pid) void assignToFolder(pid, folder.id);
                   }}
                   onContextMenu={(e) => {
                     e.preventDefault();
-                    setMenu({ x: e.clientX, y: e.clientY, projectId: proj.id, worktreeId: null });
+                    setFolderMenu({ x: e.clientX, y: e.clientY, folderId: folder.id });
                   }}
-                  title={proj.path}
                 >
-                  <button
-                    type="button"
-                    className={`sb-chevron ${hasWorktrees ? '' : 'invisible'}`}
-                    aria-label={collapsed ? 'Expand' : 'Collapse'}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setCollapsed(proj.id, !collapsed);
-                    }}
-                  >
-                    {hasWorktrees ? (collapsed ? '▸' : '▾') : ''}
-                  </button>
-                  <span
-                    className={`sb-avatar status-${status}`}
-                    style={{ background: mono.tint }}
-                    aria-hidden="true"
-                  >
-                    {mono.initials}
+                  <span className="sb-folder-chevron" aria-hidden="true">
+                    {fCollapsed ? '▸' : '▾'}
+                  </span>
+                  <span className="sb-folder-icon" aria-hidden="true">
+                    ▦
                   </span>
                   <div className="sb-text">
-                    {isRenaming ? (
+                    {isRenamingF ? (
                       <input
                         className="sb-rename-input"
                         autoFocus
-                        value={renameValue}
-                        onChange={(e) => setRenameValue(e.target.value)}
-                        onBlur={() => void commitRename(proj.id)}
+                        value={folderRenameValue}
+                        onChange={(e) => setFolderRenameValue(e.target.value)}
+                        onBlur={() => void commitFolderRename(folder.id)}
                         onKeyDown={(e) => {
-                          if (e.key === 'Enter') void commitRename(proj.id);
+                          if (e.key === 'Enter') void commitFolderRename(folder.id);
                           if (e.key === 'Escape') {
-                            setRenamingId(null);
-                            setRenameValue('');
+                            setRenamingFolderId(null);
+                            setFolderRenameValue('');
                           }
                         }}
                         onClick={(e) => e.stopPropagation()}
                       />
                     ) : (
-                      <>
-                        <div className="sb-name">{proj.name}</div>
-                        <div className="sb-secondary">{proj.path}</div>
-                      </>
+                      <div className="sb-folder-name">{folder.name}</div>
                     )}
                   </div>
-                  {!isRenaming && (
-                    <div className="sb-meta">
-                      {attention > 0 && (
-                        <span className="sb-chip sb-chip-attention" title="Tabs needing attention">
-                          {attention}
-                        </span>
-                      )}
-                      {hasWorktrees && (
-                        <span className="sb-chip" title="Worktrees">
-                          {proj.worktrees.length}
-                        </span>
-                      )}
-                      {proj.isGitRepo && (
-                        <button
-                          type="button"
-                          className="sb-action"
-                          title="New workspace"
-                          aria-label="New workspace"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onNewWorktree(proj.id);
-                            setCollapsed(proj.id, false);
-                          }}
-                        >
-                          +
-                        </button>
-                      )}
-                      <span className="sb-drag-handle" aria-hidden="true">
-                        ⠿
-                      </span>
-                    </div>
+                  {!isRenamingF && (
+                    <span className="sb-chip" title="Projects in folder">
+                      {inFolder.length}
+                    </span>
                   )}
                 </div>
-                {hasWorktrees &&
-                  !collapsed &&
-                  proj.worktrees.map((wt) => {
-                    const wtKey = compositeKey(proj.id, wt.id);
-                    const wtTab = tabs[wtKey];
-                    const wtStatus = wtTab?.status ?? 'not-started';
-                    const wtActive =
-                      activeId?.projectId === proj.id && activeId.worktreeId === wt.id;
-                    return (
-                      <div
-                        key={wt.id}
-                        className={[
-                          'sb-row',
-                          'sb-worktree',
-                          wtActive ? 'active' : '',
-                          wtTab?.needsAttention ? 'needs-attention' : '',
-                          wt.status === 'missing' ? 'missing' : '',
-                        ]
-                          .filter(Boolean)
-                          .join(' ')}
-                        onClick={() => onActivate({ projectId: proj.id, worktreeId: wt.id })}
-                        onContextMenu={(e) => {
-                          e.preventDefault();
-                          setMenu({
-                            x: e.clientX,
-                            y: e.clientY,
-                            projectId: proj.id,
-                            worktreeId: wt.id,
-                          });
-                        }}
-                        title={wt.path}
-                      >
-                        <span className={`sb-branch-dot status-${wtStatus}`} aria-hidden="true" />
-                        <div className="sb-text">
-                          <div className="sb-name sb-branch">{wt.branch}</div>
-                          {wt.status === 'missing' && (
-                            <div className="sb-secondary warn">missing on disk</div>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
+                {!fCollapsed && (
+                  <div className="sb-folder-children">
+                    {inFolder.length > 0 ? (
+                      inFolder.map(renderProject)
+                    ) : (
+                      <div className="sb-folder-empty">Drop a project here</div>
+                    )}
+                  </div>
+                )}
               </div>
             );
           })}
+          {sortedFolders.length > 0 && ungroupedProjects.length > 0 && (
+            <div
+              className={`sb-root-label ${dragOverFolderId === '__root__' ? 'drag-over' : ''}`}
+              onDragOver={(e) => {
+                if (!dragId) return;
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                setDragOverFolderId('__root__');
+              }}
+              onDragLeave={() => setDragOverFolderId((cur) => (cur === '__root__' ? null : cur))}
+              onDrop={(e) => {
+                e.preventDefault();
+                setDragOverFolderId(null);
+                const pid = dragId;
+                setDragId(null);
+                if (pid) void assignToFolder(pid, null);
+              }}
+            >
+              Top level
+            </div>
+          )}
+          {ungroupedProjects.map(renderProject)}
         </div>
       )}
-      {menu && (
+      {menu &&
+        createPortal(
         <ContextMenu
           x={menu.x}
           y={menu.y}
@@ -444,8 +607,58 @@ export function Sidebar({ activeId, onActivate, onAddProject, onRefresh, onNewWo
             }
             setMenu(null);
           }}
-        />
-      )}
+          folders={sortedFolders}
+          currentFolderId={projects.find((p) => p.id === menu.projectId)?.folderId ?? null}
+          onMoveToFolder={(folderId) => {
+            void assignToFolder(menu.projectId, folderId);
+            setMenu(null);
+          }}
+          onNewFolder={() => {
+            void createFolder(menu.projectId);
+            setMenu(null);
+          }}
+        />,
+          document.body,
+        )}
+      {folderMenu &&
+        createPortal(
+          <div
+            className="context-menu"
+            style={{ left: folderMenu.x, top: folderMenu.y }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={() => {
+                const f = folders.find((x) => x.id === folderMenu.folderId);
+                if (f) {
+                  setRenamingFolderId(f.id);
+                  setFolderRenameValue(f.name);
+                }
+                setFolderMenu(null);
+              }}
+            >
+              Rename…
+            </button>
+            <button
+              onClick={() => {
+                void createFolder();
+                setFolderMenu(null);
+              }}
+            >
+              New folder…
+            </button>
+            <button
+              className="danger"
+              onClick={() => {
+                void removeFolder(folderMenu.folderId);
+                setFolderMenu(null);
+              }}
+            >
+              Delete folder
+            </button>
+          </div>,
+          document.body,
+        )}
       <div
         className="sidebar-resize-handle"
         onMouseDown={onResizeDown}
@@ -463,8 +676,13 @@ function ContextMenu(props: {
   onRemove: () => void;
   onCloseSession: () => void;
   hasSession: boolean;
+  folders?: ProjectFolder[];
+  currentFolderId?: string | null;
+  onMoveToFolder?: (folderId: string | null) => void;
+  onNewFolder?: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const showFolders = !props.isWorktree && !!props.onMoveToFolder;
   return (
     <div
       ref={ref}
@@ -476,6 +694,26 @@ function ContextMenu(props: {
       <button onClick={props.onCloseSession} disabled={!props.hasSession}>
         Close session
       </button>
+      {showFolders && (
+        <>
+          <div className="context-menu-sep" />
+          <div className="context-menu-label">Move to folder</div>
+          {props.currentFolderId != null && (
+            <button onClick={() => props.onMoveToFolder!(null)}>Top level</button>
+          )}
+          {(props.folders ?? []).map((f) => (
+            <button
+              key={f.id}
+              disabled={f.id === props.currentFolderId}
+              onClick={() => props.onMoveToFolder!(f.id)}
+            >
+              {f.id === props.currentFolderId ? `✓ ${f.name}` : f.name}
+            </button>
+          ))}
+          <button onClick={props.onNewFolder}>New folder…</button>
+          <div className="context-menu-sep" />
+        </>
+      )}
       <button className="danger" onClick={props.onRemove}>
         {props.isWorktree ? 'Remove worktree' : 'Remove project'}
       </button>

@@ -9,13 +9,12 @@ import type {
   IntegratedTerminalSettings,
   NotificationSettings,
   Project,
+  ProjectFolder,
   PtySpawnResult,
   ShellTab,
   TerminalStyleOptions,
   TerminalStylePreset,
   TerminalStyleSettings,
-  Todo,
-  TodoViewSettings,
   WebAccessSettings,
   Worktree,
 } from './types';
@@ -38,7 +37,16 @@ export const IPC = {
   ProjectReorder: 'project:reorder',
   ProjectSetActive: 'project:setActive',
   ProjectSetWorktreesCollapsed: 'project:setWorktreesCollapsed',
+  ProjectSetFolder: 'project:setFolder',
   ProjectPickDirectory: 'project:pickDirectory',
+
+  // Project folders (renderer → main, request/response)
+  FolderList: 'folder:list',
+  FolderCreate: 'folder:create',
+  FolderRename: 'folder:rename',
+  FolderRemove: 'folder:remove',
+  FolderSetCollapsed: 'folder:setCollapsed',
+  FolderReorder: 'folder:reorder',
 
   // Worktree management (renderer → main)
   WorktreeList: 'worktree:list',
@@ -106,17 +114,6 @@ export const IPC = {
   SettingsGetGitView: 'settings:getGitView',
   SettingsSetGitView: 'settings:setGitView',
   SettingsGitViewChanged: 'settings:gitViewChanged',
-
-  // Todos (renderer ↔ main)
-  TodoList: 'todo:list',
-  TodoAdd: 'todo:add',
-  TodoUpdate: 'todo:update',
-  TodoRemove: 'todo:remove',
-
-  // Todo-view settings (renderer ↔ main)
-  SettingsGetTodoView: 'settings:getTodoView',
-  SettingsSetTodoView: 'settings:setTodoView',
-  SettingsTodoViewChanged: 'settings:todoViewChanged',
 
   // Web-access (LAN web UI) settings (renderer ↔ main)
   SettingsGetWebAccess: 'settings:getWebAccess',
@@ -221,6 +218,24 @@ export interface ProjectReorderArgs {
 export interface ProjectSetWorktreesCollapsedArgs {
   id: string;
   collapsed: boolean;
+}
+export interface ProjectSetFolderArgs {
+  projectId: string;
+  folderId: string | null;
+}
+export interface FolderCreateArgs {
+  name: string;
+}
+export interface FolderRenameArgs {
+  id: string;
+  name: string;
+}
+export interface FolderSetCollapsedArgs {
+  id: string;
+  collapsed: boolean;
+}
+export interface FolderReorderArgs {
+  orderedIds: string[];
 }
 export interface ProjectPickDirectoryResult {
   path: string | null;
@@ -532,22 +547,6 @@ export interface ShellExitEvent {
   signal: number | null;
 }
 
-// Todo IPC payloads ------------------------------------------------------
-
-export interface TodoAddArgs {
-  projectId: string;
-  text: string;
-}
-export interface TodoUpdateArgs {
-  projectId: string;
-  id: string;
-  patch: Partial<Pick<Todo, 'text' | 'done'>>;
-}
-export interface TodoRemoveArgs {
-  projectId: string;
-  id: string;
-}
-
 // Docs / markdown viewer IPC payloads -----------------------------------
 
 export interface DocsListArgs {
@@ -668,7 +667,16 @@ export interface DashApi {
     reorder(args: ProjectReorderArgs): Promise<void>;
     setActive(active: ActiveSelection | null): Promise<void>;
     setWorktreesCollapsed(args: ProjectSetWorktreesCollapsedArgs): Promise<void>;
+    setFolder(args: ProjectSetFolderArgs): Promise<void>;
     pickDirectory(): Promise<ProjectPickDirectoryResult>;
+  };
+  folders: {
+    list(): Promise<ProjectFolder[]>;
+    create(args: FolderCreateArgs): Promise<ProjectFolder>;
+    rename(args: FolderRenameArgs): Promise<void>;
+    remove(id: string): Promise<void>;
+    setCollapsed(args: FolderSetCollapsedArgs): Promise<void>;
+    reorder(args: FolderReorderArgs): Promise<void>;
   };
   worktrees: {
     list(projectId: string): Promise<Worktree[]>;
@@ -704,9 +712,6 @@ export interface DashApi {
     getGitView(): Promise<GitViewSettings>;
     setGitView(patch: Partial<Omit<GitViewSettings, 'version'>>): Promise<GitViewSettings>;
     onGitViewChanged(handler: (s: GitViewSettings) => void): () => void;
-    getTodoView(): Promise<TodoViewSettings>;
-    setTodoView(patch: Partial<Omit<TodoViewSettings, 'version'>>): Promise<TodoViewSettings>;
-    onTodoViewChanged(handler: (s: TodoViewSettings) => void): () => void;
     getDocsView(): Promise<DocsViewSettings>;
     setDocsView(patch: Partial<Omit<DocsViewSettings, 'version'>>): Promise<DocsViewSettings>;
     onDocsViewChanged(handler: (s: DocsViewSettings) => void): () => void;
@@ -764,12 +769,6 @@ export interface DashApi {
     subscribe(args: GitTabRef): Promise<void>;
     unsubscribe(args: GitTabRef): Promise<void>;
     onChanged(handler: (ev: GitChangedEvent) => void): () => void;
-  };
-  todos: {
-    list(projectId: string): Promise<Todo[]>;
-    add(args: TodoAddArgs): Promise<Todo>;
-    update(args: TodoUpdateArgs): Promise<Todo | null>;
-    remove(args: TodoRemoveArgs): Promise<void>;
   };
   docs: {
     list(args: DocsListArgs): Promise<DocsListResult>;

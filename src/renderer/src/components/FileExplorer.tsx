@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { DocsDirEntry } from '@shared/ipc';
 import { FolderIcon, FileTypeIcon } from './icons';
 
@@ -238,20 +239,22 @@ export function FileExplorer({ projectId, activeRelPath, onOpenFile }: Props) {
           renderLevel('', 0)
         )}
       </div>
-      {menu && (
-        <FileContextMenu
-          x={menu.x}
-          y={menu.y}
-          entry={menu.entry}
-          onOpen={(ent) => onOpenFile(ent.relPath)}
-          onNewFile={(dir) => doCreate(dir, 'file')}
-          onNewFolder={(dir) => doCreate(dir, 'dir')}
-          onReveal={doReveal}
-          onCopyPath={doCopyPath}
-          onRename={doRename}
-          onDelete={doDelete}
-        />
-      )}
+      {menu &&
+        createPortal(
+          <FileContextMenu
+            x={menu.x}
+            y={menu.y}
+            entry={menu.entry}
+            onOpen={(ent) => onOpenFile(ent.relPath)}
+            onNewFile={(dir) => doCreate(dir, 'file')}
+            onNewFolder={(dir) => doCreate(dir, 'dir')}
+            onReveal={doReveal}
+            onCopyPath={doCopyPath}
+            onRename={doRename}
+            onDelete={doDelete}
+          />,
+          document.body,
+        )}
     </div>
   );
 }

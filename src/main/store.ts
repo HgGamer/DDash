@@ -8,7 +8,6 @@ import {
   DEFAULT_INTEGRATED_TERMINAL_SETTINGS,
   DEFAULT_NOTIFICATION_SETTINGS,
   DEFAULT_TERMINAL_STYLE,
-  DEFAULT_TODO_VIEW_SETTINGS,
   DEFAULT_DOCS_VIEW_SETTINGS,
   DEFAULT_WEB_ACCESS_SETTINGS,
   DEFAULT_WEB_ACCESS_PORT,
@@ -16,8 +15,6 @@ import {
   GIT_VIEW_MIN_WIDTH,
   INTEGRATED_TERMINAL_MIN_HEIGHT,
   TERMINAL_STYLE_PRESET_IDS,
-  TODO_VIEW_MAX_WIDTH,
-  TODO_VIEW_MIN_WIDTH,
   DOCS_VIEW_MAX_WIDTH,
   DOCS_VIEW_MIN_WIDTH,
   type ActiveSelection,
@@ -30,9 +27,8 @@ import {
   type IntegratedTerminalSettings,
   type NotificationSettings,
   type Project,
+  type ProjectFolder,
   type TerminalStyleSettings,
-  type Todo,
-  type TodoViewSettings,
   type WebAccessSettings,
   type Worktree,
 } from '@shared/types';
@@ -157,15 +153,20 @@ export class JsonStore {
       ? (r.projects as unknown[]).map(normalizeProject).filter((p): p is Project => p !== null)
       : [];
     const lastActive = normalizeActive(r.lastActive, r.lastActiveProjectId, projects);
+    const folders = Array.isArray(r.folders)
+      ? (r.folders as unknown[])
+          .map(normalizeFolder)
+          .filter((f): f is ProjectFolder => f !== null)
+      : [];
     return {
       version: 2,
       projects,
+      folders,
       lastActive,
       window: { ...base.window, ...((r.window as object) ?? {}) },
       terminalStyle: migrateTerminalStyle(r.terminalStyle),
       notifications: migrateNotifications(r.notifications),
       gitView: migrateGitView(r.gitView),
-      todoView: migrateTodoView(r.todoView),
       docsView: migrateDocsView(r.docsView),
       integratedTerminal: migrateIntegratedTerminal(r.integratedTerminal),
       autoUpdate: migrateAutoUpdate(r.autoUpdate),
@@ -198,9 +199,6 @@ function normalizeProject(raw: unknown): Project | null {
   const worktrees = Array.isArray(r.worktrees)
     ? (r.worktrees as unknown[]).map(normalizeWorktree).filter((w): w is Worktree => w !== null)
     : [];
-  const todos = Array.isArray(r.todos)
-    ? (r.todos as unknown[]).map(normalizeTodo).filter((t): t is Todo => t !== null)
-    : [];
   const proj: Project = {
     id: r.id,
     name: typeof r.name === 'string' ? r.name : r.id,
@@ -209,10 +207,10 @@ function normalizeProject(raw: unknown): Project | null {
     lastOpenedAt: typeof r.lastOpenedAt === 'string' ? r.lastOpenedAt : null,
     order: typeof r.order === 'number' ? r.order : 0,
     worktrees,
-    todos,
   };
   if (typeof r.worktreesRoot === 'string') proj.worktreesRoot = r.worktreesRoot;
   if (typeof r.worktreesCollapsed === 'boolean') proj.worktreesCollapsed = r.worktreesCollapsed;
+  if (typeof r.folderId === 'string') proj.folderId = r.folderId;
   if (Array.isArray(r.recentBranches)) {
     proj.recentBranches = (r.recentBranches as unknown[])
       .filter((b): b is string => typeof b === 'string')
@@ -221,16 +219,17 @@ function normalizeProject(raw: unknown): Project | null {
   return proj;
 }
 
-function normalizeTodo(raw: unknown): Todo | null {
+function normalizeFolder(raw: unknown): ProjectFolder | null {
   if (!raw || typeof raw !== 'object') return null;
   const r = raw as Record<string, unknown>;
-  if (typeof r.id !== 'string' || typeof r.text !== 'string') return null;
-  return {
+  if (typeof r.id !== 'string' || typeof r.name !== 'string') return null;
+  const folder: ProjectFolder = {
     id: r.id,
-    text: r.text,
-    done: typeof r.done === 'boolean' ? r.done : false,
-    createdAt: typeof r.createdAt === 'string' ? r.createdAt : new Date().toISOString(),
+    name: r.name,
+    order: typeof r.order === 'number' ? r.order : 0,
   };
+  if (typeof r.collapsed === 'boolean') folder.collapsed = r.collapsed;
+  return folder;
 }
 
 function normalizeWorktree(raw: unknown): Worktree | null {
@@ -302,20 +301,6 @@ function migrateGitView(raw: unknown): GitViewSettings {
     version: 1,
     enabled: typeof r.enabled === 'boolean' ? r.enabled : DEFAULT_GIT_VIEW_SETTINGS.enabled,
     expanded: typeof r.expanded === 'boolean' ? r.expanded : DEFAULT_GIT_VIEW_SETTINGS.expanded,
-    panelWidth,
-  };
-}
-
-function migrateTodoView(raw: unknown): TodoViewSettings {
-  if (!raw || typeof raw !== 'object') return { ...DEFAULT_TODO_VIEW_SETTINGS };
-  const r = raw as Partial<TodoViewSettings>;
-  const panelWidth =
-    typeof r.panelWidth === 'number' && Number.isFinite(r.panelWidth)
-      ? Math.min(TODO_VIEW_MAX_WIDTH, Math.max(TODO_VIEW_MIN_WIDTH, Math.round(r.panelWidth)))
-      : DEFAULT_TODO_VIEW_SETTINGS.panelWidth;
-  return {
-    version: 1,
-    expanded: typeof r.expanded === 'boolean' ? r.expanded : DEFAULT_TODO_VIEW_SETTINGS.expanded,
     panelWidth,
   };
 }

@@ -43,7 +43,10 @@ export function StatusBar() {
   const cacheCreateShare = share(claudeUsage?.cacheCreateTokens ?? 0);
   const cacheReadShare = share(claudeUsage?.cacheReadTokens ?? 0);
 
-  const nextTheme = theme === 'pink' ? 'dark' : 'pink';
+  // Cycle dark → light → pink → dark.
+  const THEME_ORDER = ['dark', 'light', 'pink'] as const;
+  const THEME_LABEL = { dark: '🌙 Dark', light: '☀️ Light', pink: '🌸 Pink' } as const;
+  const nextTheme = THEME_ORDER[(THEME_ORDER.indexOf(theme) + 1) % THEME_ORDER.length];
 
   // Subscription plan usage (the real `/usage` numbers). The bar fills toward
   // whichever window is closest to its cap, so it grows as the plan is consumed.
@@ -132,7 +135,7 @@ export function StatusBar() {
           title={`Switch to ${nextTheme} theme (current: ${theme})`}
           onClick={() => setTheme(nextTheme)}
         >
-          {theme === 'pink' ? '🌸 Pink' : '🌙 Dark'}
+          {THEME_LABEL[theme]}
         </button>
         {integratedTerminal.enabled && (
           <button

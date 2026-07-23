@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { renderMarkdown } from '../lib/markdown';
 import { toast } from './Toast';
 import { MonacoView, languageForPath } from './MonacoView';
+import { CopyIcon, RevealIcon, WrapIcon } from './icons';
 import { useStore } from '../store';
 
 const MARKDOWN_RE = /\.(md|markdown)$/i;
@@ -31,12 +32,36 @@ export function FileView({
   const [mode, setMode] = useState<'preview' | 'edit'>('preview');
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [wrap, setWrap] = useState(false);
   const bodyRef = useRef<HTMLDivElement>(null);
+  // Live mirrors of the draft / saved content and save-in-flight flag. Editor
+  // changes update `draftRef` synchronously, so save handlers (button and ⌘S)
+  // always persist the latest text even if a React re-render hasn't committed
+  // yet — otherwise the most recent keystrokes are silently dropped on save.
+  const draftRef = useRef('');
+  const rawRef = useRef<string | null>(null);
+  const savingRef = useRef(false);
+
+  const applyDraft = (v: string) => {
+    draftRef.current = v;
+    setDraft(v);
+  };
+
+  const copyPath = async () => {
+    try {
+      await navigator.clipboard.writeText(relPath);
+      toast({ message: 'Path copied', tone: 'success' });
+    } catch {
+      toast({ message: 'Could not copy path', tone: 'error' });
+    }
+  };
+  const reveal = () => void window.api.docs.reveal({ projectId, relPath });
 
   useEffect(() => {
     let cancelled = false;
     setRaw(null);
-    setDraft('');
+    rawRef.current = null;
+    applyDraft('');
     setMode('preview');
     setMessage(null);
     void (async () => {
@@ -59,7 +84,8 @@ export function FileView({
         return;
       }
       setRaw(res.contents);
-      setDraft(res.contents);
+      rawRef.current = res.contents;
+      applyDraft(res.contents);
     })();
     return () => {
       cancelled = true;
@@ -73,6 +99,8 @@ export function FileView({
   );
 
   const dirty = raw !== null && draft !== raw;
+  // The Monaco editor is on screen for code files and for markdown in edit mode.
+  const monacoVisible = raw !== null && (!isMarkdown || mode === 'edit');
 
   // Report unsaved-edit state to the store (for the close warning) and clear it
   // when this file's view unmounts.
@@ -85,30 +113,36 @@ export function FileView({
     return () => setFileDirty(dirtyId, false);
   }, [dirtyId, setFileDirty]);
 
-  const save = async () => {
+  const save = useCallback(async () => {
+    if (savingRef.current) return;
+    // Snapshot the live editor content, not the possibly-stale `draft` state.
+    const contents = draftRef.current;
+    if (rawRef.current !== null && contents === rawRef.current) return;
+    savingRef.current = true;
     setSaving(true);
-    const res = await window.api.docs.write({ projectId, relPath, contents: draft });
+    const res = await window.api.docs.write({ projectId, relPath, contents });
+    savingRef.current = false;
     setSaving(false);
     if (res.ok) {
-      setRaw(draft);
+      rawRef.current = contents;
+      setRaw(contents);
       toast({ message: 'Saved', tone: 'success' });
     } else {
       toast({ message: 'Could not save file.', tone: 'error' });
     }
-  };
+  }, [projectId, relPath]);
 
-  // Cmd/Ctrl+S saves the active file when there are unsaved edits.
+  // Cmd/Ctrl+S saves the active file. `save` reads live refs, so no stale draft.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && (e.key === 's' || e.key === 'S')) {
         e.preventDefault();
-        if (dirty && !saving) void save();
+        void save();
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dirty, saving]);
+  }, [save]);
 
   // Highlight markdown fenced code blocks (lazy-loading highlight.js).
   useEffect(() => {
@@ -150,36 +184,51 @@ export function FileView({
     <div className="file-view">
       {raw !== null && (
         <div className="file-toolbar">
-          <div className="file-toolbar-modes">
-            {isMarkdown ? (
-              <>
+          <div className="file-toolbar-actions">
+            {isMarkdown && (
+              <div className="segmented" role="group" aria-label="View mode">
                 <button
                   type="button"
-                  className={`file-toolbar-btn ${mode === 'preview' ? 'active' : ''}`}
+                  className={mode === 'preview' ? 'active' : ''}
                   onClick={() => setMode('preview')}
                 >
                   Preview
                 </button>
                 <button
                   type="button"
-                  className={`file-toolbar-btn ${mode === 'edit' ? 'active' : ''}`}
+                  className={mode === 'edit' ? 'active' : ''}
                   onClick={() => setMode('edit')}
                 >
                   Edit
                 </button>
-              </>
-            ) : (
-              <span className="file-toolbar-name">{relPath.split('/').pop()}</span>
+              </div>
             )}
+            {monacoVisible && (
+              <button
+                type="button"
+                className={`file-toolbar-icon ${wrap ? 'active' : ''}`}
+                title="Toggle soft wrap"
+                aria-pressed={wrap}
+                onClick={() => setWrap((w) => !w)}
+              >
+                <WrapIcon />
+              </button>
+            )}
+            <button type="button" className="file-toolbar-icon" title="Copy path" onClick={() => void copyPath()}>
+              <CopyIcon />
+            </button>
+            <button type="button" className="file-toolbar-icon" title="Reveal in file manager" onClick={reveal}>
+              <RevealIcon />
+            </button>
+            <button
+              type="button"
+              className="btn-primary file-save"
+              disabled={!dirty || saving}
+              onClick={() => void save()}
+            >
+              {saving ? 'Saving…' : dirty ? 'Save' : 'Saved'}
+            </button>
           </div>
-          <button
-            type="button"
-            className="btn-primary file-save"
-            disabled={!dirty || saving}
-            onClick={() => void save()}
-          >
-            {saving ? 'Saving…' : dirty ? 'Save' : 'Saved'}
-          </button>
         </div>
       )}
       {message && (
@@ -189,7 +238,7 @@ export function FileView({
       )}
       {isMarkdown && mode === 'edit' && raw !== null && (
         <div className="file-monaco">
-          <MonacoView value={draft} language="markdown" onChange={setDraft} />
+          <MonacoView value={draft} language="markdown" wordWrap={wrap} onChange={applyDraft} />
         </div>
       )}
       {html !== null && (
@@ -199,7 +248,12 @@ export function FileView({
       )}
       {!isMarkdown && raw !== null && (
         <div className="file-monaco">
-          <MonacoView value={draft} language={languageForPath(relPath)} onChange={setDraft} />
+          <MonacoView
+            value={draft}
+            language={languageForPath(relPath)}
+            wordWrap={wrap}
+            onChange={applyDraft}
+          />
         </div>
       )}
     </div>

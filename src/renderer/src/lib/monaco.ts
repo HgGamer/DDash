@@ -21,7 +21,7 @@ const env: monaco.Environment = {
 };
 (self as unknown as { MonacoEnvironment: monaco.Environment }).MonacoEnvironment = env;
 
-// Dark theme tuned to the app background (kept close to vs-dark for tokens).
+// Themes tuned to the app background (kept close to vs-dark/vs for tokens).
 let themeDefined = false;
 export function ensureTheme(): void {
   if (themeDefined) return;
@@ -36,7 +36,24 @@ export function ensureTheme(): void {
       'editorLineNumber.foreground': '#6e6e78',
     },
   });
+  monaco.editor.defineTheme('dash-light', {
+    base: 'vs',
+    inherit: true,
+    rules: [],
+    colors: {
+      'editor.background': '#ffffff',
+      'editorGutter.background': '#ffffff',
+      'editor.lineHighlightBackground': '#f0f0f3',
+      'editorLineNumber.foreground': '#8a8a92',
+      'editorLineNumber.activeForeground': '#55555c',
+    },
+  });
   themeDefined = true;
+}
+
+/** Monaco theme id for the current app UI theme. */
+export function monacoThemeFor(appTheme: string): 'dash-dark' | 'dash-light' {
+  return appTheme === 'light' ? 'dash-light' : 'dash-dark';
 }
 
 export { monaco };

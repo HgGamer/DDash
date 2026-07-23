@@ -64,6 +64,7 @@ function confirmDiscardIfUnsaved(parent?: BrowserWindow): boolean {
 
 async function createWindow(): Promise<void> {
   const state = store.get();
+  const isMac = process.platform === 'darwin';
   const win = new BrowserWindow({
     width: state.window.width,
     height: state.window.height,
@@ -73,6 +74,19 @@ async function createWindow(): Promise<void> {
     minHeight: 500,
     show: false,
     autoHideMenuBar: false,
+    // macOS: frosted-glass window with inset traffic lights. The chrome (sidebar,
+    // bars, headers) renders over this vibrancy material via transparent CSS; the
+    // terminal pane stays opaque so xterm output is legible. Other platforms keep
+    // the solid dark background.
+    backgroundColor: isMac ? '#00000000' : '#0b0b0c',
+    ...(isMac
+      ? {
+          vibrancy: 'sidebar' as const,
+          visualEffectState: 'active' as const,
+          titleBarStyle: 'hiddenInset' as const,
+          trafficLightPosition: { x: 14, y: 18 },
+        }
+      : {}),
     ...(isDev ? { icon: devIconPath } : {}),
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.mjs'),

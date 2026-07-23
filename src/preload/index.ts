@@ -27,6 +27,11 @@ import {
   type ProjectRenameArgs,
   type ProjectReorderArgs,
   type ProjectSetWorktreesCollapsedArgs,
+  type ProjectSetFolderArgs,
+  type FolderCreateArgs,
+  type FolderRenameArgs,
+  type FolderSetCollapsedArgs,
+  type FolderReorderArgs,
   type PtyCloseArgs,
   type PtyDataEvent,
   type PtyErrorEvent,
@@ -44,9 +49,6 @@ import {
   type ShellResizeArgs,
   type ShellTabIdArgs,
   type ShellWriteArgs,
-  type TodoAddArgs,
-  type TodoRemoveArgs,
-  type TodoUpdateArgs,
   type WorktreeCreateArgs,
   type WorktreeRemoveArgs,
 } from '@shared/ipc';
@@ -63,7 +65,6 @@ import type {
   TerminalStyleOptions,
   TerminalStylePreset,
   TerminalStyleSettings,
-  TodoViewSettings,
   WebAccessSettings,
 } from '@shared/types';
 
@@ -89,7 +90,17 @@ const api: DashApi = {
       ipcRenderer.invoke(IPC.ProjectSetActive, active),
     setWorktreesCollapsed: (args: ProjectSetWorktreesCollapsedArgs) =>
       ipcRenderer.invoke(IPC.ProjectSetWorktreesCollapsed, args),
+    setFolder: (args: ProjectSetFolderArgs) => ipcRenderer.invoke(IPC.ProjectSetFolder, args),
     pickDirectory: () => ipcRenderer.invoke(IPC.ProjectPickDirectory),
+  },
+  folders: {
+    list: () => ipcRenderer.invoke(IPC.FolderList),
+    create: (args: FolderCreateArgs) => ipcRenderer.invoke(IPC.FolderCreate, args),
+    rename: (args: FolderRenameArgs) => ipcRenderer.invoke(IPC.FolderRename, args),
+    remove: (id: string) => ipcRenderer.invoke(IPC.FolderRemove, id),
+    setCollapsed: (args: FolderSetCollapsedArgs) =>
+      ipcRenderer.invoke(IPC.FolderSetCollapsed, args),
+    reorder: (args: FolderReorderArgs) => ipcRenderer.invoke(IPC.FolderReorder, args),
   },
   worktrees: {
     list: (projectId: string) => ipcRenderer.invoke(IPC.WorktreeList, projectId),
@@ -129,10 +140,6 @@ const api: DashApi = {
     setGitView: (patch: Partial<Omit<GitViewSettings, 'version'>>) =>
       ipcRenderer.invoke(IPC.SettingsSetGitView, patch),
     onGitViewChanged: (h) => subscribe<GitViewSettings>(IPC.SettingsGitViewChanged, h),
-    getTodoView: () => ipcRenderer.invoke(IPC.SettingsGetTodoView),
-    setTodoView: (patch: Partial<Omit<TodoViewSettings, 'version'>>) =>
-      ipcRenderer.invoke(IPC.SettingsSetTodoView, patch),
-    onTodoViewChanged: (h) => subscribe<TodoViewSettings>(IPC.SettingsTodoViewChanged, h),
     getDocsView: () => ipcRenderer.invoke(IPC.SettingsGetDocsView),
     setDocsView: (patch: Partial<Omit<DocsViewSettings, 'version'>>) =>
       ipcRenderer.invoke(IPC.SettingsSetDocsView, patch),
@@ -185,12 +192,6 @@ const api: DashApi = {
     subscribe: (args: GitTabRef) => ipcRenderer.invoke(IPC.GitSubscribe, args),
     unsubscribe: (args: GitTabRef) => ipcRenderer.invoke(IPC.GitUnsubscribe, args),
     onChanged: (h) => subscribe<GitChangedEvent>(IPC.GitChanged, h),
-  },
-  todos: {
-    list: (projectId: string) => ipcRenderer.invoke(IPC.TodoList, projectId),
-    add: (args: TodoAddArgs) => ipcRenderer.invoke(IPC.TodoAdd, args),
-    update: (args: TodoUpdateArgs) => ipcRenderer.invoke(IPC.TodoUpdate, args),
-    remove: (args: TodoRemoveArgs) => ipcRenderer.invoke(IPC.TodoRemove, args),
   },
   notify: {
     attention: (args: NotifyAttentionArgs) => ipcRenderer.send(IPC.NotifyAttention, args),

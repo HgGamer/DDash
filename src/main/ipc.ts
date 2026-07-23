@@ -12,6 +12,11 @@ import {
   type ProjectRenameArgs,
   type ProjectReorderArgs,
   type ProjectSetWorktreesCollapsedArgs,
+  type ProjectSetFolderArgs,
+  type FolderCreateArgs,
+  type FolderRenameArgs,
+  type FolderSetCollapsedArgs,
+  type FolderReorderArgs,
   type PtyCloseArgs,
   type PtyDataEvent,
   type PtyErrorEvent,
@@ -19,9 +24,6 @@ import {
   type PtyOpenArgs,
   type PtyResizeArgs,
   type PtyWriteArgs,
-  type TodoAddArgs,
-  type TodoRemoveArgs,
-  type TodoUpdateArgs,
   type WorktreeCreateArgs,
   type WorktreeCreateResult,
   type WorktreeReconcileEntry,
@@ -46,8 +48,6 @@ import type {
   TerminalStyleOptions,
   TerminalStylePreset,
   TerminalStyleSettings,
-  Todo,
-  TodoViewSettings,
   WebAccessSettings,
   Worktree,
 } from '@shared/types';
@@ -147,6 +147,41 @@ export function registerIpc(args: {
       await store.flush();
     },
   );
+
+  ipcMain.handle(IPC.ProjectSetFolder, async (_e, a: ProjectSetFolderArgs) => {
+    registry.setProjectFolder(a.projectId, a.folderId);
+    await store.flush();
+  });
+
+  // Folder handlers -----------------------------------------------------
+
+  ipcMain.handle(IPC.FolderList, async () => registry.listFolders());
+
+  ipcMain.handle(IPC.FolderCreate, async (_e, a: FolderCreateArgs) => {
+    const folder = registry.createFolder(a.name);
+    await store.flush();
+    return folder;
+  });
+
+  ipcMain.handle(IPC.FolderRename, async (_e, a: FolderRenameArgs) => {
+    registry.renameFolder(a.id, a.name);
+    await store.flush();
+  });
+
+  ipcMain.handle(IPC.FolderRemove, async (_e, id: string) => {
+    registry.removeFolder(id);
+    await store.flush();
+  });
+
+  ipcMain.handle(IPC.FolderSetCollapsed, async (_e, a: FolderSetCollapsedArgs) => {
+    registry.setFolderCollapsed(a.id, a.collapsed);
+    await store.flush();
+  });
+
+  ipcMain.handle(IPC.FolderReorder, async (_e, a: FolderReorderArgs) => {
+    registry.reorderFolders(a.orderedIds);
+    await store.flush();
+  });
 
   ipcMain.handle(IPC.ProjectPickDirectory, async (): Promise<ProjectPickDirectoryResult> => {
     const win = getWindow();
@@ -478,23 +513,6 @@ export function registerIpc(args: {
     send(IPC.SettingsWebAccessChanged, s);
   });
 
-  ipcMain.handle(IPC.SettingsGetTodoView, async (): Promise<TodoViewSettings> => {
-    return settings.getTodoView();
-  });
-
-  ipcMain.handle(
-    IPC.SettingsSetTodoView,
-    async (_e, patch: Partial<Omit<TodoViewSettings, 'version'>>): Promise<TodoViewSettings> => {
-      const next = settings.setTodoView(patch);
-      await store.flush();
-      return next;
-    },
-  );
-
-  settings.on('todoViewChanged', (s: TodoViewSettings) => {
-    send(IPC.SettingsTodoViewChanged, s);
-  });
-
   ipcMain.handle(IPC.SettingsGetDocsView, async (): Promise<DocsViewSettings> => {
     return settings.getDocsView();
   });
@@ -531,29 +549,6 @@ export function registerIpc(args: {
 
   settings.on('agentsChanged', (s: AgentsSettings) => {
     send(IPC.SettingsAgentsChanged, s);
-  });
-
-  // Todo CRUD ----------------------------------------------------------
-
-  ipcMain.handle(IPC.TodoList, async (_e, projectId: string): Promise<Todo[]> => {
-    return registry.listTodos(projectId);
-  });
-
-  ipcMain.handle(IPC.TodoAdd, async (_e, args: TodoAddArgs): Promise<Todo | null> => {
-    const created = registry.addTodo(args.projectId, args.text);
-    if (created) await store.flush();
-    return created;
-  });
-
-  ipcMain.handle(IPC.TodoUpdate, async (_e, args: TodoUpdateArgs): Promise<Todo | null> => {
-    const updated = registry.updateTodo(args.projectId, args.id, args.patch);
-    if (updated) await store.flush();
-    return updated;
-  });
-
-  ipcMain.handle(IPC.TodoRemove, async (_e, args: TodoRemoveArgs): Promise<void> => {
-    registry.removeTodo(args.projectId, args.id);
-    await store.flush();
   });
 
   ipcMain.handle(

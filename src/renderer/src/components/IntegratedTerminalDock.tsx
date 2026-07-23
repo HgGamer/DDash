@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Terminal } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
 import { WebLinksAddon } from 'xterm-addon-web-links';
@@ -6,10 +7,10 @@ import type { ActiveSelection, ShellTab } from '@shared/types';
 import {
   INTEGRATED_TERMINAL_MAX_HEIGHT_RATIO,
   INTEGRATED_TERMINAL_MIN_HEIGHT,
-  resolveTerminalStyleOptions,
 } from '@shared/types';
 import { compositeKey } from '@shared/ipc';
 import { useStore } from '../store';
+import { effectiveTerminalOptions } from '../lib/theme';
 import { attachTerminalClipboard } from '../lib/terminal-clipboard';
 
 interface Props {
@@ -205,30 +206,32 @@ function NewTabButton({ onNew }: { onNew: (shell?: string) => void }) {
       >
         +
       </button>
-      {menuPos && (
-        <>
-          <div className="it-shell-menu-backdrop" onClick={() => setMenuPos(null)} />
-          <div
-            className="it-shell-menu"
-            role="menu"
-            style={{ left: menuPos.left, bottom: menuPos.bottom }}
-          >
-            {WIN_SHELL_CHOICES.map((s) => (
-              <button
-                key={s.value || 'default'}
-                className="it-shell-menu-item"
-                role="menuitem"
-                onClick={() => {
-                  setMenuPos(null);
-                  onNew(s.value || undefined);
-                }}
-              >
-                {s.label}
-              </button>
-            ))}
-          </div>
-        </>
-      )}
+      {menuPos &&
+        createPortal(
+          <>
+            <div className="it-shell-menu-backdrop" onClick={() => setMenuPos(null)} />
+            <div
+              className="it-shell-menu"
+              role="menu"
+              style={{ left: menuPos.left, bottom: menuPos.bottom }}
+            >
+              {WIN_SHELL_CHOICES.map((s) => (
+                <button
+                  key={s.value || 'default'}
+                  className="it-shell-menu-item"
+                  role="menuitem"
+                  onClick={() => {
+                    setMenuPos(null);
+                    onNew(s.value || undefined);
+                  }}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
+          </>,
+          document.body,
+        )}
     </>
   );
 }
@@ -306,13 +309,17 @@ function ShellTerminalView({ tab, active }: ShellTerminalViewProps) {
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
   const termStyle = useStore((s) => s.terminalStyle);
+  const appTheme = useStore((s) => s.theme);
   const exited = tab.exitCode !== null;
 
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
 
-    const initialStyle = resolveTerminalStyleOptions(useStore.getState().terminalStyle);
+    const initialStyle = effectiveTerminalOptions(
+      useStore.getState().terminalStyle,
+      useStore.getState().theme,
+    );
     const term = new Terminal({
       cursorBlink: initialStyle.cursorBlink ?? true,
       cursorStyle: initialStyle.cursorStyle,
@@ -321,6 +328,7 @@ function ShellTerminalView({ tab, active }: ShellTerminalViewProps) {
       theme: initialStyle.theme,
       fontFamily: initialStyle.fontFamily,
       fontSize: initialStyle.fontSize,
+      minimumContrastRatio: useStore.getState().theme === 'light' ? 9 : 1,
     });
     const fit = new FitAddon();
     term.loadAddon(fit);
@@ -390,14 +398,17 @@ function ShellTerminalView({ tab, active }: ShellTerminalViewProps) {
       termRef.current = null;
       fitRef.current = null;
     };
+    // Terminal is keyed on tab.tabId; other tab fields must NOT retrigger a full re-mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab.tabId]);
 
   useEffect(() => {
     const term = termRef.current;
     const fit = fitRef.current;
     if (!term) return;
-    const opts = resolveTerminalStyleOptions(termStyle);
+    const opts = effectiveTerminalOptions(termStyle, appTheme);
     term.options.theme = opts.theme;
+    term.options.minimumContrastRatio = appTheme === 'light' ? 9 : 1;
     term.options.fontFamily = opts.fontFamily;
     term.options.fontSize = opts.fontSize;
     term.options.cursorStyle = opts.cursorStyle;
@@ -408,7 +419,7 @@ function ShellTerminalView({ tab, active }: ShellTerminalViewProps) {
     } catch {
       /* no-op */
     }
-  }, [termStyle]);
+  }, [termStyle, appTheme]);
 
   useEffect(() => {
     if (!active) return;
@@ -434,7 +445,7 @@ function ShellTerminalView({ tab, active }: ShellTerminalViewProps) {
     };
   }, [active]);
 
-  const bg = resolveTerminalStyleOptions(termStyle).theme?.background;
+  const bg = effectiveTerminalOptions(termStyle, appTheme).theme?.background;
 
   return (
     <div

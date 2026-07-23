@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import type * as Monaco from 'monaco-editor';
+import { useStore } from '../store';
 
 /** Map a file path to a Monaco language id (best-effort, by extension). Kept
  *  here (not in lib/monaco) so it's importable without eagerly bundling Monaco. */
@@ -22,6 +23,8 @@ interface Props {
   /** Monaco language id. */
   language: string;
   readOnly?: boolean;
+  /** Soft-wrap long lines. Defaults to off. */
+  wordWrap?: boolean;
   /** Called with the editor's content on every edit (only when not readOnly). */
   onChange?: (value: string) => void;
 }
@@ -32,23 +35,24 @@ interface Props {
  * props (callers remount it per file via a `key`), so it never fights React
  * over cursor/selection state.
  */
-export function MonacoView({ value, language, readOnly, onChange }: Props) {
+export function MonacoView({ value, language, readOnly, wordWrap, onChange }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
+  const appTheme = useStore((s) => s.theme);
 
   useEffect(() => {
     let disposed = false;
     let editor: Monaco.editor.IStandaloneCodeEditor | null = null;
     void (async () => {
-      const { monaco, ensureTheme } = await import('../lib/monaco');
+      const { monaco, ensureTheme, monacoThemeFor } = await import('../lib/monaco');
       if (disposed || !hostRef.current) return;
       ensureTheme();
       editor = monaco.editor.create(hostRef.current, {
         value,
         language,
-        theme: 'dash-dark',
+        theme: monacoThemeFor(useStore.getState().theme),
         readOnly: !!readOnly,
         automaticLayout: true,
         minimap: { enabled: false },
@@ -58,7 +62,7 @@ export function MonacoView({ value, language, readOnly, onChange }: Props) {
         renderWhitespace: 'selection',
         smoothScrolling: true,
         tabSize: 2,
-        wordWrap: 'off',
+        wordWrap: wordWrap ? 'on' : 'off',
       });
       editorRef.current = editor;
       editor.onDidChangeModelContent(() => {
@@ -73,6 +77,18 @@ export function MonacoView({ value, language, readOnly, onChange }: Props) {
     // Intentionally create once; callers remount via `key` when the file changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Toggle soft-wrap without recreating the editor.
+  useEffect(() => {
+    editorRef.current?.updateOptions({ wordWrap: wordWrap ? 'on' : 'off' });
+  }, [wordWrap]);
+
+  // Follow the app UI theme (setTheme is global to Monaco).
+  useEffect(() => {
+    void import('../lib/monaco').then(({ monaco, monacoThemeFor }) => {
+      monaco.editor.setTheme(monacoThemeFor(appTheme));
+    });
+  }, [appTheme]);
 
   return <div className="monaco-host" ref={hostRef} />;
 }

@@ -10,6 +10,12 @@ import 'xterm/css/xterm.css';
 // Apply the persisted UI theme before the first paint to avoid a flash.
 applyTheme(loadTheme());
 
+// Mark macOS so the CSS can go transparent and let the native window vibrancy
+// (see main/index.ts) show through the chrome. Non-mac keeps solid backgrounds.
+if (navigator.platform.startsWith('Mac')) {
+  document.documentElement.classList.add('is-mac');
+}
+
 const container = document.getElementById('root');
 if (!container) throw new Error('root element missing');
 createRoot(container).render(

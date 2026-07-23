@@ -929,8 +929,8 @@ function GraphCell({
         cx={laneX(row.nodeLane)}
         cy={mid}
         r={GRAPH_NODE_RADIUS}
-        fill={isHead ? 'var(--accent)' : nodeColor}
-        stroke={isHead ? 'var(--fg)' : 'var(--bg-sidebar)'}
+        fill={isHead ? 'var(--color-accent)' : nodeColor}
+        stroke={isHead ? 'var(--color-fg)' : 'var(--color-surface)'}
         strokeWidth={isHead ? 2 : 1}
       />
     </svg>

@@ -9,11 +9,11 @@ import type {
   IntegratedTerminalSettings,
   NotificationSettings,
   Project,
+  ProjectFolder,
   PtySessionStatus,
   PtySpawnError,
   ShellTab,
   TerminalStyleSettings,
-  TodoViewSettings,
   WebAccessSettings,
   Worktree,
 } from '@shared/types';
@@ -22,7 +22,6 @@ import {
   DEFAULT_GIT_VIEW_SETTINGS,
   DEFAULT_INTEGRATED_TERMINAL_SETTINGS,
   DEFAULT_NOTIFICATION_SETTINGS,
-  DEFAULT_TODO_VIEW_SETTINGS,
   DEFAULT_WEB_ACCESS_SETTINGS,
 } from '@shared/types';
 import { compositeKey, parseCompositeKey } from '@shared/ipc';
@@ -83,6 +82,7 @@ export interface ShellTabsEntry {
 
 interface AppStore {
   projects: Project[];
+  folders: ProjectFolder[];
   activeId: ActiveSelection | null;
   /** Composite keys of tabs whose terminal pane has been mounted this session. */
   mountedKeys: string[];
@@ -95,7 +95,6 @@ interface AppStore {
   terminalStyle: TerminalStyleSettings;
   notifications: NotificationSettings;
   gitView: GitViewSettings;
-  todoView: TodoViewSettings;
   docsView: DocsViewSettings;
   integratedTerminal: IntegratedTerminalSettings;
   webAccess: WebAccessSettings;
@@ -122,7 +121,7 @@ interface AppStore {
    *  activeDocByKey when set. */
   activeAgentByKey: Record<string, string | null>;
   /** Which view the side panel shows (selected from the activity bar). */
-  sidebarView: 'projects' | 'files' | 'git' | 'todos';
+  sidebarView: 'projects' | 'files' | 'git';
   /** Whether the side panel is expanded. */
   sidebarOpen: boolean;
   /** Open files with unsaved edits, keyed by an opaque id. Used for the
@@ -132,6 +131,7 @@ interface AppStore {
   settingsModalTab: 'terminal' | 'notifications' | 'git' | 'integrated-terminal' | 'agents' | 'updates' | 'web-access';
 
   setProjects: (projects: Project[]) => void;
+  setFolders: (folders: ProjectFolder[]) => void;
   /** Switch the app UI theme and persist the choice. */
   setTheme: (theme: AppTheme) => void;
   setClaudeUsage: (usage: ClaudeUsageSummary | null) => void;
@@ -144,7 +144,6 @@ interface AppStore {
   setTerminalStyle: (s: TerminalStyleSettings) => void;
   setNotifications: (s: NotificationSettings) => void;
   setGitView: (s: GitViewSettings) => void;
-  setTodoView: (s: TodoViewSettings) => void;
   setDocsView: (s: DocsViewSettings) => void;
   setIntegratedTerminal: (s: IntegratedTerminalSettings) => void;
   setWebAccess: (s: WebAccessSettings) => void;
@@ -178,7 +177,7 @@ interface AppStore {
   setActiveAgent: (selectionKey: string, agentId: string) => void;
   /** Activity-bar click: select a view (opening the panel), or collapse it when
    *  the already-active view's icon is clicked again. */
-  selectSidebarView: (view: 'projects' | 'files' | 'git' | 'todos') => void;
+  selectSidebarView: (view: 'projects' | 'files' | 'git') => void;
   setFileDirty: (id: string, dirty: boolean) => void;
   openSettings: (tab?: 'terminal' | 'notifications' | 'git' | 'integrated-terminal' | 'agents' | 'updates' | 'web-access') => void;
   closeSettings: () => void;
@@ -186,6 +185,7 @@ interface AppStore {
 
 export const useStore = create<AppStore>((set) => ({
   projects: [],
+  folders: [],
   activeId: null,
   mountedKeys: [],
   tabs: {},
@@ -196,7 +196,6 @@ export const useStore = create<AppStore>((set) => ({
   terminalStyle: { version: 1, preset: 'dash-dark' },
   notifications: { ...DEFAULT_NOTIFICATION_SETTINGS },
   gitView: { ...DEFAULT_GIT_VIEW_SETTINGS },
-  todoView: { ...DEFAULT_TODO_VIEW_SETTINGS },
   docsView: { ...DEFAULT_DOCS_VIEW_SETTINGS },
   integratedTerminal: { ...DEFAULT_INTEGRATED_TERMINAL_SETTINGS },
   webAccess: { ...DEFAULT_WEB_ACCESS_SETTINGS },
@@ -217,6 +216,7 @@ export const useStore = create<AppStore>((set) => ({
   settingsModalTab: 'terminal',
 
   setProjects: (projects) => set({ projects, loaded: true }),
+  setFolders: (folders) => set({ folders }),
   setTheme: (theme) => {
     applyTheme(theme);
     set({ theme });
@@ -325,7 +325,6 @@ export const useStore = create<AppStore>((set) => ({
   setTerminalStyle: (s) => set({ terminalStyle: s }),
   setNotifications: (s) => set({ notifications: s }),
   setGitView: (s) => set({ gitView: s }),
-  setTodoView: (s) => set({ todoView: s }),
   setDocsView: (s) => set({ docsView: s }),
   setIntegratedTerminal: (s) => set({ integratedTerminal: s }),
   setWebAccess: (s) => set({ webAccess: s }),

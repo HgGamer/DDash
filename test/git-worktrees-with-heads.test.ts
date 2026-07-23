@@ -30,7 +30,6 @@ function project(overrides: Partial<Project> = {}): Project {
     lastOpenedAt: null,
     order: 0,
     worktrees: [],
-    todos: [],
     ...overrides,
   };
 }

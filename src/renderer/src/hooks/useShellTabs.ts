@@ -26,6 +26,8 @@ export function useShellTabs(active: ActiveSelection | null, enabled: boolean): 
     return () => {
       cancelled = true;
     };
+    // Only the selection identity should retrigger the sync; other `active` fields are irrelevant.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled, active?.projectId, active?.worktreeId, setShellTabsFor]);
 
   useEffect(() => {

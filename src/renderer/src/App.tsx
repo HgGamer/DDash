@@ -16,6 +16,7 @@ export function App() {
     projects,
     activeId,
     setProjects,
+    setFolders,
     setClaudeUsage,
     setClaudePlanUsage,
     setActive,
@@ -25,7 +26,6 @@ export function App() {
     setTerminalStyle,
     setNotifications,
     setGitView,
-    setTodoView,
     setDocsView,
     setIntegratedTerminal,
     setWebAccess,
@@ -49,10 +49,14 @@ export function App() {
     : null;
 
   const refreshProjects = useCallback(async () => {
-    const list = await window.api.projects.list();
+    const [list, folders] = await Promise.all([
+      window.api.projects.list(),
+      window.api.folders.list(),
+    ]);
     setProjects(list);
+    setFolders(folders);
     return list;
-  }, [setProjects]);
+  }, [setProjects, setFolders]);
 
   const activate = useCallback(
     async (active: ActiveSelection | null) => {
@@ -129,15 +133,6 @@ export function App() {
     const off = window.api.settings.onGitViewChanged((s) => setGitView(s));
     return () => off();
   }, [setGitView]);
-
-  useEffect(() => {
-    void (async () => {
-      const current = await window.api.settings.getTodoView();
-      setTodoView(current);
-    })();
-    const off = window.api.settings.onTodoViewChanged((s) => setTodoView(s));
-    return () => off();
-  }, [setTodoView]);
 
   useEffect(() => {
     void (async () => {
