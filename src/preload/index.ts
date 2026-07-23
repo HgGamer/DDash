@@ -180,6 +180,7 @@ const api: DashApi = {
     unstage: (args: GitStagePathsArgs) => ipcRenderer.invoke(IPC.GitUnstage, args),
     commit: (args: GitCommitArgs) => ipcRenderer.invoke(IPC.GitCommit, args),
     push: (args: GitTabRef) => ipcRenderer.invoke(IPC.GitPush, args),
+    pushForce: (args: GitTabRef) => ipcRenderer.invoke(IPC.GitPushForce, args),
     fetch: (args: GitTabRef) => ipcRenderer.invoke(IPC.GitFetch, args),
     pull: (args: GitTabRef) => ipcRenderer.invoke(IPC.GitPull, args),
     merge: (args: GitMergeArgs) => ipcRenderer.invoke(IPC.GitMerge, args),

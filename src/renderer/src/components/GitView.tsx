@@ -163,12 +163,15 @@ interface CommitBoxProps {
 export function CommitBox({ active, hasStaged, busy, setBusy, setError }: CommitBoxProps) {
   const [subject, setSubject] = useState('');
   const [description, setDescription] = useState('');
-  const canCommit = hasStaged && subject.trim().length > 0 && busy === null;
+  const [amend, setAmend] = useState(false);
+  // Amending can rewrite the last commit's message even with nothing staged;
+  // a fresh commit needs both staged changes and a subject.
+  const canCommit = (amend || (hasStaged && subject.trim().length > 0)) && busy === null;
   return (
     <div className="git-commit-box">
       <input
         className="field-input"
-        placeholder="Commit subject"
+        placeholder={amend ? 'New subject (blank = keep existing)' : 'Commit subject'}
         value={subject}
         onChange={(e) => setSubject(e.target.value)}
         disabled={busy !== null}
@@ -181,27 +184,40 @@ export function CommitBox({ active, hasStaged, busy, setBusy, setError }: Commit
         onChange={(e) => setDescription(e.target.value)}
         disabled={busy !== null}
       />
-      <button
-        className="git-view-btn git-commit-btn"
-        disabled={!canCommit}
-        onClick={async () => {
-          setBusy('commit');
-          const r = await window.api.git.commit({
-            ...active,
-            subject: subject.trim(),
-            description: description.trim() || undefined,
-          });
-          setBusy(null);
-          if (r.ok) {
-            setSubject('');
-            setDescription('');
-          } else {
-            setError(r.error);
-          }
-        }}
-      >
-        {busy === 'commit' ? 'Committing…' : 'Commit'}
-      </button>
+      <div className="git-commit-actions">
+        <label className="git-commit-amend" title="Amend the previous commit">
+          <input
+            type="checkbox"
+            checked={amend}
+            disabled={busy !== null}
+            onChange={(e) => setAmend(e.target.checked)}
+          />
+          Amend last commit
+        </label>
+        <button
+          className="git-view-btn git-commit-btn"
+          disabled={!canCommit}
+          onClick={async () => {
+            setBusy('commit');
+            const r = await window.api.git.commit({
+              ...active,
+              subject: subject.trim(),
+              description: description.trim() || undefined,
+              amend,
+            });
+            setBusy(null);
+            if (r.ok) {
+              setSubject('');
+              setDescription('');
+              setAmend(false);
+            } else {
+              setError(r.error);
+            }
+          }}
+        >
+          {busy === 'commit' ? 'Committing…' : amend ? 'Amend' : 'Commit'}
+        </button>
+      </div>
     </div>
   );
 }

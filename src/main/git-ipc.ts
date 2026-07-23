@@ -48,6 +48,22 @@ import { listSubRepos } from './git';
 
 const DEFAULT_LOG_LIMIT = 500;
 
+/**
+ * Build `git commit` argv. Amend with an empty subject keeps the previous
+ * message (`--amend --no-edit`); otherwise the subject is set via `-m` and an
+ * optional description as a second `-m`. Pure so the amend branching is tested.
+ */
+export function buildCommitArgs(
+  subject: string,
+  description: string | undefined,
+  amend: boolean,
+): string[] {
+  if (amend && !subject) return ['commit', '--amend', '--no-edit'];
+  const args = ['commit', ...(amend ? ['--amend'] : []), '-m', subject];
+  if (description && description.trim().length > 0) args.push('-m', description);
+  return args;
+}
+
 function resolveCwd(
   registry: ProjectRegistry,
   ref: GitTabRef,
@@ -158,17 +174,16 @@ export function registerGitIpc(args: {
     const r = resolveCwd(registry, a);
     if (!r.ok) return { ok: false, error: { code: 'unknown', message: 'tab not found', stderr: '' } };
     const subject = a.subject.trim();
-    if (!subject) {
+    const amend = a.amend === true;
+    // Amend with no new subject keeps the previous message; otherwise a subject
+    // is required (for both new commits and reword-amends).
+    if (!subject && !amend) {
       return {
         ok: false,
         error: { code: 'unknown', message: 'commit subject is empty', stderr: '' },
       };
     }
-    const args = ['commit', '-m', subject];
-    if (a.description && a.description.trim().length > 0) {
-      args.push('-m', a.description);
-    }
-    const res = await runWriteGit(r.cwd, args);
+    const res = await runWriteGit(r.cwd, buildCommitArgs(subject, a.description, amend));
     if (!res.ok) return { ok: false, error: toGitError(res, 'git commit failed') };
     return { ok: true };
   });
@@ -181,6 +196,22 @@ export function registerGitIpc(args: {
     if (!res.ok) {
       const err = toGitError(res, 'git push failed');
       // Detect the "no upstream configured" case and surface a cleaner code.
+      if (/no upstream branch/i.test(res.stderr) || /has no upstream/i.test(res.stderr)) {
+        return { ok: false, error: { ...err, code: 'no-upstream' } };
+      }
+      return { ok: false, error: err };
+    }
+    return { ok: true };
+  });
+
+  ipcMain.handle(IPC.GitPushForce, async (_e, ref: GitTabRef): Promise<GitOperationResult> => {
+    const r = resolveCwd(registry, ref);
+    if (!r.ok) return { ok: false, error: { code: 'unknown', message: 'tab not found', stderr: '' } };
+    // --force-with-lease refuses to clobber remote commits we haven't seen, so
+    // it won't overwrite a teammate's push the way a bare --force would.
+    const res = await runWriteGit(r.cwd, ['push', '--force-with-lease'], { timeoutMs: 60_000 });
+    if (!res.ok) {
+      const err = toGitError(res, 'git push --force-with-lease failed');
       if (/no upstream branch/i.test(res.stderr) || /has no upstream/i.test(res.stderr)) {
         return { ok: false, error: { ...err, code: 'no-upstream' } };
       }
@@ -545,6 +576,7 @@ export function registerGitIpc(args: {
         IPC.GitUnstage,
         IPC.GitCommit,
         IPC.GitPush,
+        IPC.GitPushForce,
         IPC.GitFetch,
         IPC.GitPull,
         IPC.GitMerge,

@@ -512,6 +512,19 @@ function Toolbar({ state, active, busy, onRefresh, runOp, overview, repoName, re
         >
           {busy === 'push' ? 'Pushing…' : `Push${ahead > 0 ? ` ↑${ahead}` : ''}`}
         </button>
+        {ahead > 0 && behind > 0 && (
+          <button
+            className="gct-btn"
+            disabled={disabled}
+            title="Force push with lease (won't clobber others' commits)"
+            onClick={() => {
+              if (!window.confirm(`Force-push ${status?.upstream ?? 'upstream'} with lease? This rewrites remote history.`)) return;
+              void runOp('push', () => window.api.git.pushForce(active));
+            }}
+          >
+            {busy === 'push' ? 'Pushing…' : 'Force ↑'}
+          </button>
+        )}
         <button
           className="gct-btn gct-btn-icon"
           title="Refresh"

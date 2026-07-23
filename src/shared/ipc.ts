@@ -96,6 +96,7 @@ export const IPC = {
   GitUnstage: 'git:unstage',
   GitCommit: 'git:commit',
   GitPush: 'git:push',
+  GitPushForce: 'git:pushForce',
   GitFetch: 'git:fetch',
   GitPull: 'git:pull',
   GitMerge: 'git:merge',
@@ -423,6 +424,9 @@ export interface GitStagePathsArgs extends GitTabRef {
 export interface GitCommitArgs extends GitTabRef {
   subject: string;
   description?: string;
+  /** Amend the previous commit instead of creating a new one. When true and
+   *  `subject` is empty, the existing message is kept (`--amend --no-edit`). */
+  amend?: boolean;
 }
 
 export interface GitCheckoutArgs extends GitTabRef {
@@ -805,6 +809,7 @@ export interface DashApi {
     unstage(args: GitStagePathsArgs): Promise<GitOperationResult>;
     commit(args: GitCommitArgs): Promise<GitOperationResult>;
     push(args: GitTabRef): Promise<GitOperationResult>;
+    pushForce(args: GitTabRef): Promise<GitOperationResult>;
     fetch(args: GitTabRef): Promise<GitOperationResult>;
     pull(args: GitTabRef): Promise<GitOperationResult>;
     merge(args: GitMergeArgs): Promise<GitOperationResult>;
