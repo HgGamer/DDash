@@ -1,8 +1,5 @@
-import { useEffect, useMemo, useReducer, useState } from 'react';
-import type { ActiveSelection } from '@shared/types';
-import { WorktreeList } from './WorktreeList';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type {
-  GitBranch,
   GitChangeKind,
   GitCommit,
   GitError,
@@ -10,499 +7,13 @@ import type {
   GitStashFile,
   GitStatusFile,
 } from '@shared/git';
-import type { GitCommitDetail, GitCommitFile } from '@shared/ipc';
-import { useGitView, type GitViewState } from '../hooks/useGitView';
-import { useStore } from '../store';
+import type { GitCommitDetail, GitCommitFile, GitTabRef } from '@shared/ipc';
 import { laneColor, layoutCommitGraph, maxLane, type GraphRow } from '@shared/graph-layout';
 
 const GRAPH_LANE_WIDTH = 14;
 const GRAPH_ROW_HEIGHT = 22;
 const GRAPH_NODE_RADIUS = 3;
 
-interface Props {
-  active: ActiveSelection | null;
-  /** True when the active tab is a worktree — disables the branch switch. */
-  isWorktreeTab: boolean;
-}
-
-export function GitView({ active, isWorktreeTab }: Props) {
-  const { state, refresh, loadMoreCommits, commitLimit } = useGitView(active);
-  const [error, setError] = useState<GitError | null>(null);
-  const [busy, setBusy] = useState<string | null>(null); // label of the in-flight action
-  // Bumps each time `state` is replaced — covers tab change, successful
-  // refresh, and `git:changed` watcher events. Used by WorktreeList to
-  // re-fetch HEAD short hashes on the same triggers as the rest of the panel.
-  const [worktreeRefreshKey, bumpWorktreeRefresh] = useReducer((n: number) => n + 1, 0);
-  useEffect(() => {
-    bumpWorktreeRefresh();
-  }, [state]);
-  const gitDiff = useStore((s) => s.gitDiff);
-  const openDiff = useStore((s) => s.openDiff);
-  const closeDiff = useStore((s) => s.closeDiff);
-  const gitCommit = useStore((s) => s.gitCommit);
-  const openCommit = useStore((s) => s.openCommit);
-  const closeCommit = useStore((s) => s.closeCommit);
-  const gitStash = useStore((s) => s.gitStash);
-  const openStash = useStore((s) => s.openStash);
-  const closeStash = useStore((s) => s.closeStash);
-
-  // Clear transient UI state when the active tab changes. The store already
-  // clears `gitDiff` on active-tab change.
-  useEffect(() => {
-    setError(null);
-    setBusy(null);
-  }, [active?.projectId, active?.worktreeId]);
-
-  const selectedFile =
-    gitDiff &&
-    active &&
-    gitDiff.projectId === active.projectId &&
-    (gitDiff.worktreeId ?? null) === (active.worktreeId ?? null)
-      ? { path: gitDiff.path, stage: gitDiff.stage }
-      : null;
-  const setSelectedFile = (
-    f: { path: string; stage: 'staged' | 'unstaged' | 'untracked' } | null,
-  ) => {
-    if (!f || !active) return;
-    // Clicking the already-selected file toggles the diff closed.
-    if (selectedFile && selectedFile.path === f.path && selectedFile.stage === f.stage) {
-      closeDiff();
-      return;
-    }
-    // openDiff clears any selected commit in the store.
-    openDiff({
-      projectId: active.projectId,
-      worktreeId: active.worktreeId ?? null,
-      path: f.path,
-      stage: f.stage,
-    });
-  };
-
-  const selectedCommit =
-    gitCommit &&
-    active &&
-    gitCommit.projectId === active.projectId &&
-    (gitCommit.worktreeId ?? null) === (active.worktreeId ?? null)
-      ? gitCommit.hash
-      : null;
-  const toggleCommit = (hash: string) => {
-    if (!active) return;
-    if (selectedCommit === hash) {
-      closeCommit();
-      return;
-    }
-    // openCommit clears any selected working-tree file in the store.
-    openCommit({
-      projectId: active.projectId,
-      worktreeId: active.worktreeId ?? null,
-      hash,
-    });
-  };
-
-  // If the commit graph refreshes and the selected commit is no longer
-  // present (force-push, history rewrite), clear the selection silently.
-  const commitsForCleanup = state.kind === 'ready' ? state.commits : null;
-  useEffect(() => {
-    if (!selectedCommit || !commitsForCleanup) return;
-    if (!commitsForCleanup.some((c) => c.hash === selectedCommit)) {
-      closeCommit();
-    }
-  }, [selectedCommit, commitsForCleanup, closeCommit]);
-
-  const selectedStash = useMemo(
-    () =>
-      gitStash &&
-      active &&
-      gitStash.projectId === active.projectId &&
-      (gitStash.worktreeId ?? null) === (active.worktreeId ?? null)
-        ? { ref: gitStash.ref, sha: gitStash.sha }
-        : null,
-    [gitStash, active],
-  );
-  const toggleStash = (entry: GitStashEntry) => {
-    if (!active) return;
-    if (selectedStash && selectedStash.sha === entry.sha) {
-      closeStash();
-      return;
-    }
-    openStash({
-      projectId: active.projectId,
-      worktreeId: active.worktreeId ?? null,
-      ref: entry.ref,
-      sha: entry.sha,
-      branch: entry.branch,
-      message: entry.message,
-      time: entry.time,
-    });
-  };
-
-  // If the stash list refreshes and the selected stash is no longer present
-  // (popped/dropped externally), clear the selection silently. We compare on
-  // SHA, not ref, because `stash@{N}` indices shift on every stash mutation.
-  const stashesForCleanup = state.kind === 'ready' ? state.stashes : null;
-  useEffect(() => {
-    if (!selectedStash || !stashesForCleanup) return;
-    if (!stashesForCleanup.some((s) => s.sha === selectedStash.sha)) {
-      closeStash();
-    }
-  }, [selectedStash, stashesForCleanup, closeStash]);
-
-  if (!active) {
-    return <EmptyPanel message="No tab selected." />;
-  }
-
-  return (
-    <div className="git-view">
-      <Header state={state} onRefresh={refresh} />
-      {error && (
-        <div className="git-error">
-          <div className="git-error-title">{error.message}</div>
-          {error.stderr && <pre className="git-error-stderr">{error.stderr.trim()}</pre>}
-          <button className="link-btn" onClick={() => setError(null)}>
-            dismiss
-          </button>
-        </div>
-      )}
-      <Body
-        state={state}
-        active={active}
-        isWorktreeTab={isWorktreeTab}
-        busy={busy}
-        setBusy={setBusy}
-        setError={setError}
-        selectedFile={selectedFile}
-        setSelectedFile={setSelectedFile}
-        selectedCommit={selectedCommit}
-        toggleCommit={toggleCommit}
-        selectedStash={selectedStash}
-        toggleStash={toggleStash}
-        commitLimit={commitLimit}
-        onLoadMoreCommits={loadMoreCommits}
-        worktreeRefreshKey={worktreeRefreshKey}
-      />
-    </div>
-  );
-}
-
-function EmptyPanel({ message }: { message: string }) {
-  return <div className="git-view git-view-empty">{message}</div>;
-}
-
-// ---------------------------------------------------------------------------
-// Header
-// ---------------------------------------------------------------------------
-
-function Header({ state, onRefresh }: { state: GitViewState; onRefresh: () => void }) {
-  const label =
-    state.kind === 'ready'
-      ? state.status.detached
-        ? `detached @ ${state.status.head ?? '—'}`
-        : (state.status.branch ?? '—')
-      : state.kind === 'loading'
-        ? '…'
-        : state.kind === 'not-a-repo'
-          ? 'not a git repository'
-          : state.kind === 'git-missing'
-            ? 'git not found'
-            : 'git';
-  return (
-    <div className="git-view-header">
-      <div className="git-view-branch" title="current branch">
-        <span className="git-view-branch-icon">⎇</span>
-        <span>{label}</span>
-      </div>
-      <button
-        className="git-view-refresh"
-        title="Refresh"
-        onClick={onRefresh}
-        disabled={state.kind !== 'ready'}
-      >
-        ↻
-      </button>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Body
-// ---------------------------------------------------------------------------
-
-interface BodyProps {
-  state: GitViewState;
-  active: ActiveSelection;
-  isWorktreeTab: boolean;
-  busy: string | null;
-  setBusy: (s: string | null) => void;
-  setError: (e: GitError | null) => void;
-  selectedFile: { path: string; stage: 'staged' | 'unstaged' | 'untracked' } | null;
-  setSelectedFile: (f: { path: string; stage: 'staged' | 'unstaged' | 'untracked' } | null) => void;
-  selectedCommit: string | null;
-  toggleCommit: (hash: string) => void;
-  selectedStash: { ref: string; sha: string } | null;
-  toggleStash: (entry: GitStashEntry) => void;
-  commitLimit: number;
-  onLoadMoreCommits: () => void;
-  worktreeRefreshKey: number;
-}
-
-function Body(props: BodyProps) {
-  const { state } = props;
-  if (state.kind === 'idle' || state.kind === 'loading') {
-    return <div className="git-view-body fg-muted">Loading…</div>;
-  }
-  if (state.kind === 'git-missing') {
-    return (
-      <div className="git-view-body git-view-banner">
-        <strong>git binary not found on PATH.</strong>
-        <p>Install git and relaunch Dash to enable the Git View.</p>
-      </div>
-    );
-  }
-  if (state.kind === 'not-a-repo') {
-    return (
-      <div className="git-view-body fg-muted">
-        This directory is not a git repository.
-      </div>
-    );
-  }
-  if (state.kind === 'error') {
-    return <div className="git-view-body fg-muted">Error: {state.message}</div>;
-  }
-  return <ReadyBody {...props} state={state} />;
-}
-
-function ReadyBody({
-  state,
-  active,
-  isWorktreeTab,
-  busy,
-  setBusy,
-  setError,
-  selectedFile,
-  setSelectedFile,
-  selectedCommit,
-  toggleCommit,
-  selectedStash,
-  toggleStash,
-  commitLimit,
-  onLoadMoreCommits,
-  worktreeRefreshKey,
-}: BodyProps & { state: Extract<GitViewState, { kind: 'ready' }> }) {
-  const { status, branches, commits, stashes } = state;
-  const staged = status.files.filter((f) => f.stage === 'staged');
-  const unstaged = status.files.filter((f) => f.stage === 'unstaged');
-  const untracked = status.files.filter((f) => f.stage === 'untracked');
-  const hasChanges = status.files.length > 0;
-
-  return (
-    <div className="git-view-body">
-      <BranchBar
-        status={status}
-        branches={branches}
-        active={active}
-        isWorktreeTab={isWorktreeTab}
-        busy={busy}
-        setBusy={setBusy}
-        setError={setError}
-      />
-      <StatusSection
-        title="Staged"
-        sectionStage="staged"
-        files={staged}
-        emptyMessage={null}
-        actionLabel="−"
-        actionTitle="Unstage"
-        onAction={async (paths) => {
-          setBusy('unstage');
-          const r = await window.api.git.unstage({ ...active, paths });
-          setBusy(null);
-          if (!r.ok) setError(r.error);
-        }}
-        selectedFile={selectedFile}
-        setSelectedFile={(path) => setSelectedFile({ path, stage: 'staged' })}
-      />
-      <CommitBox active={active} hasStaged={staged.length > 0} busy={busy} setBusy={setBusy} setError={setError} />
-      <StatusSection
-        title="Unstaged"
-        sectionStage="unstaged"
-        files={unstaged}
-        emptyMessage={null}
-        actionLabel="+"
-        actionTitle="Stage"
-        onAction={async (paths) => {
-          setBusy('stage');
-          const r = await window.api.git.stage({ ...active, paths });
-          setBusy(null);
-          if (!r.ok) setError(r.error);
-        }}
-        onDiscard={async (paths) => {
-          setBusy('discard');
-          const r = await window.api.git.discard({ ...active, paths, kind: 'tracked' });
-          setBusy(null);
-          if (!r.ok) setError(r.error);
-        }}
-        selectedFile={selectedFile}
-        setSelectedFile={(path) => setSelectedFile({ path, stage: 'unstaged' })}
-      />
-      <StatusSection
-        title="Untracked"
-        sectionStage="untracked"
-        files={untracked}
-        emptyMessage={null}
-        actionLabel="+"
-        actionTitle="Stage"
-        onAction={async (paths) => {
-          setBusy('stage');
-          const r = await window.api.git.stage({ ...active, paths });
-          setBusy(null);
-          if (!r.ok) setError(r.error);
-        }}
-        onDiscard={async (paths) => {
-          setBusy('discard');
-          const r = await window.api.git.discard({ ...active, paths, kind: 'untracked' });
-          setBusy(null);
-          if (!r.ok) setError(r.error);
-        }}
-        selectedFile={selectedFile}
-        setSelectedFile={(path) => setSelectedFile({ path, stage: 'untracked' })}
-      />
-      {staged.length + unstaged.length + untracked.length === 0 && (
-        <div className="git-view-clean fg-muted">Working tree clean.</div>
-      )}
-      <PushRow status={status} active={active} busy={busy} setBusy={setBusy} setError={setError} />
-      <StashesSection
-        stashes={stashes}
-        active={active}
-        hasChanges={hasChanges}
-        busy={busy}
-        setBusy={setBusy}
-        setError={setError}
-        selectedStash={selectedStash}
-        onToggleStash={toggleStash}
-      />
-      <CommitList
-        commits={commits}
-        head={status.head}
-        commitLimit={commitLimit}
-        onLoadMore={onLoadMoreCommits}
-        selectedCommit={selectedCommit}
-        onToggleCommit={toggleCommit}
-      />
-      <WorktreeList
-        projectId={active.projectId}
-        active={active}
-        refreshKey={worktreeRefreshKey}
-      />
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Branch bar
-// ---------------------------------------------------------------------------
-
-interface BranchBarProps {
-  status: Extract<GitViewState, { kind: 'ready' }>['status'];
-  branches: GitBranch[];
-  active: ActiveSelection;
-  isWorktreeTab: boolean;
-  busy: string | null;
-  setBusy: (s: string | null) => void;
-  setError: (e: GitError | null) => void;
-}
-
-function BranchBar({ status, branches, active, isWorktreeTab, busy, setBusy, setError }: BranchBarProps) {
-  const [creating, setCreating] = useState(false);
-  const [newName, setNewName] = useState('');
-  const locals = branches.filter((b) => !b.remote);
-  const currentName = status.branch ?? '';
-  const disableSwitch = isWorktreeTab;
-  const switchTitle = isWorktreeTab
-    ? "This tab is a worktree — its branch is pinned. Switch from the project's primary tab instead."
-    : 'Switch to another branch';
-
-  return (
-    <div className="git-view-branchbar">
-      {!creating ? (
-        <>
-          <select
-            className="field-input"
-            value={currentName}
-            disabled={disableSwitch || busy !== null}
-            title={switchTitle}
-            onChange={async (e) => {
-              const to = e.target.value;
-              if (!to || to === currentName) return;
-              setBusy('checkout');
-              const r = await window.api.git.checkout({ ...active, branch: to });
-              setBusy(null);
-              if (!r.ok) setError(r.error);
-            }}
-          >
-            {currentName === '' && <option value="">(detached)</option>}
-            {locals.map((b) => (
-              <option key={b.name} value={b.name}>
-                {b.name}
-                {b.isCurrent ? ' ★' : ''}
-              </option>
-            ))}
-          </select>
-          <button
-            className="git-view-btn"
-            disabled={busy !== null}
-            onClick={() => setCreating(true)}
-            title="Create a new branch from HEAD"
-          >
-            new
-          </button>
-        </>
-      ) : (
-        <>
-          <input
-            autoFocus
-            className="field-input"
-            placeholder="new-branch-name"
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Escape') {
-                setCreating(false);
-                setNewName('');
-              }
-            }}
-          />
-          <button
-            className="git-view-btn"
-            disabled={busy !== null || newName.trim().length === 0}
-            onClick={async () => {
-              const name = newName.trim();
-              setBusy('createBranch');
-              const r = await window.api.git.createBranch({ ...active, name });
-              setBusy(null);
-              if (r.ok) {
-                setCreating(false);
-                setNewName('');
-              } else {
-                setError(r.error);
-              }
-            }}
-          >
-            create
-          </button>
-          <button
-            className="git-view-btn"
-            onClick={() => {
-              setCreating(false);
-              setNewName('');
-            }}
-          >
-            cancel
-          </button>
-        </>
-      )}
-    </div>
-  );
-}
 
 // ---------------------------------------------------------------------------
 // Status section
@@ -522,7 +33,7 @@ interface StatusSectionProps {
   setSelectedFile: (path: string) => void;
 }
 
-function StatusSection({
+export function StatusSection({
   title,
   sectionStage,
   files,
@@ -566,10 +77,16 @@ function StatusSection({
                 className={`git-file-row${selected ? ' selected' : ''}`}
                 onClick={() => setSelectedFile(f.path)}
               >
-                <span className={`git-change-badge change-${f.change}`} title={f.change}>
-                  {changeBadge(f.change)}
-                </span>
-                <span className="git-file-path">{formatFilePath(f)}</span>
+                <button
+                  className="git-file-action"
+                  title={actionTitle}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void onAction([f.path]);
+                  }}
+                >
+                  {actionLabel}
+                </button>
                 {onDiscard && (
                   <button
                     className="git-file-action git-file-discard"
@@ -590,16 +107,10 @@ function StatusSection({
                     ×
                   </button>
                 )}
-                <button
-                  className="git-file-action"
-                  title={actionTitle}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    void onAction([f.path]);
-                  }}
-                >
-                  {actionLabel}
-                </button>
+                <span className={`git-change-badge change-${f.change}`} title={f.change}>
+                  {changeBadge(f.change)}
+                </span>
+                <span className="git-file-path">{formatFilePath(f)}</span>
               </li>
             );
           })}
@@ -642,7 +153,7 @@ function changeBadge(c: GitChangeKind): string {
 // ---------------------------------------------------------------------------
 
 interface CommitBoxProps {
-  active: ActiveSelection;
+  active: GitTabRef;
   hasStaged: boolean;
   busy: string | null;
   setBusy: (s: string | null) => void;
@@ -660,7 +171,7 @@ export function CommitBox({ active, hasStaged, busy, setBusy, setError }: Commit
         placeholder="Commit subject"
         value={subject}
         onChange={(e) => setSubject(e.target.value)}
-        disabled={!hasStaged || busy !== null}
+        disabled={busy !== null}
       />
       <textarea
         className="field-input git-commit-desc"
@@ -668,7 +179,7 @@ export function CommitBox({ active, hasStaged, busy, setBusy, setError }: Commit
         rows={2}
         value={description}
         onChange={(e) => setDescription(e.target.value)}
-        disabled={!hasStaged || busy !== null}
+        disabled={busy !== null}
       />
       <button
         className="git-view-btn git-commit-btn"
@@ -696,60 +207,10 @@ export function CommitBox({ active, hasStaged, busy, setBusy, setError }: Commit
 }
 
 // ---------------------------------------------------------------------------
-// Push row
-// ---------------------------------------------------------------------------
-
-interface PushRowProps {
-  status: Extract<GitViewState, { kind: 'ready' }>['status'];
-  active: ActiveSelection;
-  busy: string | null;
-  setBusy: (s: string | null) => void;
-  setError: (e: GitError | null) => void;
-}
-
-function PushRow({ status, active, busy, setBusy, setError }: PushRowProps) {
-  const noUpstream = !status.upstream;
-  const ahead = status.ahead ?? 0;
-  const behind = status.behind ?? 0;
-  const label = noUpstream
-    ? 'Push (no upstream)'
-    : ahead === 0 && behind === 0
-      ? 'Push'
-      : `Push (↑${ahead}${behind > 0 ? ` ↓${behind}` : ''})`;
-  return (
-    <div className="git-push-row">
-      <button
-        className="git-view-btn"
-        disabled={busy !== null}
-        onClick={async () => {
-          setBusy('push');
-          const r = await window.api.git.push(active);
-          setBusy(null);
-          if (!r.ok) {
-            if (r.error.code === 'no-upstream') {
-              setError({
-                code: 'no-upstream',
-                message: 'No upstream configured for the current branch.',
-                stderr: r.error.stderr,
-              });
-            } else {
-              setError(r.error);
-            }
-          }
-        }}
-      >
-        {busy === 'push' ? 'Pushing…' : label}
-      </button>
-      {status.upstream && <span className="fg-muted git-push-upstream">→ {status.upstream}</span>}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Commit list
 // ---------------------------------------------------------------------------
 
-function CommitList({
+export function CommitList({
   commits,
   head,
   commitLimit,
@@ -776,6 +237,15 @@ function CommitList({
   const graphCols = useMemo(() => maxLane(graphRows) + 1, [graphRows]);
   const graphWidth = graphCols * GRAPH_LANE_WIDTH;
 
+  // Scroll the selected commit into view — used when a branch is previewed
+  // from the rail and its tip lives far down the history.
+  const selectedRef = useRef<HTMLLIElement>(null);
+  useEffect(() => {
+    if (selectedCommit && selectedRef.current) {
+      selectedRef.current.scrollIntoView({ block: 'nearest' });
+    }
+  }, [selectedCommit]);
+
   if (commits.length === 0) {
     return (
       <div className="git-section">
@@ -800,6 +270,7 @@ function CommitList({
           return (
             <li
               key={c.hash}
+              ref={selected ? selectedRef : undefined}
               className={`git-commit-row${isHead ? ' head' : ''}${selected ? ' selected' : ''}`}
               title={c.hash}
               onClick={() => onToggleCommit(c.hash)}
@@ -959,7 +430,7 @@ export function DiffView({
   stash,
   onClose,
 }: {
-  active: ActiveSelection;
+  active: GitTabRef;
   file: { path: string; stage: 'staged' | 'unstaged' | 'untracked' };
   /** When set, fetch the per-file diff introduced by this commit instead of
    *  the working-tree diff. The `stage` on `file` is ignored. */
@@ -982,7 +453,7 @@ export function DiffView({
     setBinary(false);
     setErr(null);
     void window.api.git
-      .diff({ projectId, worktreeId, path: file.path, stage: file.stage, commit, stash })
+      .diff({ projectId, worktreeId, repoPath: active.repoPath, path: file.path, stage: file.stage, commit, stash })
       .then((r) => {
         if (cancelled) return;
         if (r.ok) {
@@ -995,7 +466,7 @@ export function DiffView({
     return () => {
       cancelled = true;
     };
-  }, [projectId, worktreeId, file.path, file.stage, commit, stash]);
+  }, [projectId, worktreeId, active.repoPath, file.path, file.stage, commit, stash]);
 
   // Close on Escape.
   useEffect(() => {
@@ -1125,7 +596,7 @@ export function CommitView({
   commit,
   onClose,
 }: {
-  active: ActiveSelection;
+  active: GitTabRef;
   commit: string;
   onClose?: () => void;
 }) {
@@ -1140,7 +611,7 @@ export function CommitView({
   // Reset the in-pane file selection whenever the commit or tab changes.
   useEffect(() => {
     setSelectedPath(null);
-  }, [projectId, worktreeId, commit]);
+  }, [projectId, worktreeId, active.repoPath, commit]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1148,7 +619,7 @@ export function CommitView({
     setFiles(null);
     setErr(null);
     void window.api.git
-      .showCommit({ projectId, worktreeId, commit })
+      .showCommit({ projectId, worktreeId, repoPath: active.repoPath, commit })
       .then((r) => {
         if (cancelled) return;
         if (r.ok) {
@@ -1161,7 +632,7 @@ export function CommitView({
     return () => {
       cancelled = true;
     };
-  }, [projectId, worktreeId, commit]);
+  }, [projectId, worktreeId, active.repoPath, commit]);
 
   // Close on Escape.
   useEffect(() => {
@@ -1287,7 +758,7 @@ function formatCommitDate(iso: string): string {
 
 interface StashesSectionProps {
   stashes: GitStashEntry[];
-  active: ActiveSelection;
+  active: GitTabRef;
   /** Whether the working tree has anything that `git stash push` would capture.
    *  Drives the disabled state of the "Stash changes" button. */
   hasChanges: boolean;
@@ -1298,7 +769,7 @@ interface StashesSectionProps {
   onToggleStash: (entry: GitStashEntry) => void;
 }
 
-function StashesSection({
+export function StashesSection({
   stashes,
   active,
   hasChanges,
@@ -1405,7 +876,7 @@ function StashesSection({
 
 async function runStashWrite(
   op: 'apply' | 'pop' | 'drop',
-  active: ActiveSelection,
+  active: GitTabRef,
   entry: GitStashEntry,
   setBusy: (s: string | null) => void,
   setError: (e: GitError | null) => void,
@@ -1414,6 +885,7 @@ async function runStashWrite(
   const args = {
     projectId: active.projectId,
     worktreeId: active.worktreeId ?? null,
+    repoPath: active.repoPath,
     ref: entry.ref,
     expectedSha: entry.sha,
   };
@@ -1428,7 +900,7 @@ async function runStashWrite(
 }
 
 interface StashCreateFormProps {
-  active: ActiveSelection;
+  active: GitTabRef;
   busy: string | null;
   setBusy: (s: string | null) => void;
   setError: (e: GitError | null) => void;
@@ -1443,6 +915,7 @@ function StashCreateForm({ active, busy, setBusy, setError, onClose }: StashCrea
     const r = await window.api.git.stashPush({
       projectId: active.projectId,
       worktreeId: active.worktreeId ?? null,
+      repoPath: active.repoPath,
       message: message.trim() || undefined,
       includeUntracked,
     });
@@ -1507,7 +980,7 @@ export function StashView({
   time,
   onClose,
 }: {
-  active: ActiveSelection;
+  active: GitTabRef;
   ref: string;
   sha: string;
   branch: string | null;
@@ -1531,7 +1004,7 @@ export function StashView({
     let cancelled = false;
     setFiles(null);
     setErr(null);
-    void window.api.git.stashShowFiles({ projectId, worktreeId, ref }).then((r) => {
+    void window.api.git.stashShowFiles({ projectId, worktreeId, repoPath: active.repoPath, ref }).then((r) => {
       if (cancelled) return;
       if (r.ok) {
         setFiles(r.files);
@@ -1542,7 +1015,7 @@ export function StashView({
     return () => {
       cancelled = true;
     };
-  }, [projectId, worktreeId, ref, sha]);
+  }, [projectId, worktreeId, active.repoPath, ref, sha]);
 
   // Close on Escape.
   useEffect(() => {

@@ -6,7 +6,6 @@ import { useStore } from '../store';
 import { removeWorktreeWithConfirm } from '../lib/removeWorktree';
 import { monogramFor } from '../lib/monogram';
 import { FileExplorer } from './FileExplorer';
-import { GitView } from './GitView';
 
 interface Props {
   activeId: ActiveSelection | null;
@@ -442,9 +441,7 @@ export function Sidebar({ activeId, onActivate, onAddProject, onRefresh, onNewWo
           )}
         </div>
       )}
-      {sidebarView === 'git' ? (
-        <GitView active={activeId} isWorktreeTab={!!activeId?.worktreeId} />
-      ) : sidebarView === 'files' ? (
+      {sidebarView === 'files' ? (
         activeId ? (
           <FileExplorer
             projectId={activeId.projectId}

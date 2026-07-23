@@ -88,6 +88,7 @@ export const IPC = {
 
   // Git view (renderer ↔ main)
   GitIsRepo: 'git:isRepo',
+  GitListRepos: 'git:listRepos',
   GitStatus: 'git:status',
   GitLog: 'git:log',
   GitBranches: 'git:branches',
@@ -95,8 +96,12 @@ export const IPC = {
   GitUnstage: 'git:unstage',
   GitCommit: 'git:commit',
   GitPush: 'git:push',
+  GitFetch: 'git:fetch',
+  GitPull: 'git:pull',
+  GitMerge: 'git:merge',
   GitCheckout: 'git:checkout',
   GitCreateBranch: 'git:createBranch',
+  GitDeleteBranch: 'git:deleteBranch',
   GitDiff: 'git:diff',
   GitShowCommit: 'git:showCommit',
   GitDiscard: 'git:discard',
@@ -357,7 +362,24 @@ export interface WorktreeHeadEntry {
 export interface GitTabRef {
   projectId: string;
   worktreeId?: string | null;
+  /** Absolute path of a sub-repository inside the project folder. When set,
+   *  the operation targets this repo instead of the project/worktree root.
+   *  Used for multi-repo folders (a folder that itself isn't a repo but whose
+   *  immediate subfolders are). Must resolve to a path inside the project. */
+  repoPath?: string;
 }
+
+/** A git repository discovered directly inside a project folder. */
+export interface GitRepoEntry {
+  /** Display name — the subfolder's basename. */
+  name: string;
+  /** Absolute path to the repo. */
+  path: string;
+}
+
+export type GitListReposResult =
+  | { ok: true; repos: GitRepoEntry[] }
+  | { ok: false; reason: 'git-missing' | 'tab-missing' };
 
 export type GitIsRepoResult =
   | { ok: true; cwd: string }
@@ -390,11 +412,24 @@ export interface GitCommitArgs extends GitTabRef {
 }
 
 export interface GitCheckoutArgs extends GitTabRef {
+  /** Any ref checkout accepts: a local branch, `origin/foo` (auto-creates a
+   *  tracking branch), or a commit SHA (detaches HEAD). */
   branch: string;
 }
 
 export interface GitCreateBranchArgs extends GitTabRef {
   name: string;
+}
+
+export interface GitMergeArgs extends GitTabRef {
+  /** Branch/ref to merge into the current branch. */
+  branch: string;
+}
+
+export interface GitDeleteBranchArgs extends GitTabRef {
+  name: string;
+  /** Use `-D` instead of `-d` to delete an unmerged branch. */
+  force?: boolean;
 }
 
 export interface GitDiffArgs extends GitTabRef {
@@ -748,6 +783,7 @@ export interface DashApi {
   };
   git: {
     isRepo(args: GitTabRef): Promise<GitIsRepoResult>;
+    listRepos(args: GitTabRef): Promise<GitListReposResult>;
     status(args: GitTabRef): Promise<GitStatusResult>;
     log(args: GitLogArgs): Promise<GitLogResult>;
     branches(args: GitTabRef): Promise<GitBranchesResult>;
@@ -755,8 +791,12 @@ export interface DashApi {
     unstage(args: GitStagePathsArgs): Promise<GitOperationResult>;
     commit(args: GitCommitArgs): Promise<GitOperationResult>;
     push(args: GitTabRef): Promise<GitOperationResult>;
+    fetch(args: GitTabRef): Promise<GitOperationResult>;
+    pull(args: GitTabRef): Promise<GitOperationResult>;
+    merge(args: GitMergeArgs): Promise<GitOperationResult>;
     checkout(args: GitCheckoutArgs): Promise<GitOperationResult>;
     createBranch(args: GitCreateBranchArgs): Promise<GitOperationResult>;
+    deleteBranch(args: GitDeleteBranchArgs): Promise<GitOperationResult>;
     diff(args: GitDiffArgs): Promise<GitDiffResult>;
     showCommit(args: GitShowCommitArgs): Promise<GitShowCommitResult>;
     discard(args: GitDiscardArgs): Promise<GitOperationResult>;

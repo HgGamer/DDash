@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { ActiveSelection } from '@shared/types';
+import type { GitTabRef } from '@shared/ipc';
 import type { GitBranch, GitCommit, GitStashEntry, GitStatus } from '@shared/git';
 
 export type GitViewState =
@@ -39,7 +39,7 @@ const REFRESH_DEBOUNCE_MS = 150;
  *   - Auto-refresh on `git:changed` events from the main process, debounced
  *   - Subscribing/unsubscribing the main-process watcher for the active tab
  */
-export function useGitView(active: ActiveSelection | null): UseGitView {
+export function useGitView(active: GitTabRef | null): UseGitView {
   const [state, setState] = useState<GitViewState>({ kind: 'idle' });
   const [commitLimit, setCommitLimit] = useState(INITIAL_COMMIT_LIMIT);
   // Track the tab we last loaded for so late-arriving responses from a
@@ -51,7 +51,7 @@ export function useGitView(active: ActiveSelection | null): UseGitView {
   // commitLimit changes (which would otherwise create an infinite loop).
   useEffect(() => {
     setCommitLimit(INITIAL_COMMIT_LIMIT);
-  }, [active?.projectId, active?.worktreeId]);
+  }, [active?.projectId, active?.worktreeId, active?.repoPath]);
 
   useEffect(() => {
     const api = window.api.git;
@@ -160,7 +160,7 @@ export function useGitView(active: ActiveSelection | null): UseGitView {
       if (debounceTimer !== null) window.clearTimeout(debounceTimer);
       if (subscribedCwd !== null) void api.unsubscribe(active);
     };
-  }, [active?.projectId, active?.worktreeId, active, commitLimit]);
+  }, [active?.projectId, active?.worktreeId, active?.repoPath, active, commitLimit]);
 
   return {
     state,

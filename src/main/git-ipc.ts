@@ -1,3 +1,4 @@
+import path from 'node:path';
 import { ipcMain, type BrowserWindow } from 'electron';
 import {
   IPC,
@@ -7,10 +8,13 @@ import {
   type GitCommitArgs,
   type GitCommitFile,
   type GitCreateBranchArgs,
+  type GitDeleteBranchArgs,
+  type GitMergeArgs,
   type GitDiffArgs,
   type GitDiffResult,
   type GitDiscardArgs,
   type GitIsRepoResult,
+  type GitListReposResult,
   type GitLogArgs,
   type GitLogResult,
   type GitOperationResult,
@@ -40,6 +44,7 @@ import {
 } from './git-parsers';
 import { isGitAvailable, runGit, runWriteGit, toGitError } from './git-runner';
 import { GitWatcher } from './git-watcher';
+import { listSubRepos } from './git';
 
 const DEFAULT_LOG_LIMIT = 500;
 
@@ -49,10 +54,19 @@ function resolveCwd(
 ): { ok: true; cwd: string } | { ok: false } {
   const proj = registry.getById(ref.projectId);
   if (!proj) return { ok: false };
-  if (!ref.worktreeId) return { ok: true, cwd: proj.path };
-  const wt = proj.worktrees.find((w) => w.id === ref.worktreeId);
-  if (!wt) return { ok: false };
-  return { ok: true, cwd: wt.path };
+  const base = ref.worktreeId
+    ? proj.worktrees.find((w) => w.id === ref.worktreeId)?.path
+    : proj.path;
+  if (!base) return { ok: false };
+  // Multi-repo: an explicit sub-repo path must resolve to somewhere inside the
+  // project folder, guarding against path traversal from a compromised renderer.
+  if (ref.repoPath) {
+    const resolved = path.resolve(ref.repoPath);
+    const root = path.resolve(proj.path);
+    if (resolved !== root && !resolved.startsWith(root + path.sep)) return { ok: false };
+    return { ok: true, cwd: resolved };
+  }
+  return { ok: true, cwd: base };
 }
 
 export function registerGitIpc(args: {
@@ -77,6 +91,13 @@ export function registerGitIpc(args: {
       return { ok: false, reason: 'not-a-repo' };
     }
     return { ok: true, cwd: r.cwd };
+  });
+
+  ipcMain.handle(IPC.GitListRepos, async (_e, ref: GitTabRef): Promise<GitListReposResult> => {
+    if (!(await isGitAvailable())) return { ok: false, reason: 'git-missing' };
+    const proj = registry.getById(ref.projectId);
+    if (!proj) return { ok: false, reason: 'tab-missing' };
+    return { ok: true, repos: await listSubRepos(proj.path) };
   });
 
   ipcMain.handle(IPC.GitStatus, async (_e, ref: GitTabRef): Promise<GitStatusResult> => {
@@ -168,6 +189,36 @@ export function registerGitIpc(args: {
     return { ok: true };
   });
 
+  ipcMain.handle(IPC.GitFetch, async (_e, ref: GitTabRef): Promise<GitOperationResult> => {
+    const r = resolveCwd(registry, ref);
+    if (!r.ok) return { ok: false, error: { code: 'unknown', message: 'tab not found', stderr: '' } };
+    const res = await runWriteGit(r.cwd, ['fetch', '--all', '--prune'], { timeoutMs: 60_000 });
+    if (!res.ok) return { ok: false, error: toGitError(res, 'git fetch failed') };
+    return { ok: true };
+  });
+
+  ipcMain.handle(IPC.GitPull, async (_e, ref: GitTabRef): Promise<GitOperationResult> => {
+    const r = resolveCwd(registry, ref);
+    if (!r.ok) return { ok: false, error: { code: 'unknown', message: 'tab not found', stderr: '' } };
+    const res = await runWriteGit(r.cwd, ['pull', '--ff'], { timeoutMs: 60_000 });
+    if (!res.ok) {
+      const err = toGitError(res, 'git pull failed');
+      if (/no tracking information|no upstream/i.test(res.stderr)) {
+        return { ok: false, error: { ...err, code: 'no-upstream' } };
+      }
+      return { ok: false, error: err };
+    }
+    return { ok: true };
+  });
+
+  ipcMain.handle(IPC.GitMerge, async (_e, a: GitMergeArgs): Promise<GitOperationResult> => {
+    const r = resolveCwd(registry, a);
+    if (!r.ok) return { ok: false, error: { code: 'unknown', message: 'tab not found', stderr: '' } };
+    const res = await runWriteGit(r.cwd, ['merge', '--no-edit', a.branch]);
+    if (!res.ok) return { ok: false, error: toGitError(res, 'git merge failed') };
+    return { ok: true };
+  });
+
   ipcMain.handle(IPC.GitCheckout, async (_e, a: GitCheckoutArgs): Promise<GitOperationResult> => {
     const r = resolveCwd(registry, a);
     if (!r.ok) return { ok: false, error: { code: 'unknown', message: 'tab not found', stderr: '' } };
@@ -183,6 +234,24 @@ export function registerGitIpc(args: {
       if (!r.ok) return { ok: false, error: { code: 'unknown', message: 'tab not found', stderr: '' } };
       const res = await runWriteGit(r.cwd, ['checkout', '-b', a.name]);
       if (!res.ok) return { ok: false, error: toGitError(res, 'git checkout -b failed') };
+      return { ok: true };
+    },
+  );
+
+  ipcMain.handle(
+    IPC.GitDeleteBranch,
+    async (_e, a: GitDeleteBranchArgs): Promise<GitOperationResult> => {
+      const r = resolveCwd(registry, a);
+      if (!r.ok) return { ok: false, error: { code: 'unknown', message: 'tab not found', stderr: '' } };
+      const res = await runWriteGit(r.cwd, ['branch', a.force ? '-D' : '-d', a.name]);
+      if (!res.ok) {
+        const err = toGitError(res, 'git branch -d failed');
+        // Surface the "not fully merged" case so the UI can offer force-delete.
+        if (/not fully merged/i.test(res.stderr)) {
+          return { ok: false, error: { ...err, code: 'unmerged' } };
+        }
+        return { ok: false, error: err };
+      }
       return { ok: true };
     },
   );
@@ -468,6 +537,7 @@ export function registerGitIpc(args: {
       watcher.dispose();
       for (const channel of [
         IPC.GitIsRepo,
+        IPC.GitListRepos,
         IPC.GitStatus,
         IPC.GitLog,
         IPC.GitBranches,
@@ -475,8 +545,12 @@ export function registerGitIpc(args: {
         IPC.GitUnstage,
         IPC.GitCommit,
         IPC.GitPush,
+        IPC.GitFetch,
+        IPC.GitPull,
+        IPC.GitMerge,
         IPC.GitCheckout,
         IPC.GitCreateBranch,
+        IPC.GitDeleteBranch,
         IPC.GitDiff,
         IPC.GitShowCommit,
         IPC.GitDiscard,

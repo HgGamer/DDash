@@ -3,7 +3,6 @@ import type { ActiveSelection } from '@shared/types';
 import { compositeKey, parseCompositeKey } from '@shared/ipc';
 import { useStore } from '../store';
 import { TerminalPane } from './TerminalPane';
-import { CommitView, DiffView, StashView } from './GitView';
 import { FileView } from './MarkdownViewer';
 import { IntegratedTerminalDock, useWorkspaceHeight } from './IntegratedTerminalDock';
 import { useShellTabs } from '../hooks/useShellTabs';
@@ -16,12 +15,6 @@ export function Workspace({ activeId }: Props) {
   const mountedKeys = useStore((s) => s.mountedKeys);
   const projects = useStore((s) => s.projects);
   const integratedTerminal = useStore((s) => s.integratedTerminal);
-  const gitDiff = useStore((s) => s.gitDiff);
-  const closeDiff = useStore((s) => s.closeDiff);
-  const gitCommit = useStore((s) => s.gitCommit);
-  const closeCommit = useStore((s) => s.closeCommit);
-  const gitStash = useStore((s) => s.gitStash);
-  const closeStash = useStore((s) => s.closeStash);
   const activeDocByKey = useStore((s) => s.activeDocByKey);
   const agents = useStore((s) => s.agents);
   const openAgentsByKey = useStore((s) => s.openAgentsByKey);
@@ -121,33 +114,6 @@ export function Workspace({ activeId }: Props) {
                 projectId={activeId.projectId}
                 projectRoot={activeProjectRoot}
                 relPath={activeDocRel}
-              />
-            </div>
-          )}
-          {gitDiff && activeId && gitDiff.projectId === activeId.projectId && (
-            <div className="workspace-diff-overlay">
-              <DiffView
-                active={activeId}
-                file={{ path: gitDiff.path, stage: gitDiff.stage }}
-                onClose={closeDiff}
-              />
-            </div>
-          )}
-          {gitCommit && activeId && gitCommit.projectId === activeId.projectId && (
-            <div className="workspace-diff-overlay">
-              <CommitView active={activeId} commit={gitCommit.hash} onClose={closeCommit} />
-            </div>
-          )}
-          {gitStash && activeId && gitStash.projectId === activeId.projectId && (
-            <div className="workspace-diff-overlay">
-              <StashView
-                active={activeId}
-                ref={gitStash.ref}
-                sha={gitStash.sha}
-                branch={gitStash.branch}
-                message={gitStash.message}
-                time={gitStash.time}
-                onClose={closeStash}
               />
             </div>
           )}

@@ -2,6 +2,7 @@ import { useCallback, useEffect } from 'react';
 import { ActivityBar } from './components/ActivityBar';
 import { Sidebar } from './components/Sidebar';
 import { Workspace } from './components/Workspace';
+import { GitClient } from './components/GitClient';
 import { SettingsModal } from './components/SettingsModal';
 import { NewWorktreeModal } from './components/NewWorktreeModal';
 import { StatusBar } from './components/StatusBar';
@@ -34,6 +35,7 @@ export function App() {
     closeSettings,
     settingsModalOpen,
     sidebarOpen,
+    sidebarView,
     newWorktreeProjectId,
     openNewWorktree,
     closeNewWorktree,
@@ -356,16 +358,23 @@ export function App() {
       <UpdateBanner />
       <div className="app-body">
         <ActivityBar />
-        {sidebarOpen && (
-          <Sidebar
-            activeId={activeId}
-            onActivate={activate}
-            onAddProject={addProject}
-            onRefresh={refreshProjects}
-            onNewWorktree={(projectId) => openNewWorktree(projectId)}
-          />
-        )}
-        <Workspace activeId={activeId} />
+        <div className="app-main">
+          {sidebarOpen && sidebarView !== 'git' && (
+            <Sidebar
+              activeId={activeId}
+              onActivate={activate}
+              onAddProject={addProject}
+              onRefresh={refreshProjects}
+              onNewWorktree={(projectId) => openNewWorktree(projectId)}
+            />
+          )}
+          {/* Workspace stays mounted under the git overlay so PTY/xterm state
+              survives a trip through Source Control. */}
+          <Workspace activeId={activeId} />
+          {sidebarOpen && sidebarView === 'git' && (
+            <GitClient active={activeId} isWorktreeTab={!!activeId?.worktreeId} />
+          )}
+        </div>
       </div>
       <StatusBar />
       <ToastHost />

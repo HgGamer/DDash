@@ -72,8 +72,8 @@
 
 /* Activity bar ------------------------------------------------------------- */
 .activity-bar {
-  flex: 0 0 52px;
-  width: 52px;
+  flex: 0 0 84px;
+  width: 84px;
   background: var(--glass-chrome);
   -webkit-backdrop-filter: var(--glass-blur);
   backdrop-filter: var(--glass-blur);
@@ -139,9 +139,10 @@ html.is-mac .act-item {
   flex-direction: column;
   overflow: hidden;
 }
-/* macOS: clear the inset traffic lights that spill over from the activity rail. */
+/* macOS: the traffic lights now sit fully within the wider activity rail, so
+ * the sidebar only needs a small top inset for breathing room. */
 html.is-mac .sidebar {
-  padding-top: 44px;
+  padding-top: 14px;
 }
 html.is-mac .sidebar-header {
   -webkit-app-region: drag;

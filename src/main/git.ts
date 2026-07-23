@@ -100,6 +100,34 @@ export async function listWorktreesWithHeads(
   return out;
 }
 
+/**
+ * Discover git repositories directly inside `folderPath` (immediate children
+ * only). Used for multi-repo folders: a folder that isn't itself a repo but
+ * groups several sibling repos. Returns [] when the folder itself is a repo,
+ * when it has no repo children, or on any read error. Results are sorted by
+ * name for stable display.
+ */
+export async function listSubRepos(
+  folderPath: string,
+): Promise<{ name: string; path: string }[]> {
+  // If the folder is itself a repo, it's single-repo — no children to list.
+  if (await isGitRepo(folderPath)) return [];
+  let entries: import('node:fs').Dirent[];
+  try {
+    entries = await fs.readdir(folderPath, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  const out: { name: string; path: string }[] = [];
+  for (const e of entries) {
+    if (!e.isDirectory() || e.name.startsWith('.')) continue;
+    const child = path.join(folderPath, e.name);
+    if (await isGitRepo(child)) out.push({ name: e.name, path: child });
+  }
+  out.sort((a, b) => a.name.localeCompare(b.name));
+  return out;
+}
+
 export async function listLocalBranches(repoPath: string): Promise<string[]> {
   const res = await runGit(repoPath, ['for-each-ref', '--format=%(refname:short)', 'refs/heads/']);
   if (!res.ok) return [];

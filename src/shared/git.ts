@@ -69,6 +69,7 @@ export type GitErrorCode =
   | 'no-upstream'
   | 'nothing-to-stash'
   | 'stash-mismatch'
+  | 'unmerged'
   | 'unknown';
 
 /**
