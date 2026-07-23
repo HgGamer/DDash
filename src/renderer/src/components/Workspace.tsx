@@ -19,11 +19,24 @@ export function Workspace({ activeId }: Props) {
   const agents = useStore((s) => s.agents);
   const openAgentsByKey = useStore((s) => s.openAgentsByKey);
   const activeAgentByKey = useStore((s) => s.activeAgentByKey);
+  const sidebarView = useStore((s) => s.sidebarView);
+  const board = useStore((s) => s.board);
+  const boardSizes = useStore((s) => s.boardSizes);
+  const boardLayout = useStore((s) => s.boardLayout);
+  const boardColumns = useStore((s) => s.boardColumns);
+  const ensureMounted = useStore((s) => s.ensureMounted);
   const workspaceRef = useRef<HTMLElement>(null);
   const workspaceHeight = useWorkspaceHeight(workspaceRef);
 
+  const boardMode = sidebarView === 'board';
+
+  // Restored-from-localStorage board keys must be mounted so their pane renders.
+  useEffect(() => {
+    for (const k of board) ensureMounted(k);
+  }, [board, ensureMounted]);
+
   const showIntegratedTerminal =
-    integratedTerminal.enabled && integratedTerminal.expanded && !!activeId;
+    !boardMode && integratedTerminal.enabled && integratedTerminal.expanded && !!activeId;
   useShellTabs(activeId, integratedTerminal.enabled);
 
   const resolved = mountedKeys
@@ -37,13 +50,28 @@ export function Workspace({ activeId }: Props) {
     })
     .filter((x): x is { key: string; proj: typeof projects[number]; worktree: typeof projects[number]['worktrees'][number] | null } => x !== null);
 
+  // In board mode, render pinned panes in board order (drag-reorder); others
+  // trail behind (hidden). Keyed by `key`, so reordering moves DOM nodes
+  // without remounting the terminals.
+  const ordered = boardMode
+    ? [...resolved].sort((a, b) => {
+        const ia = board.indexOf(a.key);
+        const ib = board.indexOf(b.key);
+        return (ia < 0 ? Infinity : ia) - (ib < 0 ? Infinity : ib);
+      })
+    : resolved;
+
+  const tileMode = boardMode && boardLayout === 'tile';
+  const pinnedCount = boardMode ? ordered.filter((r) => board.includes(r.key)).length : 0;
+  const tileCols = boardColumns > 0 ? boardColumns : Math.max(1, Math.ceil(Math.sqrt(pinnedCount)));
+
   const activeKey = activeId ? compositeKey(activeId.projectId, activeId.worktreeId) : null;
   const activeDocRel = activeKey ? activeDocByKey[activeKey] ?? null : null;
   const activeProjectRoot = activeId
     ? projects.find((p) => p.id === activeId.projectId)?.path ?? ''
     : '';
 
-  if (!activeKey && resolved.length === 0) {
+  if (!boardMode && !activeKey && resolved.length === 0) {
     return (
       <main className="workspace" ref={workspaceRef}>
         <div className="empty-state">
@@ -59,31 +87,125 @@ export function Workspace({ activeId }: Props) {
   return (
     <main className="workspace workspace-split" ref={workspaceRef}>
       <div className="workspace-left">
-        {activeId && <WorkspaceContentTabs activeId={activeId} />}
-        <div className="workspace-terminals">
-          {resolved.map(({ key, proj, worktree }) => {
+        {boardMode && <BoardToolbar />}
+        {!boardMode && activeId && <WorkspaceContentTabs activeId={activeId} />}
+        {boardMode && board.filter((k) => resolved.some((r) => r.key === k)).length === 0 && (
+          <div className="empty-state">
+            <div>
+              <h2 style={{ marginTop: 0 }}>Board is empty</h2>
+              <p>Use “Add window” above to pin terminals from any project here.</p>
+            </div>
+          </div>
+        )}
+        <div
+          className={`workspace-terminals${
+            boardMode ? ` board-grid ${tileMode ? 'board-tile' : 'board-free'}` : ''
+          }`}
+          style={tileMode ? ({ ['--board-cols' as string]: tileCols } as React.CSSProperties) : undefined}
+        >
+          {ordered.map(({ key, proj, worktree }) => {
             const active = key === activeKey;
+            const inBoard = board.includes(key);
             const activeAgent = activeAgentByKey[key] ?? null;
             const openAgents = openAgentsByKey[key] ?? [];
+            const displayName = worktree ? `${proj.name} · ${worktree.branch}` : proj.name;
+            const size = boardSizes[key];
+            // Board: pinned panes become visible resizable tiles; others stay
+            // mounted but out of flow. Normal: one absolute stacked pane visible.
+            const wrapperStyle: React.CSSProperties = boardMode
+              ? inBoard
+                ? {
+                    display: 'flex',
+                    flexDirection: 'column',
+                    // Manual size applies only in free layout; tile fills its track.
+                    ...(!tileMode && size ? { width: size.w, height: size.h } : {}),
+                  }
+                : { display: 'none' }
+              : { position: 'absolute', inset: 0, pointerEvents: 'none' };
+            const claudeVisible = boardMode ? inBoard : active && !activeAgent;
+            const claudeStyle: React.CSSProperties = boardMode
+              ? { position: 'relative', flex: 1, minHeight: 0 }
+              : {
+                  position: 'absolute',
+                  inset: 0,
+                  visibility: claudeVisible ? 'visible' : 'hidden',
+                  pointerEvents: claudeVisible ? 'auto' : 'none',
+                };
             return (
               // pointerEvents: 'none' so inactive projects' wrappers (stacked later in
               // DOM order) don't swallow clicks meant for the active terminal below;
               // the active child pane re-enables pointer events itself.
-              <div key={key} style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
+              <div
+                key={key}
+                className={boardMode && inBoard ? 'board-cell' : undefined}
+                style={wrapperStyle}
+                onDragOver={
+                  boardMode && inBoard
+                    ? (e) => {
+                        e.preventDefault();
+                        e.dataTransfer.dropEffect = 'move';
+                      }
+                    : undefined
+                }
+                onDrop={
+                  boardMode && inBoard
+                    ? (e) => {
+                        e.preventDefault();
+                        const from = e.dataTransfer.getData('text/plain');
+                        if (from) useStore.getState().reorderBoard(from, key);
+                      }
+                    : undefined
+                }
+                onMouseUp={
+                  boardMode && inBoard && !tileMode
+                    ? (e) => {
+                        // CSS `resize` writes the tile's live size; persist it.
+                        const el = e.currentTarget;
+                        useStore.getState().setBoardSize(key, el.offsetWidth, el.offsetHeight);
+                      }
+                    : undefined
+                }
+              >
                 <div
-                  style={{
-                    position: 'absolute',
-                    inset: 0,
-                    visibility: active && !activeAgent ? 'visible' : 'hidden',
-                    pointerEvents: active && !activeAgent ? 'auto' : 'none',
+                  className="board-cell-head"
+                  style={{ display: boardMode && inBoard ? 'flex' : 'none' }}
+                  draggable={boardMode && inBoard}
+                  onDragStart={(e) => {
+                    e.dataTransfer.setData('text/plain', key);
+                    e.dataTransfer.effectAllowed = 'move';
                   }}
                 >
-                  <TerminalPane project={proj} worktree={worktree} active={active && !activeAgent} />
+                  <button
+                    type="button"
+                    className="board-cell-title"
+                    title={`Open ${displayName}`}
+                    onClick={() => {
+                      useStore.getState().setActive({
+                        projectId: proj.id,
+                        worktreeId: worktree?.id ?? null,
+                      });
+                      useStore.getState().selectSidebarView('projects');
+                    }}
+                  >
+                    {displayName}
+                  </button>
+                  <button
+                    type="button"
+                    className="board-cell-unpin"
+                    aria-label={`Remove ${displayName} from board`}
+                    title="Remove from board"
+                    onClick={() => useStore.getState().toggleBoard(key)}
+                  >
+                    ✕
+                  </button>
+                </div>
+                <div style={claudeStyle}>
+                  <TerminalPane project={proj} worktree={worktree} active={claudeVisible} />
                 </div>
                 {openAgents.map((agentId) => {
                   const def = agents.find((a) => a.id === agentId);
                   if (!def) return null;
-                  const agentActive = active && activeAgent === agentId;
+                  const agentActive = !boardMode && active && activeAgent === agentId;
                   return (
                     <div
                       key={`${key}::${agentId}`}
@@ -107,7 +229,7 @@ export function Workspace({ activeId }: Props) {
               </div>
             );
           })}
-          {activeDocRel && activeId && (
+          {!boardMode && activeDocRel && activeId && (
             <div className="workspace-doc-overlay">
               <FileView
                 key={`${activeKey}:${activeDocRel}`}
@@ -127,6 +249,80 @@ export function Workspace({ activeId }: Props) {
         )}
       </div>
     </main>
+  );
+}
+
+function BoardToolbar() {
+  const projects = useStore((s) => s.projects);
+  const board = useStore((s) => s.board);
+  const tabs = useStore((s) => s.tabs);
+  const toggleBoard = useStore((s) => s.toggleBoard);
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    window.addEventListener('mousedown', onDown);
+    return () => window.removeEventListener('mousedown', onDown);
+  }, [open]);
+
+  // Flatten every project + worktree into pinnable selections.
+  const selections: { key: string; label: string }[] = [];
+  for (const p of projects) {
+    selections.push({ key: compositeKey(p.id, null), label: p.name });
+    for (const w of p.worktrees) {
+      selections.push({ key: compositeKey(p.id, w.id), label: `${p.name} · ${w.branch}` });
+    }
+  }
+
+  return (
+    <header className="ws-header board-toolbar">
+      <div className="board-toolbar-title">Board</div>
+      <div className="ws-agent-launcher" ref={ref}>
+        <button
+          type="button"
+          className="ws-tab ws-tab-add"
+          aria-label="Add a window to the board"
+          title="Add a window"
+          onClick={() => setOpen((v) => !v)}
+        >
+          + Add window
+        </button>
+        {open && (
+          <div className="ws-agent-menu" role="menu">
+            {selections.length === 0 ? (
+              <div className="ws-agent-menu-item ws-agent-menu-empty">No projects yet</div>
+            ) : (
+              selections.map((s) => {
+                const status = tabs[s.key]?.status;
+                // Dot: green = running window, red = closed/exited, gray = not started.
+                const dotClass =
+                  status === 'running'
+                    ? 'board-dot board-dot-running'
+                    : status === 'exited'
+                      ? 'board-dot board-dot-exited'
+                      : 'board-dot';
+                return (
+                  <button
+                    key={s.key}
+                    type="button"
+                    className="ws-agent-menu-item"
+                    onClick={() => toggleBoard(s.key)}
+                  >
+                    <span className={dotClass} aria-hidden="true" />
+                    <span className="ws-agent-menu-name">{s.label}</span>
+                    {board.includes(s.key) && <span className="ws-agent-menu-hint">on board</span>}
+                  </button>
+                );
+              })
+            )}
+          </div>
+        )}
+      </div>
+    </header>
   );
 }
 

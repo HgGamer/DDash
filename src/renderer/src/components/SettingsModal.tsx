@@ -44,7 +44,8 @@ type TabId =
   | 'integrated-terminal'
   | 'agents'
   | 'updates'
-  | 'web-access';
+  | 'web-access'
+  | 'board';
 
 export function SettingsModal({ onClose }: { onClose: () => void }) {
   const tab = useStore((s) => s.settingsModalTab);
@@ -92,6 +93,12 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
             Git
           </button>
           <button
+            className={`settings-nav-item${tab === 'board' ? ' active' : ''}`}
+            onClick={() => setTab('board')}
+          >
+            Board
+          </button>
+          <button
             className={`settings-nav-item${tab === 'integrated-terminal' ? ' active' : ''}`}
             onClick={() => setTab('integrated-terminal')}
           >
@@ -129,6 +136,8 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
             <UpdatesPanel />
           ) : tab === 'web-access' ? (
             <WebAccessPanel />
+          ) : tab === 'board' ? (
+            <BoardPanel />
           ) : (
             <GitPanel />
           )}
@@ -326,6 +335,66 @@ function GitPanel() {
           window width for the terminal.
         </p>
       </section>
+    </div>
+  );
+}
+
+function BoardPanel() {
+  const layout = useStore((s) => s.boardLayout);
+  const columns = useStore((s) => s.boardColumns);
+  const setBoardLayout = useStore((s) => s.setBoardLayout);
+  const setBoardColumns = useStore((s) => s.setBoardColumns);
+
+  return (
+    <div className="settings-panel">
+      <section>
+        <h4>Layout</h4>
+        <label className="preset-row">
+          <input
+            type="radio"
+            name="board-layout"
+            checked={layout === 'tile'}
+            onChange={() => setBoardLayout('tile')}
+          />
+          <div>
+            <div className="preset-label">Auto-fit (tile)</div>
+            <div className="preset-desc">
+              All pinned windows are tiled to fill the workspace evenly. No manual sizing.
+            </div>
+          </div>
+        </label>
+        <label className="preset-row">
+          <input
+            type="radio"
+            name="board-layout"
+            checked={layout === 'free'}
+            onChange={() => setBoardLayout('free')}
+          />
+          <div>
+            <div className="preset-label">Free</div>
+            <div className="preset-desc">Drag tiles to reorder and resize each one.</div>
+          </div>
+        </label>
+      </section>
+      {layout === 'tile' && (
+        <section>
+          <h4>Columns</h4>
+          <div className="field-row">
+            <label className="field-label">Number of columns (0 = auto)</label>
+            <input
+              className="field-input field-narrow"
+              type="number"
+              min={0}
+              max={12}
+              value={columns}
+              onChange={(e) => setBoardColumns(Number(e.target.value) || 0)}
+            />
+          </div>
+          <p className="preset-desc">
+            Auto arranges tiles in a roughly square grid based on how many windows are pinned.
+          </p>
+        </section>
+      )}
     </div>
   );
 }

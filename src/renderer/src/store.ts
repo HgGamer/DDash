@@ -27,6 +27,40 @@ import {
 import { compositeKey, parseCompositeKey } from '@shared/ipc';
 import { applyTheme, loadTheme, type AppTheme } from './lib/theme';
 
+const BOARD_KEY = 'dash.board';
+const BOARD_SIZES_KEY = 'dash.boardSizes';
+function loadBoard(): string[] {
+  try {
+    const v = JSON.parse(localStorage.getItem(BOARD_KEY) ?? '[]');
+    return Array.isArray(v) ? v.filter((x) => typeof x === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+function saveBoard(board: string[]) {
+  localStorage.setItem(BOARD_KEY, JSON.stringify(board));
+}
+const BOARD_LAYOUT_KEY = 'dash.boardLayout';
+const BOARD_COLUMNS_KEY = 'dash.boardColumns';
+function loadBoardLayout(): 'free' | 'tile' {
+  return localStorage.getItem(BOARD_LAYOUT_KEY) === 'free' ? 'free' : 'tile';
+}
+function loadBoardColumns(): number {
+  const n = Number(localStorage.getItem(BOARD_COLUMNS_KEY));
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+}
+function loadBoardSizes(): Record<string, { w: number; h: number }> {
+  try {
+    const v = JSON.parse(localStorage.getItem(BOARD_SIZES_KEY) ?? '{}');
+    return v && typeof v === 'object' ? v : {};
+  } catch {
+    return {};
+  }
+}
+function saveBoardSizes(sizes: Record<string, { w: number; h: number }>) {
+  localStorage.setItem(BOARD_SIZES_KEY, JSON.stringify(sizes));
+}
+
 export interface TabState {
   status: PtySessionStatus;
   error?: PtySpawnError;
@@ -121,14 +155,26 @@ interface AppStore {
    *  activeDocByKey when set. */
   activeAgentByKey: Record<string, string | null>;
   /** Which view the side panel shows (selected from the activity bar). */
-  sidebarView: 'projects' | 'files' | 'git';
+  sidebarView: 'projects' | 'files' | 'git' | 'board';
+  /** Selection compositeKeys pinned to the multi-project board grid, in display
+   *  order. Persisted in localStorage; the board reuses the panes Workspace
+   *  keeps mounted. */
+  board: string[];
+  /** Per-cell board tile size (px), keyed by selection compositeKey. Used only
+   *  in 'free' layout. */
+  boardSizes: Record<string, { w: number; h: number }>;
+  /** Board layout: 'tile' auto-fits all windows to fill the workspace; 'free'
+   *  lets each tile be dragged/resized. */
+  boardLayout: 'free' | 'tile';
+  /** Columns for 'tile' layout; 0 = auto (√count). */
+  boardColumns: number;
   /** Whether the side panel is expanded. */
   sidebarOpen: boolean;
   /** Open files with unsaved edits, keyed by an opaque id. Used for the
    *  unsaved-changes warning on app close. */
   dirtyFiles: Record<string, true>;
   settingsModalOpen: boolean;
-  settingsModalTab: 'terminal' | 'notifications' | 'git' | 'integrated-terminal' | 'agents' | 'updates' | 'web-access';
+  settingsModalTab: 'terminal' | 'notifications' | 'git' | 'integrated-terminal' | 'agents' | 'updates' | 'web-access' | 'board';
 
   setProjects: (projects: Project[]) => void;
   setFolders: (folders: ProjectFolder[]) => void;
@@ -177,9 +223,20 @@ interface AppStore {
   setActiveAgent: (selectionKey: string, agentId: string) => void;
   /** Activity-bar click: select a view (opening the panel), or collapse it when
    *  the already-active view's icon is clicked again. */
-  selectSidebarView: (view: 'projects' | 'files' | 'git') => void;
+  selectSidebarView: (view: 'projects' | 'files' | 'git' | 'board') => void;
+  /** Add/remove a selection compositeKey to/from the board grid. Pinning also
+   *  mounts the selection so its pane exists to render. */
+  toggleBoard: (key: string) => void;
+  /** Move `fromKey` to just before `toKey` in the board order (drag-reorder). */
+  reorderBoard: (fromKey: string, toKey: string) => void;
+  /** Persist a board tile's resized dimensions. */
+  setBoardSize: (key: string, w: number, h: number) => void;
+  /** Set the board layout mode. */
+  setBoardLayout: (layout: 'free' | 'tile') => void;
+  /** Set the tile-layout column count (0 = auto). */
+  setBoardColumns: (columns: number) => void;
   setFileDirty: (id: string, dirty: boolean) => void;
-  openSettings: (tab?: 'terminal' | 'notifications' | 'git' | 'integrated-terminal' | 'agents' | 'updates' | 'web-access') => void;
+  openSettings: (tab?: 'terminal' | 'notifications' | 'git' | 'integrated-terminal' | 'agents' | 'updates' | 'web-access' | 'board') => void;
   closeSettings: () => void;
 }
 
@@ -210,6 +267,10 @@ export const useStore = create<AppStore>((set) => ({
   openAgentsByKey: {},
   activeAgentByKey: {},
   sidebarView: 'projects',
+  board: loadBoard(),
+  boardSizes: loadBoardSizes(),
+  boardLayout: loadBoardLayout(),
+  boardColumns: loadBoardColumns(),
   sidebarOpen: true,
   dirtyFiles: {},
   settingsModalOpen: false,
@@ -498,6 +559,43 @@ export const useStore = create<AppStore>((set) => ({
     })),
   selectSidebarView: (view) =>
     set((s) => (s.sidebarView === view ? { sidebarOpen: !s.sidebarOpen } : { sidebarView: view, sidebarOpen: true })),
+  toggleBoard: (key) =>
+    set((s) => {
+      const board = s.board.includes(key)
+        ? s.board.filter((k) => k !== key)
+        : [...s.board, key];
+      saveBoard(board);
+      // Pinning must mount the selection so its terminal pane exists to render.
+      const mountedKeys = s.mountedKeys.includes(key) ? s.mountedKeys : [...s.mountedKeys, key];
+      return { board, mountedKeys };
+    }),
+  reorderBoard: (fromKey, toKey) =>
+    set((s) => {
+      if (fromKey === toKey) return {};
+      const arr = s.board.filter((k) => k !== fromKey);
+      const idx = arr.indexOf(toKey);
+      if (idx < 0) arr.push(fromKey);
+      else arr.splice(idx, 0, fromKey);
+      saveBoard(arr);
+      return { board: arr };
+    }),
+  setBoardSize: (key, w, h) =>
+    set((s) => {
+      const cur = s.boardSizes[key];
+      if (cur && cur.w === w && cur.h === h) return {};
+      const boardSizes = { ...s.boardSizes, [key]: { w, h } };
+      saveBoardSizes(boardSizes);
+      return { boardSizes };
+    }),
+  setBoardLayout: (layout) => {
+    localStorage.setItem(BOARD_LAYOUT_KEY, layout);
+    set({ boardLayout: layout });
+  },
+  setBoardColumns: (columns) => {
+    const n = columns > 0 ? Math.floor(columns) : 0;
+    localStorage.setItem(BOARD_COLUMNS_KEY, String(n));
+    set({ boardColumns: n });
+  },
   setFileDirty: (id, dirty) =>
     set((s) => {
       if (dirty) {
