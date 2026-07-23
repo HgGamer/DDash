@@ -767,6 +767,10 @@ html.is-mac .ws-header a {
   color: var(--color-fg-muted);
   font-size: var(--text-xs);
 }
+.ws-agent-menu-name {
+  flex: 1;
+  min-width: 0;
+}
 .ws-agent-menu-hint {
   color: var(--color-fg-subtle);
   font-size: var(--text-xs);

@@ -1,5 +1,5 @@
 import { useStore } from '../store';
-import { ProjectsIcon, FilesIcon, GitIcon, SettingsIcon } from './icons';
+import { ProjectsIcon, FilesIcon, GitIcon, BoardIcon, SettingsIcon } from './icons';
 
 /**
  * VS Code-style activity bar: a narrow icon rail that selects which view the
@@ -13,7 +13,7 @@ export function ActivityBar() {
   const openSettings = useStore((s) => s.openSettings);
 
   const item = (
-    v: 'projects' | 'files' | 'git',
+    v: 'projects' | 'files' | 'git' | 'board',
     label: string,
     Icon: () => JSX.Element,
   ) => (
@@ -35,6 +35,7 @@ export function ActivityBar() {
         {item('projects', 'Projects', ProjectsIcon)}
         {item('files', 'Files', FilesIcon)}
         {gitEnabled && item('git', 'Source Control', GitIcon)}
+        {item('board', 'Board', BoardIcon)}
       </div>
       <div className="act-group">
         <button

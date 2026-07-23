@@ -359,7 +359,7 @@ export function App() {
       <div className="app-body">
         <ActivityBar />
         <div className="app-main">
-          {sidebarOpen && sidebarView !== 'git' && (
+          {sidebarOpen && sidebarView !== 'git' && sidebarView !== 'board' && (
             <Sidebar
               activeId={activeId}
               onActivate={activate}
