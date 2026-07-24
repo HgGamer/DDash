@@ -115,6 +115,7 @@ export const IPC = {
   GitSubscribe: 'git:subscribe',
   GitUnsubscribe: 'git:unsubscribe',
   GitChanged: 'git:changed',
+  GitLsFiles: 'git:lsFiles',
 
   // Git-view settings (renderer ↔ main)
   SettingsGetGitView: 'settings:getGitView',
@@ -398,6 +399,12 @@ export type GitListReposResult =
 
 export type GitIsRepoResult =
   | { ok: true; cwd: string }
+  | { ok: false; reason: 'not-a-repo' | 'git-missing' | 'tab-missing' };
+
+/** Project files (tracked + untracked, honoring .gitignore), relative to the
+ *  repo root, forward slashes — for the Cmd+K fuzzy file finder. */
+export type GitLsFilesResult =
+  | { ok: true; files: string[] }
   | { ok: false; reason: 'not-a-repo' | 'git-missing' | 'tab-missing' };
 
 export type GitStatusResult =
@@ -805,6 +812,7 @@ export interface DashApi {
     status(args: GitTabRef): Promise<GitStatusResult>;
     log(args: GitLogArgs): Promise<GitLogResult>;
     branches(args: GitTabRef): Promise<GitBranchesResult>;
+    lsFiles(args: GitTabRef): Promise<GitLsFilesResult>;
     stage(args: GitStagePathsArgs): Promise<GitOperationResult>;
     unstage(args: GitStagePathsArgs): Promise<GitOperationResult>;
     commit(args: GitCommitArgs): Promise<GitOperationResult>;

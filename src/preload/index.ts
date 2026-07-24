@@ -176,6 +176,7 @@ const api: DashApi = {
     status: (args: GitTabRef) => ipcRenderer.invoke(IPC.GitStatus, args),
     log: (args: GitLogArgs) => ipcRenderer.invoke(IPC.GitLog, args),
     branches: (args: GitTabRef) => ipcRenderer.invoke(IPC.GitBranches, args),
+    lsFiles: (args: GitTabRef) => ipcRenderer.invoke(IPC.GitLsFiles, args),
     stage: (args: GitStagePathsArgs) => ipcRenderer.invoke(IPC.GitStage, args),
     unstage: (args: GitStagePathsArgs) => ipcRenderer.invoke(IPC.GitUnstage, args),
     commit: (args: GitCommitArgs) => ipcRenderer.invoke(IPC.GitCommit, args),

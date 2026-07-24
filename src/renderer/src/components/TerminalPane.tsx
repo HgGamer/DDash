@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { Terminal } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
 import { WebLinksAddon } from 'xterm-addon-web-links';
+import type { IDecoration, IMarker } from 'xterm';
+import { fuzzyFinder, type FuzzyResult } from '../lib/fuzzy';
 import type { Project, PtySpawnError, Worktree } from '@shared/types';
 import { agentKey, compositeKey } from '@shared/ipc';
 import { useStore } from '../store';
@@ -20,6 +22,14 @@ interface Props {
 
 const CLAUDE_PROMPT_RE = /ask me something|Do you want to|❯\s*\d+\.\s/;
 
+/** A scrollback line that can match the fuzzy find. */
+interface SearchLine {
+  line: number;
+  text: string;
+}
+/** Cap on rendered/navigable matches — scrollback can be tens of thousands of lines. */
+const MAX_SEARCH_MATCHES = 300;
+
 export function TerminalPane({ project, worktree, active, agentId, agentLabel }: Props) {
   const aid = agentId ?? null;
   // Selection key (Claude session / tab cleanup) vs. session key (this pane's
@@ -34,7 +44,20 @@ export function TerminalPane({ project, worktree, active, agentId, agentLabel }:
   const hostRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const activeItemRef = useRef<HTMLLIElement>(null);
+  // The finder + active decoration are imperative; matched lines render as a
+  // list, so they live in state. `index` is 1-based (0 = no active match).
+  const finderRef = useRef<((q: string) => FuzzyResult<SearchLine>[]) | null>(null);
+  const matchesRef = useRef<SearchLine[]>([]);
+  const curRef = useRef(0);
+  const decoRef = useRef<{ marker: IMarker; deco: IDecoration | undefined } | null>(null);
   const spawnedRef = useRef(false);
+  const [search, setSearch] = useState<{ open: boolean; index: number }>({
+    open: false,
+    index: 0,
+  });
+  const [results, setResults] = useState<SearchLine[]>([]);
   const upsertTab = useStore((s) => s.upsertTab);
   const tab = useStore((s) => s.tabs[key]);
   const termStyle = useStore((s) => s.terminalStyle);
@@ -76,6 +99,15 @@ export function TerminalPane({ project, worktree, active, agentId, agentLabel }:
     termRef.current = term;
     fitRef.current = fit;
     const detachClipboard = attachTerminalClipboard(term, host);
+
+    // Cmd/Ctrl+F opens the fuzzy find bar instead of reaching the PTY.
+    term.attachCustomKeyEventHandler((e) => {
+      if (e.type === 'keydown' && (e.metaKey || e.ctrlKey) && e.key === 'f') {
+        openSearch();
+        return false;
+      }
+      return true;
+    });
 
     const safeFit = () => {
       const rect = host.getBoundingClientRect();
@@ -221,6 +253,7 @@ export function TerminalPane({ project, worktree, active, agentId, agentLabel }:
       disposeData.dispose();
       disposeResize.dispose();
       disposeWriteParsed.dispose();
+      clearHighlight();
       if (scanTimer) clearTimeout(scanTimer);
       offPtyData();
       offPtyExit();
@@ -228,6 +261,7 @@ export function TerminalPane({ project, worktree, active, agentId, agentLabel }:
       term.dispose();
       termRef.current = null;
       fitRef.current = null;
+      finderRef.current = null;
     };
     // Re-mount when the composite key changes (new worktree, etc).
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -257,6 +291,11 @@ export function TerminalPane({ project, worktree, active, agentId, agentLabel }:
     }
   }, [termStyle, appTheme]);
 
+  // Keep the highlighted match visible as you navigate the results list.
+  useEffect(() => {
+    activeItemRef.current?.scrollIntoView({ block: 'nearest' });
+  }, [search.index]);
+
   useEffect(() => {
     if (!active) return;
     const host = hostRef.current;
@@ -278,6 +317,78 @@ export function TerminalPane({ project, worktree, active, agentId, agentLabel }:
       window.removeEventListener('resize', doFit);
     };
   }, [active]);
+
+  const clearHighlight = () => {
+    if (!decoRef.current) return;
+    decoRef.current.deco?.dispose();
+    decoRef.current.marker.dispose();
+    decoRef.current = null;
+  };
+
+  // Highlight the whole matched line and scroll it into view.
+  // ponytail: line-level highlight, not per-char. Upgrade to per-position
+  // decorations (fzf `positions`) if we want to color the matched chars.
+  const gotoMatch = (i: number) => {
+    const term = termRef.current;
+    const matches = matchesRef.current;
+    clearHighlight();
+    if (!term || matches.length === 0) return;
+    const idx = ((i % matches.length) + matches.length) % matches.length;
+    curRef.current = idx;
+    const line = matches[idx].line;
+    term.scrollToLine(Math.max(0, line - 2));
+    const buf = term.buffer.active;
+    const marker = term.registerMarker(line - (buf.baseY + buf.cursorY));
+    if (marker) {
+      const accent = getComputedStyle(document.documentElement)
+        .getPropertyValue('--color-accent')
+        .trim();
+      const deco = term.registerDecoration({
+        marker,
+        width: term.cols,
+        backgroundColor: accent, // xterm decorations accept only #RRGGBB
+        layer: 'bottom',
+      });
+      decoRef.current = { marker, deco };
+    }
+    setSearch((s) => ({ ...s, index: idx + 1 }));
+  };
+
+  const openSearch = () => {
+    const term = termRef.current;
+    if (!term) return;
+    const buf = term.buffer.active;
+    const lines: SearchLine[] = [];
+    for (let y = 0; y < buf.baseY + term.rows; y++) {
+      const text = buf.getLine(y)?.translateToString(true) ?? '';
+      if (text.trim()) lines.push({ line: y, text });
+    }
+    finderRef.current = fuzzyFinder(lines, (l) => l.text);
+    setSearch({ open: true, index: 0 });
+    setResults([]);
+    requestAnimationFrame(() => searchInputRef.current?.select());
+  };
+
+  const runFuzzy = () => {
+    const q = searchInputRef.current?.value ?? '';
+    const ranked = (finderRef.current?.(q) ?? []).slice(0, MAX_SEARCH_MATCHES).map((r) => r.item);
+    matchesRef.current = ranked;
+    setResults(ranked);
+    curRef.current = 0;
+    if (ranked.length > 0) gotoMatch(0);
+    else {
+      clearHighlight();
+      setSearch((s) => ({ ...s, index: 0 }));
+    }
+  };
+
+  const closeSearch = () => {
+    clearHighlight();
+    matchesRef.current = [];
+    setResults([]);
+    setSearch({ open: false, index: 0 });
+    termRef.current?.focus();
+  };
 
   const restart = async () => {
     if (!termRef.current) return;
@@ -301,6 +412,56 @@ export function TerminalPane({ project, worktree, active, agentId, agentLabel }:
   return (
     <div className="terminal-host" style={bg ? { background: bg } : undefined}>
       <div ref={hostRef} style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 12 }} />
+      {search.open && (
+        <div className="term-search">
+          <div className="term-search-bar">
+            <input
+              ref={searchInputRef}
+              className="field-input"
+              placeholder="Fuzzy find"
+              spellCheck={false}
+              autoFocus
+              onChange={runFuzzy}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === 'ArrowDown') {
+                  e.preventDefault();
+                  gotoMatch(curRef.current + (e.key === 'Enter' && e.shiftKey ? -1 : 1));
+                } else if (e.key === 'ArrowUp') {
+                  e.preventDefault();
+                  gotoMatch(curRef.current - 1);
+                } else if (e.key === 'Escape') {
+                  e.preventDefault();
+                  closeSearch();
+                }
+              }}
+            />
+            <span className="term-search-count">
+              {results.length ? `${search.index}/${results.length}` : searchInputRef.current?.value ? '0/0' : ''}
+            </span>
+            <button title="Previous (↑ / ⇧⏎)" onClick={() => gotoMatch(curRef.current - 1)}>↑</button>
+            <button title="Next (↓ / ⏎)" onClick={() => gotoMatch(curRef.current + 1)}>↓</button>
+            <button title="Close (Esc)" onClick={closeSearch}>✕</button>
+          </div>
+          {results.length > 0 && (
+            <ul className="term-search-results">
+              {results.map((m, i) => (
+                <li
+                  key={m.line}
+                  ref={i === search.index - 1 ? activeItemRef : null}
+                  className={`term-search-item${i === search.index - 1 ? ' active' : ''}`}
+                  // mousedown, not click: don't steal focus from the input.
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    gotoMatch(i);
+                  }}
+                >
+                  {m.text.trim()}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
       {displayedError && (
         <ErrorOverlay
           error={displayedError}
