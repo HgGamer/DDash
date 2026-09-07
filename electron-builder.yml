@@ -23,15 +23,26 @@ extraResources:
 
 win:
   target:
+    - target: nsis
+      arch:
+        - x64
     - target: portable
       arch:
         - x64
-  artifactName: ${productName}-${version}-win-${arch}-portable.${ext}
 
+# Installed app: per-user install (no admin prompt), with Start-menu and
+# desktop shortcuts. Artifact names are per-target so both builds stay apart.
 nsis:
   oneClick: false
+  perMachine: false
   allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
   shortcutName: Dash
+  artifactName: ${productName}-${version}-win-${arch}-setup.${ext}
+
+portable:
+  artifactName: ${productName}-${version}-win-${arch}-portable.${ext}
 
 publish:
   provider: github
