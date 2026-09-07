@@ -159,18 +159,18 @@
 [data-theme='pink'] {
   color-scheme: dark;
 
-  --color-bg: #140910; /* app background — very dark plum */
-  --color-terminal-bg: #0a0408; /* near-black behind the xterm pane */
-  --color-surface: #1f0f18; /* sidebar, cards */
-  --color-surface-2: #2c1623; /* hover */
-  --color-border: #3c2030;
-  --color-border-strong: #57293f;
-  --color-fg: #f8e7ef;
-  --color-fg-muted: #cf9fb4;
-  --color-fg-subtle: #9c7184;
-  --color-accent: #ff4fa3; /* hot pink */
+  --color-bg: #240a1b; /* app background — saturated deep rose */
+  --color-terminal-bg: #14040d; /* darkest surface behind the xterm pane */
+  --color-surface: #341126; /* sidebar, cards */
+  --color-surface-2: #481833; /* hover */
+  --color-border: #63204a;
+  --color-border-strong: #8d2f68;
+  --color-fg: #ffeaf5;
+  --color-fg-muted: #f2a6cb;
+  --color-fg-subtle: #c98aab;
+  --color-accent: #ff2e97; /* hot pink */
   --color-accent-fg: #ffffff;
-  --color-accent-soft: rgba(255, 79, 163, 0.16);
+  --color-accent-soft: rgba(255, 46, 151, 0.22);
   --color-danger: #ff6b81;
   --color-danger-soft: rgba(255, 107, 129, 0.16);
   --color-warn: #f0a35e;
@@ -178,11 +178,11 @@
   --color-success: #6ec18b;
   --color-success-soft: rgba(110, 193, 139, 0.16);
 
-  --glass-chrome: rgba(56, 28, 44, 0.5);
-  --glass-bar: rgba(44, 22, 34, 0.42);
-  --glass-content: rgba(34, 16, 26, 0.28);
-  --glass-popover: rgba(60, 30, 46, 0.72);
-  --sidebar-sel: rgba(255, 120, 190, 0.14);
+  --glass-chrome: rgba(96, 34, 71, 0.5);
+  --glass-bar: rgba(78, 26, 57, 0.44);
+  --glass-content: rgba(58, 18, 42, 0.3);
+  --glass-popover: rgba(104, 38, 78, 0.74);
+  --sidebar-sel: rgba(255, 92, 175, 0.22);
 }
 
 /* Standard keyboard focus indication — accent ring visible on every surface
