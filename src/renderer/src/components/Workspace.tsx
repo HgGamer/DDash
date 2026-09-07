@@ -31,6 +31,7 @@ export function Workspace({ activeId }: Props) {
   const boardLayout = useStore((s) => s.boardLayout);
   const boardColumns = useStore((s) => s.boardColumns);
   const windowLabels = useStore((s) => s.windowLabels);
+  const primaryClosed = useStore((s) => s.primaryClosed);
   const ensureMounted = useStore((s) => s.ensureMounted);
   const workspaceRef = useRef<HTMLElement>(null);
   const workspaceHeight = useWorkspaceHeight(workspaceRef);
@@ -88,15 +89,17 @@ export function Workspace({ activeId }: Props) {
     const displayName = worktree ? `${proj.name} · ${worktree.branch}` : proj.name;
     const open = openAgentsByKey[selKey] ?? [];
     const claudeIds = open.filter(isClaudeAgentId);
-    panes.push({
-      sessionKey: selKey,
-      selectionKey: selKey,
-      proj,
-      worktree,
-      agentId: null,
-      displayName,
-      windowName: windowLabels[selKey] ?? 'Claude Code',
-    });
+    if (!primaryClosed[selKey]) {
+      panes.push({
+        sessionKey: selKey,
+        selectionKey: selKey,
+        proj,
+        worktree,
+        agentId: null,
+        displayName,
+        windowName: windowLabels[selKey] ?? 'Claude Code',
+      });
+    }
     for (const agentId of open) {
       const isClaude = isClaudeAgentId(agentId);
       const def = isClaude ? null : agents.find((a) => a.id === agentId);
@@ -110,7 +113,7 @@ export function Workspace({ activeId }: Props) {
         worktree,
         agentId,
         displayName,
-        windowName: (isClaude ? windowLabels[sk] : undefined) ?? fallback,
+        windowName: windowLabels[sk] ?? fallback,
         terminalLabel: isClaude ? 'Claude' : def!.name,
       });
     }
@@ -127,8 +130,30 @@ export function Workspace({ activeId }: Props) {
     : panes;
 
   const tileMode = boardMode && boardLayout === 'tile';
+  const mainMode = boardMode && boardLayout === 'main';
+  // Only 'free' tiles carry a persisted size and a resize handle; the other two
+  // layouts divide the workspace between them.
+  const freeMode = boardMode && boardLayout === 'free';
   const pinnedCount = boardMode ? panes.filter((p) => board.includes(p.sessionKey)).length : 0;
   const tileCols = boardColumns > 0 ? boardColumns : Math.max(1, Math.ceil(Math.sqrt(pinnedCount)));
+  // 'main' layout: the first pinned window (in board order) takes a full-height
+  // column, the rest stack in the column beside it. The main cell needs an
+  // explicit class — DOM order here also holds the hidden, unpinned panes, so
+  // `:first-child` would pick the wrong one.
+  const mainKey = mainMode
+    ? orderedPanes.find((p) => board.includes(p.sessionKey))?.sessionKey ?? null
+    : null;
+  const boardGridStyle: React.CSSProperties | undefined = tileMode
+    ? ({ ['--board-cols' as string]: tileCols } as React.CSSProperties)
+    : mainMode
+      ? ({
+          // One row per stacked window, and no second column when the main
+          // window is the only one pinned.
+          ['--board-rows' as string]: Math.max(1, pinnedCount - 1),
+          ['--board-main-cols' as string]: pinnedCount > 1 ? '1fr 1fr' : '1fr',
+        } as React.CSSProperties)
+      : undefined;
+  const layoutClass = tileMode ? 'board-tile' : mainMode ? 'board-main' : 'board-free';
 
   const activeKey = activeId ? compositeKey(activeId.projectId, activeId.worktreeId) : null;
   const activeDocRel = activeKey ? activeDocByKey[activeKey] ?? null : null;
@@ -163,10 +188,8 @@ export function Workspace({ activeId }: Props) {
           </div>
         )}
         <div
-          className={`workspace-terminals${
-            boardMode ? ` board-grid ${tileMode ? 'board-tile' : 'board-free'}` : ''
-          }`}
-          style={tileMode ? ({ ['--board-cols' as string]: tileCols } as React.CSSProperties) : undefined}
+          className={`workspace-terminals${boardMode ? ` board-grid ${layoutClass}` : ''}`}
+          style={boardGridStyle}
         >
           {orderedPanes.map((pane) => {
             const { sessionKey, selectionKey, proj, worktree, agentId } = pane;
@@ -185,7 +208,7 @@ export function Workspace({ activeId }: Props) {
                 ? {
                     display: 'flex',
                     flexDirection: 'column',
-                    ...(!tileMode && size ? { width: size.w, height: size.h } : {}),
+                    ...(freeMode && size ? { width: size.w, height: size.h } : {}),
                   }
                 : { display: 'none' }
               : {
@@ -200,7 +223,11 @@ export function Workspace({ activeId }: Props) {
             return (
               <div
                 key={sessionKey}
-                className={boardMode && inBoard ? 'board-cell' : undefined}
+                className={
+                  boardMode && inBoard
+                    ? `board-cell${sessionKey === mainKey ? ' board-cell-main' : ''}`
+                    : undefined
+                }
                 style={wrapperStyle}
                 onDragOver={
                   boardMode && inBoard
@@ -220,7 +247,7 @@ export function Workspace({ activeId }: Props) {
                     : undefined
                 }
                 onMouseUp={
-                  boardMode && inBoard && !tileMode
+                  freeMode && inBoard
                     ? (e) => {
                         // CSS `resize` writes the tile's live size; persist it.
                         const el = e.currentTarget;
@@ -229,40 +256,19 @@ export function Workspace({ activeId }: Props) {
                     : undefined
                 }
               >
-                <div
-                  className="board-cell-head"
-                  style={{ display: boardMode && inBoard ? 'flex' : 'none' }}
-                  draggable={boardMode && inBoard}
-                  onDragStart={(e) => {
-                    e.dataTransfer.setData('text/plain', sessionKey);
-                    e.dataTransfer.effectAllowed = 'move';
+                <BoardCellHead
+                  sessionKey={sessionKey}
+                  windowName={pane.windowName}
+                  displayName={pane.displayName}
+                  visible={boardMode && inBoard}
+                  onOpen={() => {
+                    const st = useStore.getState();
+                    st.setActive({ projectId: proj.id, worktreeId: worktree?.id ?? null });
+                    if (agentId) st.setActiveAgent(selectionKey, agentId);
+                    else st.setActiveDoc(selectionKey, null);
+                    st.selectSidebarView('projects');
                   }}
-                >
-                  <button
-                    type="button"
-                    className="board-cell-title"
-                    title={`Open ${pane.displayName} — ${pane.windowName}`}
-                    onClick={() => {
-                      const st = useStore.getState();
-                      st.setActive({ projectId: proj.id, worktreeId: worktree?.id ?? null });
-                      if (agentId) st.setActiveAgent(selectionKey, agentId);
-                      else st.setActiveDoc(selectionKey, null);
-                      st.selectSidebarView('projects');
-                    }}
-                  >
-                    <span className="board-cell-window">{pane.windowName}</span>
-                    <span className="board-cell-project">{pane.displayName}</span>
-                  </button>
-                  <button
-                    type="button"
-                    className="board-cell-unpin"
-                    aria-label={`Remove ${pane.windowName} from board`}
-                    title="Remove from board"
-                    onClick={() => useStore.getState().toggleBoard(sessionKey)}
-                  >
-                    ✕
-                  </button>
-                </div>
+                />
                 <div style={innerStyle}>
                   <TerminalPane
                     project={proj}
@@ -295,6 +301,100 @@ export function Workspace({ activeId }: Props) {
         )}
       </div>
     </main>
+  );
+}
+
+/** A board tile's header: drag handle for reordering, click-to-open title, and
+ *  inline rename. Renaming needs its own button because a single click on the
+ *  title already leaves the board for the project view, so a double-click
+ *  gesture (as in the workspace tab bar) would never be reachable here. */
+function BoardCellHead({
+  sessionKey,
+  windowName,
+  displayName,
+  visible,
+  onOpen,
+}: {
+  sessionKey: string;
+  windowName: string;
+  displayName: string;
+  visible: boolean;
+  onOpen: () => void;
+}) {
+  const setWindowLabel = useStore((s) => s.setWindowLabel);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(windowName);
+
+  const commit = () => {
+    // An empty name clears the custom label and restores the default one.
+    setWindowLabel(sessionKey, draft);
+    setEditing(false);
+  };
+
+  return (
+    <div
+      className="board-cell-head"
+      style={{ display: visible ? 'flex' : 'none' }}
+      // Suspend the reorder drag while renaming, or the input can't be
+      // click-positioned or text-selected.
+      draggable={visible && !editing}
+      onDragStart={(e) => {
+        e.dataTransfer.setData('text/plain', sessionKey);
+        e.dataTransfer.effectAllowed = 'move';
+      }}
+    >
+      {editing ? (
+        <input
+          className="board-cell-rename"
+          autoFocus
+          value={draft}
+          placeholder={windowName}
+          aria-label={`Rename ${windowName}`}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') commit();
+            else if (e.key === 'Escape') {
+              setDraft(windowName);
+              setEditing(false);
+            }
+          }}
+        />
+      ) : (
+        <>
+          <button
+            type="button"
+            className="board-cell-title"
+            title={`Open ${displayName} — ${windowName}`}
+            onClick={onOpen}
+          >
+            <span className="board-cell-window">{windowName}</span>
+            <span className="board-cell-project">{displayName}</span>
+          </button>
+          <button
+            type="button"
+            className="board-cell-edit"
+            aria-label={`Rename ${windowName}`}
+            title="Rename window"
+            onClick={() => {
+              setDraft(windowName);
+              setEditing(true);
+            }}
+          >
+            ✎
+          </button>
+        </>
+      )}
+      <button
+        type="button"
+        className="board-cell-unpin"
+        aria-label={`Remove ${windowName} from board`}
+        title="Remove from board"
+        onClick={() => useStore.getState().toggleBoard(sessionKey)}
+      >
+        ✕
+      </button>
+    </div>
   );
 }
 
@@ -491,6 +591,8 @@ function WorkspaceContentTabs({ activeId }: { activeId: ActiveSelection }) {
   const dirtyFiles = useStore((s) => s.dirtyFiles);
 
   const windowLabels = useStore((s) => s.windowLabels);
+  const primaryClosed = useStore((s) => s.primaryClosed);
+  const closePrimaryWindow = useStore((s) => s.closePrimaryWindow);
   const key = compositeKey(activeId.projectId, activeId.worktreeId);
   const docTabs = docTabsByKey[key] ?? [];
   const activeDoc = activeDocByKey[key] ?? null;
@@ -504,13 +606,17 @@ function WorkspaceContentTabs({ activeId }: { activeId: ActiveSelection }) {
   return (
     <header className="ws-header">
       <div className="ws-tabs">
-        <WindowTab
-          sessionKey={key}
-          label={windowLabels[key] ?? 'Claude Code'}
-          active={claudeActive}
-          isClaude
-          onActivate={() => setActiveDoc(key, null)}
-        />
+        {!primaryClosed[key] && (
+          <WindowTab
+            sessionKey={key}
+            label={windowLabels[key] ?? 'Claude Code'}
+            active={claudeActive}
+            isClaude
+            onActivate={() => setActiveDoc(key, null)}
+            // Closable only while another window would be left behind.
+            onClose={openAgents.length ? () => closePrimaryWindow(key) : undefined}
+          />
+        )}
         {openAgents.map((agentId) => {
           const isClaude = isClaudeAgentId(agentId);
           const def = isClaude ? null : agents.find((a) => a.id === agentId);

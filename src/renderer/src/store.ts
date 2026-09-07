@@ -27,12 +27,21 @@ import {
 import { compositeKey, parseCompositeKey, agentKey, isClaudeAgentId } from '@shared/ipc';
 import { applyTheme, loadTheme, type AppTheme } from './lib/theme';
 
+/** How the board arranges its pinned windows. 'tile' and 'main' both fill the
+ *  workspace; 'free' lets each tile be dragged and resized freely. */
+export type BoardLayout = 'free' | 'tile' | 'main';
+
 const BOARD_KEY = 'dash.board';
 const BOARD_SIZES_KEY = 'dash.boardSizes';
 function loadBoard(): string[] {
   try {
     const v = JSON.parse(localStorage.getItem(BOARD_KEY) ?? '[]');
-    return Array.isArray(v) ? v.filter((x) => typeof x === 'string') : [];
+    // Session keys are id-shaped and never contain a slash; drop anything else,
+    // so board files corrupted by an external drop (a pasted URL, a dragged
+    // file path) clean themselves up instead of lingering forever.
+    return Array.isArray(v)
+      ? v.filter((x) => typeof x === 'string' && !!x && !x.includes('/'))
+      : [];
   } catch {
     return [];
   }
@@ -42,8 +51,9 @@ function saveBoard(board: string[]) {
 }
 const BOARD_LAYOUT_KEY = 'dash.boardLayout';
 const BOARD_COLUMNS_KEY = 'dash.boardColumns';
-function loadBoardLayout(): 'free' | 'tile' {
-  return localStorage.getItem(BOARD_LAYOUT_KEY) === 'free' ? 'free' : 'tile';
+function loadBoardLayout(): BoardLayout {
+  const v = localStorage.getItem(BOARD_LAYOUT_KEY);
+  return v === 'free' || v === 'main' ? v : 'tile';
 }
 function loadBoardColumns(): number {
   const n = Number(localStorage.getItem(BOARD_COLUMNS_KEY));
@@ -86,20 +96,36 @@ const WINDOWS_KEY = 'dash.windows';
 function loadWindows(): {
   open: Record<string, string[]>;
   active: Record<string, string | null>;
+  primaryClosed: Record<string, true>;
 } {
   try {
     const v = JSON.parse(localStorage.getItem(WINDOWS_KEY) ?? '{}');
-    return {
-      open: v.open && typeof v.open === 'object' ? v.open : {},
-      active: v.active && typeof v.active === 'object' ? v.active : {},
-    };
+    const open: Record<string, string[]> = v.open && typeof v.open === 'object' ? v.open : {};
+    const stored: Record<string, true> =
+      v.primaryClosed && typeof v.primaryClosed === 'object' ? v.primaryClosed : {};
+    // A closed primary window is only restorable while the selection has an
+    // extra window left to show; otherwise it would come back with no window at
+    // all (custom agents, for one, are not persisted).
+    const primaryClosed: Record<string, true> = {};
+    for (const k of Object.keys(stored)) {
+      if (open[k]?.length) primaryClosed[k] = true;
+    }
+    const active: Record<string, string | null> =
+      v.active && typeof v.active === 'object' ? v.active : {};
+    // With no built-in window to fall back on, the selection must open on one
+    // of its extra windows.
+    for (const k of Object.keys(primaryClosed)) {
+      if (!active[k]) active[k] = open[k][0];
+    }
+    return { open, active, primaryClosed };
   } catch {
-    return { open: {}, active: {} };
+    return { open: {}, active: {}, primaryClosed: {} };
   }
 }
 function saveWindows(
   open: Record<string, string[]>,
   active: Record<string, string | null>,
+  primaryClosed: Record<string, true>,
 ) {
   const fOpen: Record<string, string[]> = {};
   for (const [k, ids] of Object.entries(open)) {
@@ -110,7 +136,10 @@ function saveWindows(
   for (const [k, id] of Object.entries(active)) {
     if (id && isClaudeAgentId(id)) fActive[k] = id;
   }
-  localStorage.setItem(WINDOWS_KEY, JSON.stringify({ open: fOpen, active: fActive }));
+  localStorage.setItem(
+    WINDOWS_KEY,
+    JSON.stringify({ open: fOpen, active: fActive, primaryClosed }),
+  );
 }
 const RESTORED_WINDOWS = loadWindows();
 
@@ -193,6 +222,9 @@ interface AppStore {
   activeId: ActiveSelection | null;
   /** Composite keys of tabs whose terminal pane has been mounted this session. */
   mountedKeys: string[];
+  /** Selections whose built-in "Claude Code" window the user closed. Persisted
+   *  with the extra windows, so it survives a reload the same way. */
+  primaryClosed: Record<string, true>;
   tabs: Record<string, TabState>;
   loaded: boolean;
   /** Active app UI theme. Persisted in localStorage via `lib/theme.ts`. */
@@ -236,9 +268,10 @@ interface AppStore {
   /** Per-cell board tile size (px), keyed by selection compositeKey. Used only
    *  in 'free' layout. */
   boardSizes: Record<string, { w: number; h: number }>;
-  /** Board layout: 'tile' auto-fits all windows to fill the workspace; 'free'
-   *  lets each tile be dragged/resized. */
-  boardLayout: 'free' | 'tile';
+  /** Board layout: 'tile' auto-fits all windows to fill the workspace; 'main'
+   *  fills it too, but gives the first window a full-height column and stacks
+   *  the rest beside it; 'free' lets each tile be dragged/resized. */
+  boardLayout: BoardLayout;
   /** Columns for 'tile' layout; 0 = auto (√count). */
   boardColumns: number;
   /** Custom names for Claude windows, keyed by session key (compositeKey for
@@ -304,6 +337,10 @@ interface AppStore {
   /** Activity-bar click: select a view (opening the panel), or collapse it when
    *  the already-active view's icon is clicked again. */
   selectSidebarView: (view: 'projects' | 'files' | 'git' | 'board') => void;
+  /** Close a selection's built-in "Claude Code" window. Only takes effect while
+   *  another window is open, so a selection never ends up with none; the built-in
+   *  window returns when the last extra one is closed. */
+  closePrimaryWindow: (selectionKey: string) => void;
   /** Add/remove a selection compositeKey to/from the board grid. Pinning also
    *  mounts the selection so its pane exists to render. */
   toggleBoard: (key: string) => void;
@@ -312,7 +349,7 @@ interface AppStore {
   /** Persist a board tile's resized dimensions. */
   setBoardSize: (key: string, w: number, h: number) => void;
   /** Set the board layout mode. */
-  setBoardLayout: (layout: 'free' | 'tile') => void;
+  setBoardLayout: (layout: BoardLayout) => void;
   /** Set the tile-layout column count (0 = auto). */
   setBoardColumns: (columns: number) => void;
   /** Rename a Claude window (empty string reverts to the default label). */
@@ -350,6 +387,7 @@ export const useStore = create<AppStore>((set) => ({
   agents: [],
   openAgentsByKey: RESTORED_WINDOWS.open,
   activeAgentByKey: RESTORED_WINDOWS.active,
+  primaryClosed: RESTORED_WINDOWS.primaryClosed,
   sidebarView: 'projects',
   board: loadBoard(),
   boardSizes: loadBoardSizes(),
@@ -644,9 +682,40 @@ export const useStore = create<AppStore>((set) => ({
         ? s.board.filter((k) => k !== sessionKey)
         : s.board;
       if (board !== s.board) saveBoard(board);
+      // A selection always keeps at least one window: when the last extra one
+      // goes, a closed built-in Claude window comes back.
+      let primaryClosed = s.primaryClosed;
+      if (!open.length && primaryClosed[selectionKey]) {
+        const { [selectionKey]: _reopened, ...rest } = primaryClosed;
+        primaryClosed = rest;
+      }
       return {
         openAgentsByKey: { ...s.openAgentsByKey, [selectionKey]: open },
         activeAgentByKey: { ...s.activeAgentByKey, [selectionKey]: nextActive },
+        primaryClosed,
+        board,
+      };
+    }),
+  closePrimaryWindow: (selectionKey) =>
+    set((s) => {
+      const open = s.openAgentsByKey[selectionKey] ?? [];
+      // Refuse to leave the selection with no window at all.
+      if (!open.length || s.primaryClosed[selectionKey]) return {};
+      const { projectId, worktreeId } = parseCompositeKey(selectionKey);
+      void window.api.pty.close({ projectId, worktreeId });
+      if (s.tabs[selectionKey]?.needsAttention) window.api.notify.attentionClear(selectionKey);
+      // Closing a window also unpins it from the board.
+      const board = s.board.includes(selectionKey)
+        ? s.board.filter((k) => k !== selectionKey)
+        : s.board;
+      if (board !== s.board) saveBoard(board);
+      const { [selectionKey]: _gone, ...tabs } = s.tabs;
+      return {
+        primaryClosed: { ...s.primaryClosed, [selectionKey]: true as const },
+        // Hand the content area to a window that still exists.
+        activeAgentByKey: { ...s.activeAgentByKey, [selectionKey]: open[0] },
+        activeDocByKey: { ...s.activeDocByKey, [selectionKey]: null },
+        tabs,
         board,
       };
     }),
@@ -666,11 +735,21 @@ export const useStore = create<AppStore>((set) => ({
       // Pinning must mount the window's selection so its pane exists to render.
       const selKey = selectionOf(key);
       const mountedKeys = s.mountedKeys.includes(selKey) ? s.mountedKeys : [...s.mountedKeys, selKey];
-      return { board, mountedKeys };
+      // Pinning the built-in window of a selection whose built-in window is
+      // closed reopens it — otherwise the pin would render nothing.
+      let primaryClosed = s.primaryClosed;
+      if (key === selKey && board.includes(key) && primaryClosed[key]) {
+        const { [key]: _reopened, ...rest } = primaryClosed;
+        primaryClosed = rest;
+      }
+      return { board, mountedKeys, primaryClosed };
     }),
   reorderBoard: (fromKey, toKey) =>
     set((s) => {
-      if (fromKey === toKey) return {};
+      // Reordering only moves a tile that is already pinned. A drop coming from
+      // outside the app carries arbitrary text in `text/plain`, which must not
+      // turn into a board entry.
+      if (fromKey === toKey || !s.board.includes(fromKey)) return {};
       const arr = s.board.filter((k) => k !== fromKey);
       const idx = arr.indexOf(toKey);
       if (idx < 0) arr.push(fromKey);
@@ -728,9 +807,10 @@ export const useStore = create<AppStore>((set) => ({
 useStore.subscribe((s, prev) => {
   if (
     s.openAgentsByKey !== prev.openAgentsByKey ||
-    s.activeAgentByKey !== prev.activeAgentByKey
+    s.activeAgentByKey !== prev.activeAgentByKey ||
+    s.primaryClosed !== prev.primaryClosed
   ) {
-    saveWindows(s.openAgentsByKey, s.activeAgentByKey);
+    saveWindows(s.openAgentsByKey, s.activeAgentByKey, s.primaryClosed);
   }
 });
 

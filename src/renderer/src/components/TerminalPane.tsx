@@ -98,11 +98,11 @@ export function TerminalPane({ project, worktree, active, agentId, agentLabel }:
     term.open(host);
     termRef.current = term;
     fitRef.current = fit;
-    const detachClipboard = attachTerminalClipboard(term, host);
-
-    // Cmd/Ctrl+F opens the fuzzy find bar instead of reaching the PTY.
-    term.attachCustomKeyEventHandler((e) => {
-      if (e.type === 'keydown' && (e.metaKey || e.ctrlKey) && e.key === 'f') {
+    // Cmd/Ctrl+F opens the fuzzy find bar instead of reaching the PTY. It goes
+    // through the clipboard helper because xterm holds a single custom key
+    // handler: registering a second one here replaced the copy/paste bindings.
+    const detachClipboard = attachTerminalClipboard(term, host, (e) => {
+      if (e.type === 'keydown' && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'f') {
         openSearch();
         return false;
       }
