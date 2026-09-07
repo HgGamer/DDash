@@ -11,9 +11,19 @@ import type { Terminal } from 'xterm';
  * - Ctrl+Shift+C / Ctrl+Shift+V: explicit copy / paste.
  * - Right-click: copy when there's a selection, otherwise paste.
  *
+ * xterm keeps only ONE custom key handler — a second `attachCustomKeyEventHandler`
+ * call silently replaces this one and kills copy/paste — so a terminal that needs
+ * its own shortcuts passes them in as `onKeyDown` rather than registering them.
+ *
  * Returns a disposer that removes the listeners.
  */
-export function attachTerminalClipboard(term: Terminal, host: HTMLElement): () => void {
+export function attachTerminalClipboard(
+  term: Terminal,
+  host: HTMLElement,
+  /** This terminal's own key handling, consulted before the clipboard bindings.
+   *  Return false to consume the event, true to let it continue. */
+  onKeyDown?: (e: KeyboardEvent) => boolean,
+): () => void {
   const isMac = navigator.platform.toLowerCase().includes('mac');
 
   const copySelection = (): boolean => {
@@ -40,6 +50,7 @@ export function attachTerminalClipboard(term: Terminal, host: HTMLElement): () =
 
   // attachCustomKeyEventHandler returns false to stop xterm handling the event.
   term.attachCustomKeyEventHandler((e: KeyboardEvent): boolean => {
+    if (onKeyDown && !onKeyDown(e)) return false;
     if (e.type !== 'keydown') return true;
     const mod = isMac ? e.metaKey : e.ctrlKey;
     if (!mod) return true;
