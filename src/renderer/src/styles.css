@@ -211,6 +211,24 @@ html.is-mac .workspace {
   min-width: 0;
   min-height: 0;
 }
+/* Main layout: the first window gets a full-height column, the rest stack in
+ * the column next to it — one big portrait pane plus a split of the others.
+ * Auto-placement handles the stack: the main cell occupies every row of the
+ * first column, so the remaining tiles flow down the second one. */
+.workspace-terminals.board-main {
+  display: grid;
+  grid-template-columns: var(--board-main-cols, 1fr 1fr);
+  grid-template-rows: repeat(var(--board-rows, 1), 1fr);
+  overflow: hidden;
+}
+.board-main .board-cell {
+  min-width: 0;
+  min-height: 0;
+}
+.board-main .board-cell-main {
+  grid-column: 1;
+  grid-row: 1 / -1;
+}
 .board-cell-head {
   flex: 0 0 auto;
   display: flex;
@@ -267,6 +285,32 @@ html.is-mac .workspace {
 }
 .board-cell-unpin:hover {
   color: var(--color-danger);
+}
+.board-cell-edit {
+  flex: 0 0 auto;
+  background: none;
+  border: none;
+  color: var(--color-fg-subtle);
+  cursor: pointer;
+  padding: 2px 4px;
+  line-height: 1;
+  font-size: 11px;
+}
+.board-cell-edit:hover {
+  color: var(--color-accent);
+}
+.board-cell-rename {
+  flex: 1;
+  min-width: 0;
+  margin: 2px 4px;
+  padding: 2px 4px;
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-fg);
+  font: inherit;
+  font-size: 11px;
+  outline: none;
 }
 .board-toolbar {
   display: flex;
