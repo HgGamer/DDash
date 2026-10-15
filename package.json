@@ -1,6 +1,6 @@
 {
   "name": "dash",
-  "version": "0.9.4",
+  "version": "0.9.6",
   "description": "Cross-platform desktop app for running Claude Code across multiple projects in tabs.",
   "main": "./.stage/main/index.js",
   "author": {
@@ -18,6 +18,9 @@
     "dist:win": "electron-vite build && electron-builder --win",
     "dist:linux": "electron-vite build && electron-builder --linux",
     "dist:publish": "electron-vite build && electron-builder --publish always",
+    "dist:publish:mac": "electron-vite build && electron-builder --mac --publish always",
+    "dist:publish:win": "electron-vite build && electron-builder --win --publish always",
+    "dist:publish:linux": "electron-vite build && electron-builder --linux --publish always",
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json",
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
