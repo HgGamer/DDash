@@ -14,7 +14,6 @@ import { SettingsManager } from './settings';
 import { attachWindowStatePersistence } from './window-state';
 import { createAutoUpdater, type AutoUpdater } from './auto-updater';
 import { registerAutoUpdateIpc } from './auto-update-ipc';
-import { RemoteServer } from './remote-server';
 import { WebServer } from './web-server';
 import { ClaudeHooks } from './claude-hooks';
 import { ModModal } from './mod-modal';
@@ -144,9 +143,6 @@ app.whenReady().then(async () => {
   await registry.refreshGitMeta();
   const settings = new SettingsManager(store);
 
-  const remoteServer = new RemoteServer({ registry, ptyManager, compositeKey });
-  remoteServer.start(7779);
-
   const webServer = new WebServer({
     registry,
     ptyManager,
@@ -204,7 +200,6 @@ app.whenReady().then(async () => {
   registerIpc({
     store, registry, ptyManager, shellManager, settings,
     getWindow: () => mainWindow,
-    remoteFeed: (k, d) => remoteServer.feed(k, d),
     webFeed: (k, d) => webServer.feed(k, d),
   });
   registerGitIpc({ registry, getWindow: () => mainWindow });

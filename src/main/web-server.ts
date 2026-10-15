@@ -43,7 +43,6 @@ import type { TerminalStyleOptions } from '@shared/types';
 import { runGit, runWriteGit } from './git-runner';
 import { parsePorcelainV2, STATUS_ARGS } from './git-parsers';
 import { APP_HTML, LOGIN_HTML } from './web-ui';
-import { LEGACY_APP_HTML } from './web-ui-legacy';
 
 const WS_GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
 const COOKIE_NAME = 'dash_web';
@@ -191,7 +190,7 @@ export class WebServer {
 
     if (req.method === 'GET' && (path === '/' || path === '/index.html')) {
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-      res.end(this.renderApp(req, query));
+      res.end(this.renderApp());
       return;
     }
     if (path.startsWith('/api/')) {
@@ -667,22 +666,11 @@ export class WebServer {
   }
 
   /**
-   * Pick the UI variant. Old WebKit browsers (BlackBerry 10's stock browser,
-   * older BlackBerry / PlayBook devices) can't run the modern app (ES6,
-   * fetch, CSS custom properties, xterm.js), so they get a self-contained
-   * ES5 page instead. `?ui=legacy` / `?ui=modern` force either variant.
+   * Serve the web app shell.
    */
-  private renderApp(req: http.IncomingMessage, query: URLSearchParams): string {
-    const override = query.get('ui');
-    if (override === 'legacy') return LEGACY_APP_HTML;
-    if (override === 'modern') return APP_HTML;
-    return isLegacyBrowser(req.headers['user-agent']) ? LEGACY_APP_HTML : APP_HTML;
+  private renderApp(): string {
+    return APP_HTML;
   }
-}
-
-/** Browsers that need the ES5 legacy UI (pre-ES6 WebKit). */
-function isLegacyBrowser(ua: string | undefined): boolean {
-  return !!ua && /BB10|BlackBerry|PlayBook/i.test(ua);
 }
 
 // ── WebSocket frame parser ────────────────────────────────────────────
