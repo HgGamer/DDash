@@ -11,3 +11,4 @@ release/
 *.tsbuildinfo
 .env
 .env.local
+scripts/release.env
