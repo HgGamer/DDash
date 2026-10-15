@@ -44,17 +44,29 @@ mac:
     NSLocalNetworkUsageDescription: Dash needs local network access to reach machines on your network, such as over SSH.
 
 win:
-  # NSIS, not portable: electron-updater can only auto-update an installed app.
+  # NSIS auto-updates (electron-updater needs an installed app); portable is an
+  # extra download. Each target's artifactName lives in its own block below.
   target:
     - target: nsis
       arch:
         - x64
-  artifactName: ${productName}-${version}-win-${arch}-setup.${ext}
+    - target: portable
+      arch:
+        - x64
 
+# Installed app: per-user install (no admin prompt), with Start-menu and
+# desktop shortcuts. Artifact names are per-target so both builds stay apart.
 nsis:
   oneClick: false
+  perMachine: false
   allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
   shortcutName: Dash
+  artifactName: ${productName}-${version}-win-${arch}-setup.${ext}
+
+portable:
+  artifactName: ${productName}-${version}-win-${arch}-portable.${ext}
 
 linux:
   # AppImage is the only Linux format electron-updater can auto-update; the

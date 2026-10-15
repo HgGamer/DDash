@@ -63,6 +63,19 @@ function confirmDiscardIfUnsaved(parent?: BrowserWindow): boolean {
   return false;
 }
 
+/** Board pins, window names and tile sizes live in the renderer's localStorage,
+ *  which Chromium commits to disk on a delay — so a change made seconds before
+ *  quitting is otherwise dropped. Ask the storage service to write it now. */
+function flushRendererStorage(): void {
+  for (const win of BrowserWindow.getAllWindows()) {
+    try {
+      win.webContents.session.flushStorageData();
+    } catch {
+      // best-effort
+    }
+  }
+}
+
 async function createWindow(): Promise<void> {
   const state = store.get();
   const isMac = process.platform === 'darwin';
@@ -235,6 +248,8 @@ app.on('before-quit', (event) => {
   event.preventDefault();
   void (async () => {
     try {
+      // Before anything tears the renderer down, while its session is alive.
+      flushRendererStorage();
       await ptyManager.killAll();
       shellManager.killAll();
       claudeTray?.destroy();
@@ -256,6 +271,12 @@ app.on('before-quit', (event) => {
     } else {
       autoUpdater?.shutdown();
     }
-    app.exit(0);
+    // Quit through Electron's normal shutdown path — the `cleanShutdownStarted`
+    // guard makes the second `before-quit` a no-op — so Chromium closes the
+    // storage service and commits localStorage. `app.exit()` skips all of that,
+    // which silently dropped board pins and window names. Keep it as a fallback
+    // in case the graceful quit is blocked by a hung renderer.
+    setTimeout(() => app.exit(0), 3000);
+    app.quit();
   })();
 });

@@ -600,6 +600,21 @@ function BoardPanel() {
           <input
             type="radio"
             name="board-layout"
+            checked={layout === 'main'}
+            onChange={() => setBoardLayout('main')}
+          />
+          <div>
+            <div className="preset-label">Main + stack</div>
+            <div className="preset-desc">
+              The first window fills a full-height column; the rest split the column beside it.
+              Drag a tile to the front to make it the main one.
+            </div>
+          </div>
+        </label>
+        <label className="preset-row">
+          <input
+            type="radio"
+            name="board-layout"
             checked={layout === 'free'}
             onChange={() => setBoardLayout('free')}
           />
