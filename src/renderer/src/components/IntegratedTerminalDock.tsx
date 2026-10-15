@@ -10,6 +10,7 @@ import {
 } from '@shared/types';
 import { compositeKey } from '@shared/ipc';
 import { useStore } from '../store';
+import { ModViewBody, useBottomModViews } from './ModModal';
 import { effectiveTerminalOptions } from '../lib/theme';
 import { attachTerminalClipboard } from '../lib/terminal-clipboard';
 
@@ -20,6 +21,13 @@ interface Props {
 }
 
 export function IntegratedTerminalDock({ active, height, workspaceHeight }: Props) {
+  // Mods' 'bottom' views are tabs here too, after the shells; a new one comes to the front.
+  const { views: modViews, added: modAdded } = useBottomModViews();
+  const [modTab, setModTab] = useState<string | null>(null);
+  useEffect(() => {
+    if (modAdded) setModTab(modAdded);
+  }, [modAdded]);
+  const modView = modViews.find((v) => v.id === modTab) ?? null;
   const selectionKey = compositeKey(active.projectId, active.worktreeId);
   const entry = useStore((s) => s.shellTabs[selectionKey]);
   const tabs = entry?.tabs ?? [];
@@ -128,7 +136,14 @@ export function IntegratedTerminalDock({ active, height, workspaceHeight }: Prop
       <TabStrip
         tabs={tabs}
         activeTabId={activeTabId}
-        onSelect={(id) => setActiveShellTab(selectionKey, id)}
+        onSelect={(id) => {
+          setModTab(null);
+          setActiveShellTab(selectionKey, id);
+        }}
+        modTabs={modViews.map((v) => ({ id: v.id, label: v.title }))}
+        activeModTab={modView?.id ?? null}
+        onSelectMod={setModTab}
+        onCloseMod={(id) => window.api.mod.press(id, '__close')}
         onClose={(id) => void closeTab(id)}
         onRename={(id, label) => {
           renameShellTab(selectionKey, id, label);
@@ -141,10 +156,11 @@ export function IntegratedTerminalDock({ active, height, workspaceHeight }: Prop
           <ShellTerminalView
             key={tab.tabId}
             tab={tab}
-            active={tab.tabId === activeTabId}
+            active={!modView && tab.tabId === activeTabId}
             selectionKey={selectionKey}
           />
         ))}
+        {modView && <ModViewBody key={modView.id} view={modView} className="mod-bottom-body" />}
         {tabs.length === 0 && (
           <div className="integrated-terminal-empty fg-muted">Starting shell…</div>
         )}
@@ -160,6 +176,11 @@ interface TabStripProps {
   onClose: (id: string) => void;
   onRename: (id: string, label: string) => void;
   onNew: (shell?: string) => void;
+  /** Mods' bottom views, drawn as tabs after the shells. */
+  modTabs: Array<{ id: string; label: string }>;
+  activeModTab: string | null;
+  onSelectMod: (id: string) => void;
+  onCloseMod: (id: string) => void;
 }
 
 // Common Windows shells offered when opening a new integrated-terminal tab.
@@ -236,7 +257,7 @@ function NewTabButton({ onNew }: { onNew: (shell?: string) => void }) {
   );
 }
 
-function TabStrip({ tabs, activeTabId, onSelect, onClose, onRename, onNew }: TabStripProps) {
+function TabStrip({ tabs, activeTabId, onSelect, onClose, onRename, onNew, modTabs, activeModTab, onSelectMod, onCloseMod }: TabStripProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftLabel, setDraftLabel] = useState('');
 
@@ -249,7 +270,7 @@ function TabStrip({ tabs, activeTabId, onSelect, onClose, onRename, onNew }: Tab
   return (
     <div className="it-tab-strip">
       {tabs.map((t) => {
-        const isActive = t.tabId === activeTabId;
+        const isActive = !activeModTab && t.tabId === activeTabId;
         const isEditing = editingId === t.tabId;
         const exited = t.exitCode !== null;
         return (
@@ -293,6 +314,21 @@ function TabStrip({ tabs, activeTabId, onSelect, onClose, onRename, onNew }: Tab
           </div>
         );
       })}
+      {modTabs.map((m) => (
+        <div key={m.id} className={`it-tab it-tab-mod${m.id === activeModTab ? ' active' : ''}`} onClick={() => onSelectMod(m.id)} title="From a Claude Code mod">
+          <span className="it-tab-label">{m.label}</span>
+          <button
+            className="it-tab-close"
+            title="Close"
+            onClick={(e) => {
+              e.stopPropagation();
+              onCloseMod(m.id);
+            }}
+          >
+            ×
+          </button>
+        </div>
+      ))}
       <NewTabButton onNew={onNew} />
     </div>
   );

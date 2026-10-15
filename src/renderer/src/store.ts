@@ -255,6 +255,8 @@ interface AppStore {
   restoreSession: boolean;
   /** Whether the command palette (Cmd/Ctrl+K) is open. */
   paletteOpen: boolean;
+  /** Whether the right-hand Claude panel (hooks, plugins) is open. */
+  claudePanelOpen: boolean;
 
   setProjects: (projects: Project[]) => void;
   setFolders: (folders: ProjectFolder[]) => void;
@@ -322,6 +324,7 @@ interface AppStore {
   closeSettings: () => void;
   setRestoreSession: (on: boolean) => void;
   setPaletteOpen: (open: boolean) => void;
+  toggleClaudePanel: () => void;
 }
 
 export const useStore = create<AppStore>((set) => ({
@@ -362,6 +365,7 @@ export const useStore = create<AppStore>((set) => ({
   settingsModalTab: 'terminal',
   restoreSession: loadRestoreSession(),
   paletteOpen: false,
+  claudePanelOpen: false,
 
   setProjects: (projects) => set({ projects, loaded: true }),
   setFolders: (folders) => set({ folders }),
@@ -722,6 +726,7 @@ export const useStore = create<AppStore>((set) => ({
     set({ restoreSession: on });
   },
   setPaletteOpen: (open) => set({ paletteOpen: open }),
+  toggleClaudePanel: () => set((s) => ({ claudePanelOpen: !s.claudePanelOpen })),
 }));
 
 // Persist extra Claude windows whenever they change, so they survive reloads.

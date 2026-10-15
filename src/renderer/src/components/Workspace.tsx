@@ -12,6 +12,7 @@ import { TerminalPane } from './TerminalPane';
 import { FileView } from './MarkdownViewer';
 import { IntegratedTerminalDock, useWorkspaceHeight } from './IntegratedTerminalDock';
 import { useShellTabs } from '../hooks/useShellTabs';
+import { ModBottomPanel } from './ModModal';
 
 interface Props {
   activeId: ActiveSelection | null;
@@ -286,12 +287,14 @@ export function Workspace({ activeId }: Props) {
             </div>
           )}
         </div>
-        {showIntegratedTerminal && activeId && (
+        {showIntegratedTerminal && activeId ? (
           <IntegratedTerminalDock
             active={activeId}
             height={integratedTerminal.height}
             workspaceHeight={workspaceHeight}
           />
+        ) : (
+          <ModBottomPanel /> /* mods' bottom views are tabs in the dock; on their own while it's closed */
         )}
       </div>
     </main>

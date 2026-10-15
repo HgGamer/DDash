@@ -1766,3 +1766,216 @@ html.is-mac .ws-header a {
   background: var(--color-accent-soft);
   color: var(--color-fg);
 }
+
+/* Floating modal drawn for a Claude Code mod (ModModal.tsx): no backdrop, draggable. */
+.mod-modal {
+  position: fixed;
+  top: 64px;
+  right: var(--space-5);
+  z-index: 190;
+  width: min(480px, 90vw);
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--glass-popover);
+  -webkit-backdrop-filter: var(--glass-blur-strong);
+  backdrop-filter: var(--glass-blur-strong);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-pop);
+}
+.mod-modal-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+  cursor: grab;
+  user-select: none;
+}
+.mod-modal-title {
+  flex: 1;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mod-modal-body {
+  overflow: auto;
+  padding: var(--space-3) var(--space-4) var(--space-4);
+}
+.mod-modal-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+/* Right-hand Claude panel (ClaudePanel.tsx): hooks per settings scope, plugins & mods. */
+.claude-panel {
+  flex: 0 0 auto;
+  width: 340px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--glass-chrome);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border-left: 1px solid var(--color-border);
+}
+.claude-panel-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-2);
+  border-bottom: 1px solid var(--color-border);
+}
+.claude-panel-head .claude-tabs {
+  flex: 1;
+}
+.claude-panel-body {
+  flex: 1;
+  overflow: auto;
+  padding: var(--space-3);
+}
+.claude-tabs {
+  display: flex;
+  gap: var(--space-1);
+}
+.claude-tabs button {
+  font: inherit;
+  font-size: var(--text-sm);
+  color: var(--color-fg-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-2);
+  cursor: pointer;
+}
+.claude-tabs button.on {
+  color: var(--color-fg);
+  background: var(--color-accent-soft);
+  border-color: var(--color-border-strong);
+}
+.claude-tabs button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.claude-scopes {
+  margin-bottom: var(--space-2);
+}
+.claude-count {
+  color: var(--color-fg-subtle);
+}
+.claude-path {
+  font-size: var(--text-xs);
+  color: var(--color-fg-subtle);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-bottom: var(--space-2);
+}
+.claude-warn {
+  font-size: var(--text-sm);
+  color: var(--color-warn);
+  background: var(--color-warn-soft);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+.claude-event h4 {
+  margin: var(--space-3) 0 var(--space-1);
+  font-size: var(--text-sm);
+  color: var(--color-fg-muted);
+}
+.claude-hook {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2);
+  margin-bottom: var(--space-2);
+  background: var(--color-surface);
+}
+.claude-hook-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  font-size: var(--text-sm);
+}
+.claude-spacer {
+  flex: 1;
+}
+.claude-chip {
+  font-size: var(--text-xs);
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-sm);
+  background: var(--color-accent-soft);
+  color: var(--color-fg);
+}
+.claude-dim {
+  font-size: var(--text-xs);
+  color: var(--color-fg-subtle);
+}
+.claude-desc {
+  font-size: var(--text-sm);
+  color: var(--color-fg-muted);
+  margin: var(--space-1) 0;
+}
+.claude-cmd {
+  display: block;
+  margin-top: var(--space-1);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--color-fg-muted);
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 6.5em;
+  overflow: auto;
+}
+.claude-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-top: var(--space-3);
+}
+.claude-form label {
+  font-size: var(--text-sm);
+  color: var(--color-fg-muted);
+  margin-top: var(--space-1);
+}
+.claude-cmd-input {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  resize: vertical;
+}
+.claude-add {
+  margin-top: var(--space-2);
+}
+.mod-view-tabs {
+  margin-bottom: var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: var(--space-2);
+}
+
+/* Mods' bottom views: tabs in the shell dock (IntegratedTerminalDock); this is the
+   standalone strip ModBottomPanel draws while the dock is closed. */
+.mod-bottom-panel {
+  flex: 0 0 auto;
+  height: 240px;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-surface);
+  border-top: 1px solid var(--color-border);
+}
+.mod-bottom-body {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-surface);
+}
+.mod-bottom-panel .mod-bottom-body {
+  position: static;
+  flex: 1;
+  min-height: 0;
+}

@@ -91,6 +91,8 @@ export class PtySession {
     // ponytail: also throttles a *legitimately* blocking Stop hook to 2 retries;
     // raise/remove if a real hook workflow needs more.
     if (!env.CLAUDE_CODE_STOP_HOOK_BLOCK_CAP) env.CLAUDE_CODE_STOP_HOOK_BLOCK_CAP = '2';
+    // Tells Claude Code mods they can draw a floating modal here (main/mod-modal.ts).
+    env.DASH_MOD_MODAL = '1';
 
     const isWin = process.platform === 'win32';
     // Windows-only shell override (e.g. PowerShell). When set, Claude Code and

@@ -4,8 +4,8 @@
 // template literal.
 //
 // Screens: Projects (registry + live sessions), Workspace (terminal + files),
-// Git (status / stage / diff / commit), Settings. Navy + yellow visual
-// language matching the Dash marketing design.
+// Git (status / stage / diff / commit), Settings. Near-black + indigo palette
+// mirroring the desktop app's design tokens (accent #5e6ad2).
 
 export const LOGIN_HTML = `<!doctype html>
 <html lang="en">
@@ -17,48 +17,48 @@ export const LOGIN_HTML = `<!doctype html>
   /* Literal-value declarations come before every var()/grid/min() use so the
      page stays usable on legacy WebKit (BlackBerry 10) that ignores them. */
   :root { color-scheme: dark;
-    --bg:#0a0e1c; --surface:#121829; --border:#222b47; --fg:#e9edf7;
-    --muted:#97a0bc; --yellow:#ffd60a; --yellow-fg:#171200; --red:#ff6b6b; }
+    --bg:#0b0b0c; --surface:#131316; --border:#26262c; --fg:#e9e9ee;
+    --muted:#9a9aa3; --accent:#5e6ad2; --accent-fg:#ffffff; --red:#e06c6c; }
   html, body { height: 100%; margin: 0; }
   body {
-    background: #0a0e1c; background: var(--bg);
-    color: #e9edf7; color: var(--fg);
+    background: #0b0b0c; background: var(--bg);
+    color: #e9e9ee; color: var(--fg);
     font: 15px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     display: grid; place-items: center;
     padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
   }
   form {
-    background: #121829; background: var(--surface);
-    border: 1px solid #222b47; border: 1px solid var(--border); border-radius: 16px;
+    background: #131316; background: var(--surface);
+    border: 1px solid #26262c; border: 1px solid var(--border); border-radius: 16px;
     padding: 28px; box-sizing: border-box;
     margin: 48px auto; /* horizontal centering fallback; grid recenters it */
     width: 90%; max-width: 360px; width: min(360px, 90vw);
   }
   .logo {
     width: 44px; height: 44px; border-radius: 10px;
-    background: #ffd60a; background: var(--yellow);
-    color: #171200; color: var(--yellow-fg);
+    background: #5e6ad2; background: var(--accent);
+    color: #ffffff; color: var(--accent-fg);
     text-align: center; line-height: 44px;
     display: grid; place-items: center;
     font: 800 22px ui-monospace, Menlo, monospace; letter-spacing: -1px;
     margin-bottom: 16px;
   }
   h1 { margin: 0 0 4px; font-size: 20px; font-weight: 700; }
-  p.sub { margin: 0 0 16px; color: #97a0bc; color: var(--muted); font-size: 13px; }
-  p.err { color: #ff6b6b; color: var(--red); margin: 0 0 12px; font-size: 13px; min-height: 1em; }
+  p.sub { margin: 0 0 16px; color: #9a9aa3; color: var(--muted); font-size: 13px; }
+  p.err { color: #e06c6c; color: var(--red); margin: 0 0 12px; font-size: 13px; min-height: 1em; }
   input[type=password] {
     width: 100%; box-sizing: border-box;
     padding: 12px 14px; font-size: 16px;
-    background: #0a0e1c; background: var(--bg);
-    color: #e9edf7; color: var(--fg);
-    border: 1px solid #222b47; border: 1px solid var(--border); border-radius: 10px;
+    background: #0b0b0c; background: var(--bg);
+    color: #e9e9ee; color: var(--fg);
+    border: 1px solid #26262c; border: 1px solid var(--border); border-radius: 10px;
     outline: none;
   }
-  input[type=password]:focus { border-color: #ffd60a; border-color: var(--yellow); }
+  input[type=password]:focus { border-color: #5e6ad2; border-color: var(--accent); }
   button {
     margin-top: 14px; width: 100%; padding: 13px;
-    background: #ffd60a; background: var(--yellow);
-    color: #171200; color: var(--yellow-fg); border: 0; border-radius: 10px;
+    background: #5e6ad2; background: var(--accent);
+    color: #ffffff; color: var(--accent-fg); border: 0; border-radius: 10px;
     font-size: 16px; font-weight: 700;
   }
 </style>
@@ -84,11 +84,11 @@ export const APP_HTML = `<!doctype html>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css">
 <style>
   :root { color-scheme: dark;
-    --bg:#0a0e1c; --surface:#121829; --surface2:#1a2238;
-    --border:#222b47; --border2:#2e3a5c;
-    --fg:#e9edf7; --muted:#97a0bc; --subtle:#5d678a;
-    --yellow:#ffd60a; --yellow-fg:#171200;
-    --green:#3ddc84; --red:#ff6b6b; --orange:#ffb02e; --blue:#7aa2ff;
+    --bg:#0b0b0c; --surface:#131316; --surface2:#1e1e24;
+    --border:#26262c; --border2:#34343c;
+    --fg:#e9e9ee; --muted:#9a9aa3; --subtle:#6e6e78;
+    --accent:#5e6ad2; --accent-fg:#ffffff;
+    --green:#5fb88a; --red:#e06c6c; --orange:#d9a55b; --blue:#7aa2ff;
   }
   * { -webkit-tap-highlight-color: transparent; }
   html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
@@ -108,7 +108,7 @@ export const APP_HTML = `<!doctype html>
   .ph { display: flex; align-items: center; gap: 10px; padding: 12px 16px 8px;
     padding-top: calc(12px + env(safe-area-inset-top)); }
   .ph .logo { width: 30px; height: 30px; border-radius: 8px; flex: 0 0 auto;
-    background: var(--yellow); color: var(--yellow-fg);
+    background: var(--accent); color: var(--accent-fg);
     display: grid; place-items: center;
     font: 800 15px ui-monospace, Menlo, monospace; letter-spacing: -1px; }
   .ph-title { flex: 1; font-size: 19px; font-weight: 700;
@@ -136,7 +136,7 @@ export const APP_HTML = `<!doctype html>
   .card:active { background: var(--surface2); }
   .card-top { display: flex; align-items: center; gap: 10px; }
   .ficon { width: 32px; height: 32px; border-radius: 8px; flex: 0 0 auto;
-    background: rgba(255,214,10,0.12); color: var(--yellow);
+    background: rgba(255,214,10,0.12); color: var(--accent);
     display: grid; place-items: center; }
   .ficon svg { width: 16px; height: 16px; }
   .card-name { flex: 1; min-width: 0; font-weight: 600; font-size: 15px;
@@ -194,7 +194,7 @@ export const APP_HTML = `<!doctype html>
     border-bottom: 1px solid var(--border); font-size: 14px; width: 100%; text-align: left; }
   .frow:active { background: var(--surface); }
   .frow svg { width: 15px; height: 15px; flex: 0 0 auto; color: var(--muted); }
-  .frow.dir svg { color: var(--yellow); }
+  .frow.dir svg { color: var(--accent); }
   .frow .n { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .frow .sz { color: var(--subtle); font-size: 11.5px; flex: 0 0 auto; }
   .fileview { flex: 1; min-height: 0; overflow: auto; -webkit-overflow-scrolling: touch;
@@ -257,9 +257,9 @@ export const APP_HTML = `<!doctype html>
   .commitbox input { width: 100%; box-sizing: border-box; padding: 11px 13px; font-size: 14px;
     background: var(--surface); color: var(--fg); border: 1px solid var(--border);
     border-radius: 10px; outline: none; }
-  .commitbox input:focus { border-color: var(--yellow); }
+  .commitbox input:focus { border-color: var(--accent); }
   .btn-primary { display: flex; align-items: center; justify-content: center; gap: 7px;
-    padding: 12px; border-radius: 11px; background: var(--yellow); color: var(--yellow-fg);
+    padding: 12px; border-radius: 11px; background: var(--accent); color: var(--accent-fg);
     font-size: 15px; font-weight: 700; }
   .btn-primary:disabled { opacity: 0.4; }
   .btn-primary svg { width: 15px; height: 15px; }
@@ -281,7 +281,7 @@ export const APP_HTML = `<!doctype html>
   nav button { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px;
     padding: 8px 0 6px; color: var(--subtle); font-size: 10.5px; font-weight: 600; }
   nav button svg { width: 20px; height: 20px; }
-  nav button.on { color: var(--yellow); }
+  nav button.on { color: var(--accent); }
   nav button.on .navico { background: rgba(255,214,10,0.12); }
   nav .navico { width: 38px; height: 26px; border-radius: 8px; display: grid; place-items: center; }
 
@@ -518,10 +518,29 @@ export const APP_HTML = `<!doctype html>
     show('workspace');
   }
 
+  // Fuzzy match like the desktop: space-separated terms, order-independent,
+  // each a subsequence of the text. (No ranking — filter only.)
+  function fuzzyMatch(q, text) {
+    if (!q) return true;
+    const t = text.toLowerCase();
+    const terms = q.split(' ');
+    for (let i = 0; i < terms.length; i++) {
+      const term = terms[i];
+      if (!term) continue;
+      let ti = 0;
+      for (let c = 0; c < term.length; c++) {
+        ti = t.indexOf(term.charAt(c), ti);
+        if (ti < 0) return false;
+        ti++;
+      }
+    }
+    return true;
+  }
+
   function renderProjects() {
     const list = $('projList');
     list.textContent = '';
-    const items = state.projects.filter((p) => !state.filter || p.name.toLowerCase().includes(state.filter));
+    const items = state.projects.filter((p) => fuzzyMatch(state.filter, p.name));
     if (items.length === 0) {
       list.appendChild(el('div', 'empty', state.projects.length === 0
         ? 'No projects yet. Add one in the desktop app.'

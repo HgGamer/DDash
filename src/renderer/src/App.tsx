@@ -4,6 +4,8 @@ import { Sidebar } from './components/Sidebar';
 import { Workspace } from './components/Workspace';
 import { GitClient } from './components/GitClient';
 import { SettingsModal } from './components/SettingsModal';
+import { ModModal, ModSidePanel } from './components/ModModal';
+import { ClaudePanel } from './components/ClaudePanel';
 import { CommandPalette } from './components/CommandPalette';
 import { NewWorktreeModal } from './components/NewWorktreeModal';
 import { StatusBar } from './components/StatusBar';
@@ -36,6 +38,7 @@ export function App() {
     closeSettings,
     settingsModalOpen,
     sidebarOpen,
+    claudePanelOpen,
     sidebarView,
     newWorktreeProjectId,
     openNewWorktree,
@@ -394,10 +397,13 @@ export function App() {
           {sidebarOpen && sidebarView === 'git' && (
             <GitClient active={activeId} isWorktreeTab={!!activeId?.worktreeId} />
           )}
+          {claudePanelOpen && <ClaudePanel active={activeId} />}
+          <ModSidePanel />
         </div>
       </div>
       <StatusBar />
       <ToastHost />
+      <ModModal />
       {settingsModalOpen && <SettingsModal onClose={closeSettings} />}
       {paletteOpen && (
         <CommandPalette onClose={() => setPaletteOpen(false)} onActivate={activate} />
