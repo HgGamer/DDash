@@ -1773,8 +1773,8 @@ html.is-mac .ws-header a {
   top: 64px;
   right: var(--space-5);
   z-index: 190;
-  width: min(480px, 90vw);
-  max-height: 70vh;
+  width: min(520px, 90vw);
+  max-height: 72vh;
   display: flex;
   flex-direction: column;
   background: var(--glass-popover);
@@ -1809,6 +1809,82 @@ html.is-mac .ws-header a {
   flex-wrap: wrap;
   gap: var(--space-2);
   margin-top: var(--space-3);
+}
+
+/* Mod list rows (buttons with row: true): a mail-style list, label over a muted detail. */
+.mod-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0 calc(-1 * var(--space-2));
+}
+.mod-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-2);
+  text-align: left;
+  font: inherit;
+  color: var(--color-fg);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: background 120ms var(--ease-out);
+}
+.mod-row:hover,
+.mod-row:focus-visible {
+  background: var(--color-accent-soft);
+  outline: none;
+}
+.mod-row-dot {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  margin-top: 6px;
+  border-radius: 50%;
+}
+.mod-row-dot.on {
+  background: var(--color-accent);
+}
+.mod-row-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 2px;
+}
+.mod-row-label {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mod-row-detail {
+  font-size: var(--text-sm);
+  color: var(--color-fg-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Markdown in mod views: compact, a reading column rather than a document. */
+.mod-modal-body .markdown-body,
+.claude-panel-body .markdown-body,
+.mod-bottom-body .markdown-body {
+  font-size: var(--text-md);
+  line-height: var(--leading-lg);
+}
+.mod-modal-body .markdown-body > :first-child,
+.claude-panel-body .markdown-body > :first-child,
+.mod-bottom-body .markdown-body > :first-child {
+  margin-top: 0;
+}
+.mod-modal-body .markdown-body hr,
+.claude-panel-body .markdown-body hr,
+.mod-bottom-body .markdown-body hr {
+  border: 0;
+  border-top: 1px solid var(--color-border);
+  margin: var(--space-3) 0;
 }
 
 /* Right-hand Claude panel (ClaudePanel.tsx): hooks per settings scope, plugins & mods. */
@@ -1978,4 +2054,12 @@ html.is-mac .ws-header a {
   position: static;
   flex: 1;
   min-height: 0;
+}
+
+/* A mod's own HTML (ModHtmlFrame): sandboxed iframe sized to its content by the bridge. */
+.mod-html {
+  display: block;
+  width: 100%;
+  border: 0;
+  background: transparent;
 }

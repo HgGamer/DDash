@@ -28,6 +28,67 @@ export function ModSidePanel(): JSX.Element | null {
 /** A view's content: its tab strip (switched here, the mod isn't asked), the
  *  shown tab's (or the view's) markdown, and its buttons, pressed back to the mod. */
 export function ModViewBody({ view, className }: { view: ModModalView; className: string }): JSX.Element {
+  if (view.html) return <ModHtmlFrame view={view} className={className} />;
+  return <ModMarkdownBody view={view} className={className} />;
+}
+
+/** dash's theme as CSS custom properties (every --var on :root), resolved now. */
+function themeVars(): string {
+  const names = new Set<string>();
+  for (const sheet of Array.from(document.styleSheets)) {
+    let rules: CSSRuleList;
+    try {
+      rules = sheet.cssRules;
+    } catch {
+      continue;
+    }
+    for (const r of Array.from(rules)) {
+      const st = (r as CSSStyleRule).style;
+      if (st) for (let i = 0; i < st.length; i++) if (st[i]!.startsWith('--')) names.add(st[i]!);
+    }
+  }
+  const cs = getComputedStyle(document.documentElement);
+  return [...names].map((n) => `${n}:${cs.getPropertyValue(n)};`).join('');
+}
+
+/** A mod's own HTML, sandboxed with no scripts at all (dash's CSP is inherited by
+ *  srcdoc frames, and the sandbox has no allow-scripts): dash listens from outside —
+ *  a click on a [data-key] element presses that key, and the frame takes its
+ *  content's height. allow-same-origin only lets dash reach the frame's DOM. */
+function ModHtmlFrame({ view, className }: { view: ModModalView; className: string }): JSX.Element {
+  const ref = useRef<HTMLIFrameElement>(null);
+  const [height, setHeight] = useState(120);
+  const doc = useMemo(() => {
+    const md = view.markdown ? `<div class="markdown-body">${renderMarkdown(view.markdown, { projectRoot: '' })}</div>` : '';
+    return `<!doctype html><html><head><meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:">
+<style>:root{${themeVars()}color-scheme:dark light}
+html,body{margin:0;background:transparent;color:var(--color-fg);font:var(--text-md)/1.5 system-ui,-apple-system,sans-serif}
+a{color:var(--color-accent)} button{font:inherit;color:inherit}
+code,pre{font-family:var(--font-mono);font-size:var(--text-sm)}</style></head>
+<body>${view.html!.replace('<!--markdown-->', md)}</body></html>`;
+  }, [view.html, view.markdown]);
+  const wire = (): void => {
+    const d = ref.current?.contentDocument;
+    if (!d) return;
+    d.addEventListener('click', (e) => {
+      const t = e.target as Element | null;
+      if (t?.closest('a')) e.preventDefault(); // links never navigate the frame
+      const el = t?.closest('[data-key]');
+      if (el) window.api.mod.press(view.id, el.getAttribute('data-key') ?? '');
+    });
+    const fit = (): void => setHeight(Math.min(4000, Math.max(40, d.documentElement.scrollHeight)));
+    new ResizeObserver(fit).observe(d.documentElement);
+    fit();
+  };
+  return (
+    <div className={className}>
+      <iframe ref={ref} className="mod-html" title={view.title} sandbox="allow-same-origin" srcDoc={doc} onLoad={wire} style={{ height }} />
+    </div>
+  );
+}
+
+function ModMarkdownBody({ view, className }: { view: ModModalView; className: string }): JSX.Element {
   const [tabKey, setTabKey] = useState<string | null>(null);
   const tab = view.tabs?.find((t) => t.key === tabKey) ?? view.tabs?.[0];
   const markdown = tab ? tab.markdown : view.markdown;
@@ -45,9 +106,22 @@ export function ModViewBody({ view, className }: { view: ModModalView; className
         </div>
       )}
       {markdown && <div className="markdown-body" dangerouslySetInnerHTML={{ __html: html }} />}
-      {buttons.length > 0 && (
+      {buttons.some((b) => b.row) && (
+        <div className="mod-rows">
+          {buttons.filter((b) => b.row).map((b) => (
+            <button key={b.key} className="mod-row" onClick={() => window.api.mod.press(view.id, b.key)}>
+              <span className={`mod-row-dot${b.dot ? ' on' : ''}`} aria-hidden="true" />
+              <span className="mod-row-text">
+                <span className="mod-row-label">{b.label}</span>
+                {b.detail && <span className="mod-row-detail">{b.detail}</span>}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+      {buttons.some((b) => !b.row) && (
         <div className="mod-modal-buttons">
-          {buttons.map((b) => (
+          {buttons.filter((b) => !b.row).map((b) => (
             <button key={b.key} className={b.primary ? 'btn-primary' : 'btn-ghost'} onClick={() => window.api.mod.press(view.id, b.key)}>
               {b.label}
             </button>
