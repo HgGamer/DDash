@@ -2093,3 +2093,14 @@ html.is-mac .ws-header a {
   border: 0;
   background: transparent;
 }
+
+/* Several mods in the right-hand panel: their views as tabs in its header (ModSidePanel). */
+.mod-side-tabs {
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.mod-side-tabs button {
+  white-space: nowrap;
+}
