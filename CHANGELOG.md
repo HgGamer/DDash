@@ -5,6 +5,13 @@ All notable changes to Dash are documented here.
 ## Unreleased
 
 ### Added
+- **A mod can acknowledge the press it received** (`GET /mod/wait?id=…&ack=<key>`).
+  A press was written into the mod’s open long poll and forgotten, which lost it
+  if that poll’s client was gone while its socket still looked writable. A mod
+  that names the previous poll’s key back gets an unacknowledged key handed out
+  again, ahead of later presses; one that never sends `ack` keeps the previous
+  behaviour. Delivery is therefore at-least-once, so mod keys should be
+  idempotent. The channel is documented in `docs/mod-channel.md`.
 - **Mods can offer a prompt for a console you pick.** A Claude Code mod in a
   dash terminal posts `POST /mod/send-offer { id, title, text }`; dash shows the
   text with every open Claude / agent console (the active one preselected), and
