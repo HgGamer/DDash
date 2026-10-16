@@ -48,6 +48,16 @@ describe('ModModal', () => {
     expect((sent[0]![1] as { html?: string }).html).toBe('<b data-key="x">hi</b>');
   });
 
+  it('a new show drops presses queued for the view before it', async () => {
+    mod.press('stale', '__close'); // ✕ while no mod was polling
+    const view = { id: 'stale', title: 'T', markdown: '', buttons: [] };
+    await fetch(`${base}/mod/show`, { method: 'POST', body: JSON.stringify(view) });
+    const wait = fetch(`${base}/mod/wait?id=stale`);
+    await new Promise((r) => setTimeout(r, 20));
+    mod.press('stale', 'fresh');
+    expect(await (await wait).json()).toEqual({ key: 'fresh' });
+  });
+
   it('rejects a view without an id', async () => {
     expect((await fetch(`${base}/mod/show`, { method: 'POST', body: '{}' })).status).toBe(400);
   });
