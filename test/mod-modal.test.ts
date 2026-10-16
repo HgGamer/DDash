@@ -77,6 +77,33 @@ describe('ModModal', () => {
     expect(await (await fetch(`${base}/mod/wait?id=live`)).json()).toEqual({ key: 'open:1' });
   });
 
+  it('hands out a key again when the mod does not acknowledge it', async () => {
+    // The mod opts in by sending ack at all; its first poll has nothing to ack.
+    mod.press('ackv', 'open:7');
+    expect(await (await fetch(`${base}/mod/wait?id=ackv&ack=`)).json()).toEqual({ key: 'open:7' });
+    // Its next poll acknowledges nothing: as far as dash knows that key never
+    // arrived (the poll could have died with it), so it is owed again.
+    expect(await (await fetch(`${base}/mod/wait?id=ackv&ack=`)).json()).toEqual({ key: 'open:7' });
+    // Acknowledged this time, and a press made meanwhile comes next, in order.
+    mod.press('ackv', 'back');
+    expect(await (await fetch(`${base}/mod/wait?id=ackv&ack=open:7`)).json()).toEqual({ key: 'back' });
+  });
+
+  it('redelivers an unacknowledged key before later presses', async () => {
+    mod.press('ordv', 'first');
+    expect(await (await fetch(`${base}/mod/wait?id=ordv&ack=`)).json()).toEqual({ key: 'first' });
+    mod.press('ordv', 'second'); // pressed after 'first' was handed out
+    expect(await (await fetch(`${base}/mod/wait?id=ordv&ack=`)).json()).toEqual({ key: 'first' });
+    expect(await (await fetch(`${base}/mod/wait?id=ordv&ack=first`)).json()).toEqual({ key: 'second' });
+  });
+
+  it('never redelivers to a mod that does not use ack', async () => {
+    mod.press('plain', 'open:1');
+    expect(await (await fetch(`${base}/mod/wait?id=plain`)).json()).toEqual({ key: 'open:1' });
+    mod.press('plain', 'back');
+    expect(await (await fetch(`${base}/mod/wait?id=plain`)).json()).toEqual({ key: 'back' });
+  });
+
   it('rejects a view without an id', async () => {
     expect((await fetch(`${base}/mod/show`, { method: 'POST', body: '{}' })).status).toBe(400);
   });
