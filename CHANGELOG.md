@@ -50,6 +50,13 @@ All notable changes to Dash are documented here.
   (which have no visible border) are unchanged. In a mod’s own HTML view every
   `[data-key]` element — not only `<button>` — starts from the same filled chip,
   which the mod’s CSS may override.
+- **A mod view no longer swallows or replays the wrong button press.** A press
+  made while the mod was not polling is queued, but the queue outlived the view:
+  reopening a view under the same id handed the mod the previous view’s press
+  first, typically its dismissal, so the reopened window closed itself again. A
+  show that only redraws a live view now keeps its queued presses (a mail mod
+  refreshing its list no longer drops the button just pressed), `/mod/close`
+  clears them, and a press counts as delivered only when the poll could take it.
 - **Board “Main + stack” layout now fills the workspace at any window count.**
   It was locked to two columns, so a fourth window went into a 1 + 3 split.
   Columns are now sized from the window count (2 → halves, 3 → main column plus a
