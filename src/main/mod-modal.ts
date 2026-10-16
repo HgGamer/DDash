@@ -9,9 +9,21 @@ import type { ModModalView, ModSendOffer } from '../shared/ipc';
 //                                     'bottom' adds it as a tab beside the shell dock;
 //                                     tabs: [{ key, label, markdown, buttons }])
 //   POST /mod/close  { id }           hide it
-//   GET  /mod/wait?id=<id>            long-poll: { key } of the next button
+//   GET  /mod/wait?id=<id>[&ack=<key>]
+//                                     long-poll: { key } of the next button
 //                                     pressed ('__close' = dismissed), 204 after
-//                                     WAIT_MS with nothing
+//                                     WAIT_MS with nothing. A press made while
+//                                     no poll is open is queued (10 per view)
+//                                     and handed to the next one; closing the
+//                                     view clears that queue.
+//                                     `ack` is optional and makes delivery
+//                                     reliable: send back the key the previous
+//                                     poll returned (empty when it returned
+//                                     nothing), and a key the mod never
+//                                     acknowledged is handed out again. Sending
+//                                     it once marks the view as acknowledging;
+//                                     a mod that never sends it keeps today's
+//                                     fire-and-forget delivery.
 //   POST /mod/send-offer { id, title, text }
 //                                     offer a prompt for a console the user picks
 //                                     in dash; nothing is typed until they press
@@ -35,6 +47,13 @@ const cleanButtons = (bs: unknown): ModModalView['buttons'] =>
 export class ModModal {
   private readonly waiters = new Map<string, http.ServerResponse>();
   private readonly queued = new Map<string, string[]>();
+  /** Views currently on screen, so a /mod/show that replaces a view's contents
+   *  is told apart from one that opens it again after it was closed. */
+  private readonly shown = new Set<string>();
+  /** Views whose mod sends `ack`, and the key each was last handed that it has
+   *  not acknowledged yet. */
+  private readonly acking = new Set<string>();
+  private readonly unacked = new Map<string, string>();
 
   constructor(
     private readonly send: (channel: 'show' | 'close' | 'offer', payload: ModModalView | ModSendOffer | string) => void,
@@ -47,8 +66,19 @@ export class ModModal {
 
     if (req.method === 'GET' && url.pathname === '/mod/wait') {
       const id = url.searchParams.get('id') ?? '';
+      if (url.searchParams.has('ack')) {
+        // The mod speaks ack from now on. Whatever it did not acknowledge it
+        // never got (its poll died with the key already written into it), so
+        // that key goes back to the front of the queue — before the presses
+        // made after it.
+        this.acking.add(id);
+        const owed = this.unacked.get(id);
+        this.unacked.delete(id);
+        if (owed !== undefined && owed !== url.searchParams.get('ack')) this.queue(id, owed, true);
+      }
       const next = this.queued.get(id)?.shift();
       if (next !== undefined) {
+        if (this.acking.has(id)) this.unacked.set(id, next);
         res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ key: next }));
         return true;
       }
@@ -84,9 +114,15 @@ export class ModModal {
         return;
       }
       if (url.pathname === '/mod/show') {
-        // presses still queued belong to the view shown before (e.g. its ✕ while the mod was reloading):
-        // replaying them on the new one closed it right after it opened
-        this.queued.delete(p.id);
+        // Presses still queued belong to the view shown before (e.g. its ✕ while
+        // the mod was reloading): replaying them on the new one closed it right
+        // after it opened. A show for a view that is already up only replaces its
+        // contents, so a press waiting for the mod there is still that view's own.
+        if (!this.shown.has(p.id)) {
+          this.queued.delete(p.id);
+          this.unacked.delete(p.id);
+        }
+        this.shown.add(p.id);
         this.send('show', {
           id: p.id,
           title: String(p.title ?? ''),
@@ -105,8 +141,12 @@ export class ModModal {
               }
             : {}),
         });
-      } else if (url.pathname === '/mod/close') this.send('close', p.id);
-      else if (url.pathname === '/mod/send-offer') {
+      } else if (url.pathname === '/mod/close') {
+        this.queued.delete(p.id); // same, for the mod closing the view itself
+        this.unacked.delete(p.id);
+        this.shown.delete(p.id);
+        this.send('close', p.id);
+      } else if (url.pathname === '/mod/send-offer') {
         const text = (p as { text?: unknown }).text;
         if (typeof text !== 'string' || !text.trim() || text.length > MAX_OFFER_TEXT) {
           res.writeHead(400).end();
@@ -123,21 +163,46 @@ export class ModModal {
     return true;
   }
 
-  /** A button press (or '__close') from the renderer, handed to the mod's poll. */
+  /** A button press (or '__close') from the renderer, handed to the mod's poll,
+   *  or queued for the next one when that poll can no longer take it. */
   press(id: string, key: string): void {
+    if (key === '__close') this.shown.delete(id); // dismissed in dash, not by the mod
     const w = this.waiters.get(id);
-    if (w) this.release(id, w, key);
-    else {
-      const q = this.queued.get(id) ?? [];
-      q.push(key);
-      this.queued.set(id, q.slice(-10));
-    }
+    if (w && this.release(id, w, key)) return;
+    this.queue(id, key);
   }
 
-  private release(id: string, res: http.ServerResponse, key: string | null): void {
+  private queue(id: string, key: string, front = false): void {
+    const q = this.queued.get(id) ?? [];
+    if (front) q.unshift(key);
+    else q.push(key);
+    this.queued.set(id, front ? q.slice(0, 10) : q.slice(-10));
+  }
+
+  /** Hands `key` to a poll; false when the poll could not take it, so the press
+   *  goes back in the queue for the next one. A poll whose socket died (the
+   *  machine slept, the session was killed, the network dropped) may not have
+   *  fired 'close' yet, and writing the key into it would lose the press. */
+  private release(id: string, res: http.ServerResponse, key: string | null): boolean {
     if (this.waiters.get(id) === res) this.waiters.delete(id);
-    if (res.writableEnded) return;
-    if (key === null) res.writeHead(204).end();
-    else res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ key }));
+    if (res.writableEnded || res.destroyed || res.socket?.writable === false) return key === null;
+    try {
+      if (key === null) {
+        res.writeHead(204).end();
+        return true;
+      }
+      // The poll can also die between its last byte and this write, and the
+      // socket only errors once the write is attempted: hand the press back
+      // then (writableFinished tells a failed write from a later, harmless
+      // error on an already-flushed response) instead of losing it.
+      res.once('error', () => {
+        if (!res.writableFinished) this.press(id, key);
+      });
+      res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ key }));
+      if (this.acking.has(id)) this.unacked.set(id, key);
+      return true;
+    } catch {
+      return false;
+    }
   }
 }

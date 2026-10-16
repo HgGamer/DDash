@@ -99,8 +99,10 @@ html.is-mac #root {
 button {
   font: inherit;
   color: inherit;
-  background: transparent;
-  border: 1px solid var(--color-border);
+  /* Filled, not just outlined: a transparent fill behind a hairline border made
+     these read as empty rectangles on the surface they sit on. */
+  background: var(--color-control);
+  border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-md);
   padding: 5px 10px;
   cursor: pointer;
@@ -108,7 +110,7 @@ button {
     border-color var(--motion-fast) var(--ease-out);
 }
 button:hover {
-  background: var(--color-surface-2);
+  background: var(--color-control-hover);
 }
 
 .app {
@@ -1121,9 +1123,13 @@ html.is-mac .workspace {
   display: block;
   width: 100%;
   text-align: left;
+  background: transparent;
   border: none;
   border-radius: 0;
   padding: 6px 12px;
+}
+.context-menu button:hover {
+  background: var(--color-surface-2);
 }
 .context-menu button.danger {
   color: var(--color-danger);
