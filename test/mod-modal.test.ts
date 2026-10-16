@@ -51,4 +51,19 @@ describe('ModModal', () => {
   it('rejects a view without an id', async () => {
     expect((await fetch(`${base}/mod/show`, { method: 'POST', body: '{}' })).status).toBe(400);
   });
+
+  it('hands a send offer to the renderer and nothing else', async () => {
+    sent.length = 0;
+    const offer = { id: 'mail', title: 'Reply to #28', text: 'Draft a reply…\n\nline 2' };
+    expect((await fetch(`${base}/mod/send-offer`, { method: 'POST', body: JSON.stringify(offer) })).status).toBe(204);
+    expect(sent).toEqual([['offer', offer]]);
+  });
+
+  it('rejects a send offer without text', async () => {
+    sent.length = 0;
+    for (const body of [{ id: 'mail' }, { id: 'mail', text: '  ' }, { id: 'mail', text: 7 }, { text: 'hi' }]) {
+      expect((await fetch(`${base}/mod/send-offer`, { method: 'POST', body: JSON.stringify(body) })).status).toBe(400);
+    }
+    expect(sent).toEqual([]);
+  });
 });

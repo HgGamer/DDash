@@ -5,6 +5,14 @@ All notable changes to Dash are documented here.
 ## Unreleased
 
 ### Added
+- **Mods can offer a prompt for a console you pick.** A Claude Code mod in a
+  dash terminal posts `POST /mod/send-offer { id, title, text }`; dash shows the
+  text with every open Claude / agent console (the active one preselected), and
+  only on **Send** pastes it into the chosen one and presses Enter. A mod can
+  only propose, so no program can type into a console on its own. The text goes
+  in as one bracketed paste with control characters dropped, so a multi-line
+  prompt lands whole and cannot press keys. The mod hears `__sent` or
+  `__cancel` on its `/mod/wait`. (The mail mod's "Reply in…" uses it.)
 - **Linear-inspired visual refresh.** A new design-token layer (`styles/tokens.css`)
   drives colors, typography, spacing, radii, motion, and focus rings across the
   whole renderer. The project sidebar gains monogram avatars, worktree/attention

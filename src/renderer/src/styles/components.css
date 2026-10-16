@@ -1811,6 +1811,34 @@ html.is-mac .ws-header a {
   margin-top: var(--space-3);
 }
 
+/* A mod's offered prompt and the consoles to send it to (ModSendDialog.tsx):
+   centred above any mod panel, since it waits for the user's pick. */
+.mod-send-dialog {
+  left: 50%;
+  right: auto;
+  transform: translateX(-50%);
+  z-index: 200;
+}
+.mod-send-dialog .mod-modal-head {
+  cursor: default;
+}
+.mod-send-preview {
+  max-height: 24vh;
+  overflow: auto;
+  margin: 0 0 var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--color-fg-muted);
+  background: var(--color-surface-2);
+  border-radius: var(--radius-sm);
+}
+.mod-send-empty {
+  color: var(--color-fg-muted);
+}
+
 /* Mod list rows (buttons with row: true): a mail-style list, label over a muted detail. */
 .mod-rows {
   display: flex;
