@@ -1,5 +1,5 @@
 import { useStore } from '../store';
-import { ProjectsIcon, FilesIcon, GitIcon, BoardIcon, SettingsIcon } from './icons';
+import { ProjectsIcon, FilesIcon, GitIcon, BoardIcon, SettingsIcon, HooksIcon } from './icons';
 
 /**
  * VS Code-style activity bar: a narrow icon rail that selects which view the
@@ -11,6 +11,8 @@ export function ActivityBar() {
   const select = useStore((s) => s.selectSidebarView);
   const gitEnabled = useStore((s) => s.gitView.enabled);
   const openSettings = useStore((s) => s.openSettings);
+  const claudeOpen = useStore((s) => s.claudePanelOpen);
+  const toggleClaude = useStore((s) => s.toggleClaudePanel);
 
   const item = (
     v: 'projects' | 'files' | 'git' | 'board',
@@ -38,6 +40,16 @@ export function ActivityBar() {
         {item('board', 'Board', BoardIcon)}
       </div>
       <div className="act-group">
+        <button
+          type="button"
+          className={`act-item ${claudeOpen ? 'active' : ''}`}
+          title="Claude hooks & plugins"
+          aria-label="Claude hooks and plugins"
+          aria-pressed={claudeOpen}
+          onClick={toggleClaude}
+        >
+          <HooksIcon />
+        </button>
         <button
           type="button"
           className="act-item"

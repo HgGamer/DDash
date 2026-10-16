@@ -12,6 +12,8 @@ import { TerminalPane } from './TerminalPane';
 import { FileView } from './MarkdownViewer';
 import { IntegratedTerminalDock, useWorkspaceHeight } from './IntegratedTerminalDock';
 import { useShellTabs } from '../hooks/useShellTabs';
+import { ModBottomPanel } from './ModModal';
+import { mainPlacements, tileSpans } from '../lib/board-layout';
 
 interface Props {
   activeId: ActiveSelection | null;
@@ -134,23 +136,42 @@ export function Workspace({ activeId }: Props) {
   // Only 'free' tiles carry a persisted size and a resize handle; the other two
   // layouts divide the workspace between them.
   const freeMode = boardMode && boardLayout === 'free';
-  const pinnedCount = boardMode ? panes.filter((p) => board.includes(p.sessionKey)).length : 0;
+  // Pinned keys in board order; DOM order also holds the hidden, unpinned panes,
+  // so grid placement is computed from this list and applied per cell.
+  const pinnedKeys = boardMode
+    ? orderedPanes.filter((p) => board.includes(p.sessionKey)).map((p) => p.sessionKey)
+    : [];
+  const pinnedCount = pinnedKeys.length;
   const tileCols = boardColumns > 0 ? boardColumns : Math.max(1, Math.ceil(Math.sqrt(pinnedCount)));
-  // 'main' layout: the first pinned window (in board order) takes a full-height
-  // column, the rest stack in the column beside it. The main cell needs an
-  // explicit class — DOM order here also holds the hidden, unpinned panes, so
-  // `:first-child` would pick the wrong one.
-  const mainKey = mainMode
-    ? orderedPanes.find((p) => board.includes(p.sessionKey))?.sessionKey ?? null
-    : null;
+  // 'main' layout: columns sized so the board is always filled edge to edge —
+  // the first window keeps the roomiest column (full height while it is alone
+  // in it), and the rest divide the remaining columns evenly.
+  const mainGrid = mainMode ? mainPlacements(pinnedCount) : null;
+  const mainCells = new Map<string, React.CSSProperties>();
+  if (mainGrid) {
+    pinnedKeys.forEach((key, i) => {
+      const cell = mainGrid.cells[i];
+      if (cell)
+        mainCells.set(key, {
+          gridColumn: String(cell.col),
+          gridRow: `${cell.row} / span ${cell.span}`,
+        });
+    });
+  }
+  // 'tile' layout: a part-filled last row stretches instead of leaving a gap.
+  const tileCellSpans = tileMode ? tileSpans(pinnedCount, tileCols) : [];
+  const tileCellStyles = new Map<string, React.CSSProperties>();
+  pinnedKeys.forEach((key, i) => {
+    const span = tileCellSpans[i] ?? 1;
+    if (span > 1) tileCellStyles.set(key, { gridColumn: `span ${span}` });
+  });
+  const mainKey = mainMode ? pinnedKeys[0] ?? null : null;
   const boardGridStyle: React.CSSProperties | undefined = tileMode
     ? ({ ['--board-cols' as string]: tileCols } as React.CSSProperties)
-    : mainMode
+    : mainGrid
       ? ({
-          // One row per stacked window, and no second column when the main
-          // window is the only one pinned.
-          ['--board-rows' as string]: Math.max(1, pinnedCount - 1),
-          ['--board-main-cols' as string]: pinnedCount > 1 ? '1fr 1fr' : '1fr',
+          ['--board-cols' as string]: Math.max(1, Math.ceil(Math.sqrt(pinnedCount))),
+          ['--board-rows' as string]: mainGrid.rows,
         } as React.CSSProperties)
       : undefined;
   const layoutClass = tileMode ? 'board-tile' : mainMode ? 'board-main' : 'board-free';
@@ -208,6 +229,7 @@ export function Workspace({ activeId }: Props) {
                 ? {
                     display: 'flex',
                     flexDirection: 'column',
+                    ...(mainCells.get(sessionKey) ?? tileCellStyles.get(sessionKey) ?? {}),
                     ...(freeMode && size ? { width: size.w, height: size.h } : {}),
                   }
                 : { display: 'none' }
@@ -292,12 +314,14 @@ export function Workspace({ activeId }: Props) {
             </div>
           )}
         </div>
-        {showIntegratedTerminal && activeId && (
+        {showIntegratedTerminal && activeId ? (
           <IntegratedTerminalDock
             active={activeId}
             height={integratedTerminal.height}
             workspaceHeight={workspaceHeight}
           />
+        ) : (
+          <ModBottomPanel /> /* mods' bottom views are tabs in the dock; on their own while it's closed */
         )}
       </div>
     </main>

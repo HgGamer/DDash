@@ -7,15 +7,16 @@ import { registerIpc } from './ipc';
 import { registerGitIpc } from './git-ipc';
 import { registerShellIpc } from './shell-ipc';
 import { registerDocsIpc } from './docs-ipc';
+import { registerClaudeConfigIpc } from './claude-config-ipc';
 import { ShellSessionManager } from './shell-session';
 import { installAppMenu } from './menu';
 import { SettingsManager } from './settings';
 import { attachWindowStatePersistence } from './window-state';
 import { createAutoUpdater, type AutoUpdater } from './auto-updater';
 import { registerAutoUpdateIpc } from './auto-update-ipc';
-import { RemoteServer } from './remote-server';
 import { WebServer } from './web-server';
 import { ClaudeHooks } from './claude-hooks';
+import { ModModal } from './mod-modal';
 import { ClaudeTray } from './tray';
 import { compositeKey, IPC } from '../shared/ipc';
 import { resolveTerminalStyleOptions, type WebAccessSettings } from '@shared/types';
@@ -155,9 +156,6 @@ app.whenReady().then(async () => {
   await registry.refreshGitMeta();
   const settings = new SettingsManager(store);
 
-  const remoteServer = new RemoteServer({ registry, ptyManager, compositeKey });
-  remoteServer.start(7779);
-
   const webServer = new WebServer({
     registry,
     ptyManager,
@@ -185,8 +183,18 @@ app.whenReady().then(async () => {
   // its hook into ~/.claude/settings.json and forwards state to the renderer.
   claudeTray = new ClaudeTray(() => mainWindow);
   claudeTray.start();
+  const modModal = new ModModal((channel, payload) => {
+    const win = mainWindow;
+    if (!win || win.isDestroyed()) return;
+    win.webContents.send(channel === 'show' ? IPC.ModModalShow : IPC.ModModalClose, payload);
+  });
+  ipcMain.on(IPC.ModModalPress, (_e, a: { id: string; key: string }) => {
+    modModal.press(String(a?.id), String(a?.key));
+    if (a?.key === '__close') mainWindow?.webContents.send(IPC.ModModalClose, String(a.id));   // dismissed in dash: hide it now, the mod may be slow to hear
+  });
   claudeHooks = new ClaudeHooks({
     registry,
+    mod: modModal,
     onState: (ev) => {
       claudeTray?.update(compositeKey(ev.projectId, ev.worktreeId), ev.state);
       const win = mainWindow;
@@ -205,12 +213,12 @@ app.whenReady().then(async () => {
   registerIpc({
     store, registry, ptyManager, shellManager, settings,
     getWindow: () => mainWindow,
-    remoteFeed: (k, d) => remoteServer.feed(k, d),
     webFeed: (k, d) => webServer.feed(k, d),
   });
   registerGitIpc({ registry, getWindow: () => mainWindow });
   registerShellIpc({ registry, settings, shellManager, getWindow: () => mainWindow });
   registerDocsIpc({ registry });
+  registerClaudeConfigIpc({ registry });
   autoUpdater = createAutoUpdater({ settings, store, getWindow: () => mainWindow });
   registerAutoUpdateIpc({ updater: autoUpdater, settings, store, getWindow: () => mainWindow });
   installAppMenu(() => mainWindow, () => autoUpdater, settings);

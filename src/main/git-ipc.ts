@@ -109,22 +109,33 @@ export function registerGitIpc(args: {
     const r = resolveCwd(registry, ref);
     if (!r.ok) return { ok: false, reason: 'tab-missing' };
     const split = (out: string) => out.split('\0').filter((f) => f.length > 0);
-    // Pass 1: tracked + untracked-not-ignored. -z keeps paths with spaces/unicode intact.
-    const tracked = await runGit(r.cwd, ['ls-files', '--cached', '--others', '--exclude-standard', '-z']);
-    if (!tracked.ok) {
-      if (tracked.failure === 'git-missing') return { ok: false, reason: 'git-missing' };
-      return { ok: false, reason: 'not-a-repo' };
+
+    // List one repo. `prefix` is the repo's path relative to the project root,
+    // so files stay resolvable via docs.read (which is project-root scoped).
+    // Returns null when `cwd` isn't a git repo.
+    const listRepo = async (cwd: string, prefix: string): Promise<string[] | null> => {
+      // Pass 1: tracked + untracked-not-ignored. -z keeps spaces/unicode intact.
+      const tracked = await runGit(cwd, ['ls-files', '--cached', '--others', '--exclude-standard', '-z']);
+      if (!tracked.ok) return null;
+      // Pass 2: gitignored files too (e.g. .env), minus generated/dep dirs.
+      const ignored = await runGit(cwd, [
+        'ls-files', '--others', '--ignored', '--exclude-standard', '-z', '--', ...LS_FILES_EXCLUDES,
+      ]);
+      const rel = [...split(tracked.stdout), ...(ignored.ok ? split(ignored.stdout) : [])];
+      return prefix ? rel.map((f) => `${prefix}/${f}`) : rel;
+    };
+
+    let all = await listRepo(r.cwd, '');
+    if (all === null) {
+      // Not a repo itself — a multi-repo folder: aggregate its child repos.
+      const subs = await listSubRepos(r.cwd);
+      if (subs.length === 0) return { ok: false, reason: 'not-a-repo' };
+      const parts = await Promise.all(subs.map((s) => listRepo(s.path, s.name)));
+      all = parts.filter((p): p is string[] => p !== null).flat();
     }
-    // Pass 2: gitignored files too (e.g. .env), minus generated/dep dirs — those
-    // are the useful ignored files a fuzzy finder should still surface.
-    const ignored = await runGit(r.cwd, [
-      'ls-files', '--others', '--ignored', '--exclude-standard', '-z',
-      '--', ...LS_FILES_EXCLUDES,
-    ]);
     // ponytail: dir denylist is a heuristic; a project that ignores some other
     // huge dir will leak it — add it to LS_FILES_EXCLUDES if that ever bites.
-    const files = [...new Set([...split(tracked.stdout), ...(ignored.ok ? split(ignored.stdout) : [])])];
-    return { ok: true, files };
+    return { ok: true, files: [...new Set(all)] };
   });
 
   ipcMain.handle(IPC.GitIsRepo, async (_e, ref: GitTabRef): Promise<GitIsRepoResult> => {

@@ -299,7 +299,7 @@ export interface WebAccessSettings {
 }
 
 // Picked deliberately to avoid the usual dev-server suspects
-// (3000/4000/5000/5173/8000/8080/9000) and the DECK remote-server port (7779).
+// (3000/4000/5000/5173/8000/8080/9000).
 export const DEFAULT_WEB_ACCESS_PORT = 47821;
 
 export const DEFAULT_WEB_ACCESS_SETTINGS: WebAccessSettings = {

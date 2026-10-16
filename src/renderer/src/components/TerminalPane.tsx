@@ -50,6 +50,7 @@ export function TerminalPane({ project, worktree, active, agentId, agentLabel }:
   // list, so they live in state. `index` is 1-based (0 = no active match).
   const finderRef = useRef<((q: string) => FuzzyResult<SearchLine>[]) | null>(null);
   const matchesRef = useRef<SearchLine[]>([]);
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const curRef = useRef(0);
   const decoRef = useRef<{ marker: IMarker; deco: IDecoration | undefined } | null>(null);
   const spawnedRef = useRef(false);
@@ -94,7 +95,9 @@ export function TerminalPane({ project, worktree, active, agentId, agentLabel }:
     });
     const fit = new FitAddon();
     term.loadAddon(fit);
-    term.loadAddon(new WebLinksAddon());
+    // Open links in the system browser — the default handler uses window.open,
+    // which is inert in the Electron renderer.
+    term.loadAddon(new WebLinksAddon((_e, uri) => void window.api.docs.openExternal(uri)));
     term.open(host);
     termRef.current = term;
     fitRef.current = fit;
@@ -255,6 +258,7 @@ export function TerminalPane({ project, worktree, active, agentId, agentLabel }:
       disposeWriteParsed.dispose();
       clearHighlight();
       if (scanTimer) clearTimeout(scanTimer);
+      if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
       offPtyData();
       offPtyExit();
       offPtyErr();
@@ -381,8 +385,15 @@ export function TerminalPane({ project, worktree, active, agentId, agentLabel }:
       setSearch((s) => ({ ...s, index: 0 }));
     }
   };
+  // Debounced so fast typing keeps the input responsive — the fuzzy pass and
+  // its decoration churn only run once typing settles.
+  const scheduleFuzzy = () => {
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    searchDebounceRef.current = setTimeout(runFuzzy, 90);
+  };
 
   const closeSearch = () => {
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
     clearHighlight();
     matchesRef.current = [];
     setResults([]);
@@ -421,7 +432,7 @@ export function TerminalPane({ project, worktree, active, agentId, agentLabel }:
               placeholder="Fuzzy find"
               spellCheck={false}
               autoFocus
-              onChange={runFuzzy}
+              onChange={scheduleFuzzy}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' || e.key === 'ArrowDown') {
                   e.preventDefault();

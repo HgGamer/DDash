@@ -15,6 +15,15 @@ const base = {
   strokeLinejoin: 'round' as const,
 };
 
+export function HooksIcon() {
+  return (
+    <svg {...base} aria-hidden="true">
+      <path d="M12 3v9a4 4 0 1 1-4-4" />
+      <circle cx="12" cy="3" r="1" />
+    </svg>
+  );
+}
+
 export function ProjectsIcon() {
   return (
     <svg {...base} aria-hidden="true">

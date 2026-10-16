@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import type { ActiveSelection } from '@shared/types';
 import { compositeKey } from '@shared/ipc';
 import { useStore } from '../store';
@@ -49,6 +49,9 @@ export function CommandPalette({
   const openDoc = useStore((s) => s.openDoc);
   const [mode, setMode] = useState<Mode>('commands');
   const [query, setQuery] = useState('');
+  // Filtering + preview run off the deferred query so keystrokes stay snappy
+  // even over thousands of files; the input itself updates immediately.
+  const deferredQuery = useDeferredValue(query);
   const [index, setIndex] = useState(0);
   const [files, setFiles] = useState<FilesState>({ status: 'idle' });
   const [preview, setPreview] = useState<Preview | null>(null);
@@ -89,17 +92,17 @@ export function CommandPalette({
     [commands],
   );
   const filteredCommands = useMemo(() => {
-    const q = query.trim();
+    const q = deferredQuery.trim();
     return q ? cmdFinder(q).map((r) => r.item) : commands;
-  }, [commands, cmdFinder, query]);
+  }, [commands, cmdFinder, deferredQuery]);
 
   const fileList = files.status === 'ready' ? files.files : NO_FILES;
   const fileFinder = useMemo(() => fuzzyFinder(fileList, (f) => f), [fileList]);
   const filteredFiles = useMemo(() => {
-    const q = query.trim();
+    const q = deferredQuery.trim();
     const ranked = q ? fileFinder(q).map((r) => r.item) : fileList;
     return ranked.slice(0, MAX_ROWS);
-  }, [fileList, fileFinder, query]);
+  }, [fileList, fileFinder, deferredQuery]);
 
   const listLen = mode === 'commands' ? filteredCommands.length : filteredFiles.length;
   const currentFile = mode === 'files' ? filteredFiles[index] ?? null : null;

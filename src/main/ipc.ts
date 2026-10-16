@@ -70,10 +70,9 @@ export function registerIpc(args: {
   shellManager: ShellSessionManager;
   settings: SettingsManager;
   getWindow: () => BrowserWindow | null;
-  remoteFeed?: (key: string, data: string) => void;
   webFeed?: (key: string, data: string) => void;
 }): void {
-  const { store, registry, ptyManager, shellManager, settings, getWindow, remoteFeed, webFeed } = args;
+  const { store, registry, ptyManager, shellManager, settings, getWindow, webFeed } = args;
 
   // Composite keys whose primary Claude tab has already spawned this app run.
   // Resume (`--resume <id>`) fires only on the FIRST open per key, so switching
@@ -365,7 +364,6 @@ export function registerIpc(args: {
           data,
         };
         send(IPC.PtyData, ev);
-        remoteFeed?.(key, data);
         webFeed?.(key, data);
       },
       onExit: (exitCode, signal) => {

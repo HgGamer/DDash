@@ -21,7 +21,31 @@ extraResources:
   - from: build/icon.png
     to: icon.png
 
+mac:
+  category: public.app-category.developer-tools
+  # Developer ID signing + notarization. electron-builder auto-selects the
+  # "Developer ID Application" cert from the keychain; notarization reads Apple
+  # credentials from the environment (see Signing & publishing notes below).
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.inherit.plist
+  notarize: true
+  target:
+    # dmg to download, zip for the auto-updater (Squirrel.Mac updates from zip).
+    - target: dmg
+      arch: [arm64, x64]
+    - target: zip
+      arch: [arm64, x64]
+  # macOS 15+ denies LAN access silently unless the app declares why it wants
+  # it -- without this key there is no prompt and no entry in System Settings
+  # > Privacy & Security > Local Network, so ssh/ping to a LAN host just fails.
+  extendInfo:
+    NSLocalNetworkUsageDescription: Dash needs local network access to reach machines on your network, such as over SSH.
+
 win:
+  # NSIS auto-updates (electron-updater needs an installed app); portable is an
+  # extra download. Each target's artifactName lives in its own block below.
   target:
     - target: nsis
       arch:
@@ -43,6 +67,15 @@ nsis:
 
 portable:
   artifactName: ${productName}-${version}-win-${arch}-portable.${ext}
+
+linux:
+  # AppImage is the only Linux format electron-updater can auto-update; the
+  # app treats any non-AppImage install as system-managed (no self-update).
+  target:
+    - target: AppImage
+      arch:
+        - x64
+  category: Development
 
 publish:
   provider: github

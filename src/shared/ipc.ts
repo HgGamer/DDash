@@ -86,6 +86,15 @@ export const IPC = {
   // ~/.claude/settings.json — reliable "done" / "needs input" signals.
   ClaudeHookState: 'claude:hookState',
 
+  // Floating modal drawn for a Claude Code mod (main ↔ renderer), see main/mod-modal.ts
+  ModModalShow: 'mod:show',
+  ModModalClose: 'mod:close',
+  ModModalPress: 'mod:press',
+
+  // Claude panel: hooks in the settings scopes, installed plugins / mods (renderer → main)
+  ClaudeConfigRead: 'claudeConfig:read',
+  ClaudeHooksSave: 'claudeConfig:saveHooks',
+
   // Git view (renderer ↔ main)
   GitIsRepo: 'git:isRepo',
   GitListRepos: 'git:listRepos',
@@ -338,6 +347,67 @@ export interface ClaudeHookStateEvent {
   projectName: string;
   state: 'busy' | 'done' | 'input';
 }
+
+/** What a mod asks dash to draw: markdown and a row of buttons; a press goes
+ *  back to the mod by key. A second show with the same id replaces it. */
+export interface ModModalView {
+  id: string;
+  title: string;
+  markdown: string;
+  buttons: Array<{ key: string; label: string; primary?: boolean }>;
+  /** 'float' (default): a draggable card over the app; 'sidebar': docked on the right. */
+  placement?: 'float' | 'sidebar' | 'bottom';
+  /** Optional tabs, switched in dash; each replaces markdown / buttons while shown.
+   *  The first tab is shown first. */
+  tabs?: Array<{ key: string; label: string; markdown: string; buttons: ModModalView['buttons'] }>;
+}
+
+export type ClaudeHookScope = 'user' | 'project' | 'local';
+/** One hook command, flattened from settings.hooks[event][].hooks[]. `managed`:
+ *  dash's own notify hook, shown but never edited. */
+export interface ClaudeHookEntry {
+  event: string;
+  matcher: string;
+  type: string;
+  command: string;
+  timeout?: number;
+  managed: boolean;
+}
+export interface ClaudeScopeInfo {
+  scope: ClaudeHookScope;
+  path: string;
+  exists: boolean;
+  /** false: the file isn't valid JSON (read-only until fixed by hand). */
+  isValid: boolean;
+  hooks: ClaudeHookEntry[];
+}
+export interface ClaudePluginInfo {
+  id: string;
+  name: string;
+  kind: 'plugin' | 'dev-mod';
+  version: string;
+  path: string;
+  enabled: boolean;
+  description: string;
+  /** Classic hook events its hooks/hooks.json registers. */
+  events: string[];
+  /** A function-hooks mod (hooks.json `modules`). */
+  isMod: boolean;
+}
+export interface ClaudeConfigArgs {
+  projectId: string | null;
+  worktreeId?: string | null;
+}
+export interface ClaudeConfigResult {
+  scopes: ClaudeScopeInfo[];
+  plugins: ClaudePluginInfo[];
+}
+export interface ClaudeHooksSaveArgs extends ClaudeConfigArgs {
+  scope: ClaudeHookScope;
+  /** The scope's whole hook list after the edit. */
+  hooks: ClaudeHookEntry[];
+}
+export type ClaudeHooksSaveResult = { ok: true } | { ok: false; message: string };
 
 // Worktree IPC payloads
 export interface WorktreeCreateArgs {
@@ -805,6 +875,13 @@ export interface DashApi {
   };
   claude: {
     onHookState(handler: (ev: ClaudeHookStateEvent) => void): () => void;
+    readConfig(args: ClaudeConfigArgs): Promise<ClaudeConfigResult>;
+    saveHooks(args: ClaudeHooksSaveArgs): Promise<ClaudeHooksSaveResult>;
+  };
+  mod: {
+    onShow(handler: (view: ModModalView) => void): () => void;
+    onClose(handler: (id: string) => void): () => void;
+    press(id: string, key: string): void;
   };
   git: {
     isRepo(args: GitTabRef): Promise<GitIsRepoResult>;

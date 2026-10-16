@@ -43,6 +43,9 @@ import {
   type PtyWriteArgs,
   type NotifyAttentionArgs,
   type ClaudeHookStateEvent,
+  type ModModalView,
+  type ClaudeConfigArgs,
+  type ClaudeHooksSaveArgs,
   type ShellDataEvent,
   type ShellExitEvent,
   type ShellListArgs,
@@ -208,6 +211,13 @@ const api: DashApi = {
   },
   claude: {
     onHookState: (h) => subscribe<ClaudeHookStateEvent>(IPC.ClaudeHookState, h),
+    readConfig: (args: ClaudeConfigArgs) => ipcRenderer.invoke(IPC.ClaudeConfigRead, args),
+    saveHooks: (args: ClaudeHooksSaveArgs) => ipcRenderer.invoke(IPC.ClaudeHooksSave, args),
+  },
+  mod: {
+    onShow: (h) => subscribe<ModModalView>(IPC.ModModalShow, h),
+    onClose: (h) => subscribe<string>(IPC.ModModalClose, h),
+    press: (id: string, key: string) => ipcRenderer.send(IPC.ModModalPress, { id, key }),
   },
   docs: {
     list: (args: DocsListArgs) => ipcRenderer.invoke(IPC.DocsList, args),
