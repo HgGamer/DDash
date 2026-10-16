@@ -354,7 +354,9 @@ export interface ModModalView {
   id: string;
   title: string;
   markdown: string;
-  buttons: Array<{ key: string; label: string; primary?: boolean }>;
+  /** row: a full-width list item (label bold, detail muted under it, dot = an
+   *  unread-style marker), drawn above the plain action buttons. */
+  buttons: Array<{ key: string; label: string; primary?: boolean; row?: boolean; detail?: string; dot?: boolean }>;
   /** 'float' (default): a draggable card over the app; 'sidebar': docked on the right. */
   placement?: 'float' | 'sidebar' | 'bottom';
   /** Optional tabs, switched in dash; each replaces markdown / buttons while shown.

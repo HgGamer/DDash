@@ -45,9 +45,22 @@ export function ModViewBody({ view, className }: { view: ModModalView; className
         </div>
       )}
       {markdown && <div className="markdown-body" dangerouslySetInnerHTML={{ __html: html }} />}
-      {buttons.length > 0 && (
+      {buttons.some((b) => b.row) && (
+        <div className="mod-rows">
+          {buttons.filter((b) => b.row).map((b) => (
+            <button key={b.key} className="mod-row" onClick={() => window.api.mod.press(view.id, b.key)}>
+              <span className={`mod-row-dot${b.dot ? ' on' : ''}`} aria-hidden="true" />
+              <span className="mod-row-text">
+                <span className="mod-row-label">{b.label}</span>
+                {b.detail && <span className="mod-row-detail">{b.detail}</span>}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+      {buttons.some((b) => !b.row) && (
         <div className="mod-modal-buttons">
-          {buttons.map((b) => (
+          {buttons.filter((b) => !b.row).map((b) => (
             <button key={b.key} className={b.primary ? 'btn-primary' : 'btn-ghost'} onClick={() => window.api.mod.press(view.id, b.key)}>
               {b.label}
             </button>

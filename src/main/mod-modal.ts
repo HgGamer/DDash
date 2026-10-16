@@ -17,10 +17,13 @@ const MAX_BODY = 1_000_000;
 
 const cleanButtons = (bs: unknown): ModModalView['buttons'] =>
   Array.isArray(bs)
-    ? bs.slice(0, 40).map((b: { key?: unknown; label?: unknown; primary?: unknown }) => ({
+    ? bs.slice(0, 40).map((b: { key?: unknown; label?: unknown; primary?: unknown; row?: unknown; detail?: unknown; dot?: unknown }) => ({
         key: String(b.key),
         label: String(b.label),
         primary: !!b.primary,
+        ...(b.row ? { row: true } : {}),
+        ...(b.detail != null ? { detail: String(b.detail) } : {}),
+        ...(b.dot ? { dot: true } : {}),
       }))
     : [];
 
