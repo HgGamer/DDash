@@ -32,6 +32,15 @@ describe('ModModal', () => {
     expect(await (await fetch(`${base}/mod/wait?id=q`)).json()).toEqual({ key: '__close' });
   });
 
+  it('drops presses queued for a view the mod then closed', async () => {
+    mod.press('mail', '__close'); // dismissed while the mod was not polling
+    expect((await fetch(`${base}/mod/close`, { method: 'POST', body: JSON.stringify({ id: 'mail' }) })).status).toBe(204);
+    // The mod shows the mailbox again under the same id: its next poll must get
+    // that view's own press, not the dismissal of the view before it.
+    mod.press('mail', 'open:1');
+    expect(await (await fetch(`${base}/mod/wait?id=mail`)).json()).toEqual({ key: 'open:1' });
+  });
+
   it('passes tabs through, buttons cleaned', async () => {
     const tabs = [{ key: 'a', label: 'A', markdown: 'x', buttons: [{ key: 'k', label: 'K', extra: 1 }] }, { key: 'b', label: 'B' }];
     await fetch(`${base}/mod/show`, { method: 'POST', body: JSON.stringify({ id: 't', placement: 'sidebar', tabs }) });
@@ -56,6 +65,16 @@ describe('ModModal', () => {
     await new Promise((r) => setTimeout(r, 20));
     mod.press('stale', 'fresh');
     expect(await (await wait).json()).toEqual({ key: 'fresh' });
+  });
+
+  it('keeps a press when a show only refreshes the view it was made on', async () => {
+    const view = { id: 'live', title: 'Mail', markdown: 'one', buttons: [] };
+    await fetch(`${base}/mod/show`, { method: 'POST', body: JSON.stringify(view) });
+    mod.press('live', 'open:1'); // pressed between two polls
+    // The mod redraws the same view (new mail arrived) before it polls again:
+    // that is a refresh, not a reopen, so the press is still owed to it.
+    await fetch(`${base}/mod/show`, { method: 'POST', body: JSON.stringify({ ...view, markdown: 'two' }) });
+    expect(await (await fetch(`${base}/mod/wait?id=live`)).json()).toEqual({ key: 'open:1' });
   });
 
   it('rejects a view without an id', async () => {
