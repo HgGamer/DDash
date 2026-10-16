@@ -269,8 +269,10 @@ interface AppStore {
    *  in 'free' layout. */
   boardSizes: Record<string, { w: number; h: number }>;
   /** Board layout: 'tile' auto-fits all windows to fill the workspace; 'main'
-   *  fills it too, but gives the first window a full-height column and stacks
-   *  the rest beside it; 'free' lets each tile be dragged/resized. */
+   *  fills it too, but favours the first window — it keeps the roomiest
+   *  column, full-height while it is alone there (1 window: whole board,
+   *  2: halves, 3: main + a stack of two, 4: 2×2); 'free' lets each tile be
+   *  dragged/resized. */
   boardLayout: BoardLayout;
   /** Columns for 'tile' layout; 0 = auto (√count). */
   boardColumns: number;

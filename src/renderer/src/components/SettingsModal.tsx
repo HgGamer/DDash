@@ -606,8 +606,10 @@ function BoardPanel() {
           <div>
             <div className="preset-label">Main + stack</div>
             <div className="preset-desc">
-              The first window fills a full-height column; the rest split the column beside it.
-              Drag a tile to the front to make it the main one.
+              The first window gets the roomiest column — full height while it is alone there
+              (2 windows split in half, 3 give it a column beside a stack of two, 4 become a
+              2×2). The board is always filled completely. Drag a tile to the front to make it
+              the main one.
             </div>
           </div>
         </label>

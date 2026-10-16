@@ -33,6 +33,12 @@ All notable changes to Dash are documented here.
   header rather than the status bar.
 
 ### Fixed
+- **Board “Main + stack” layout now fills the workspace at any window count.**
+  It was locked to two columns, so a fourth window went into a 1 + 3 split.
+  Columns are now sized from the window count (2 → halves, 3 → main column plus a
+  stack of two, 4 → 2×2, 5 → main plus two stacks of two …) and every column is
+  filled top to bottom, leaving no empty space. In the tile layout a part-filled
+  last row now stretches across the leftover columns instead of leaving a gap.
 - `JsonStore.flush()` now drains any debounce-timer-triggered write before
   resolving, removing a race where a write could still be in flight after flush.
 
