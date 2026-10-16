@@ -2055,3 +2055,11 @@ html.is-mac .ws-header a {
   flex: 1;
   min-height: 0;
 }
+
+/* A mod's own HTML (ModHtmlFrame): sandboxed iframe sized to its content by the bridge. */
+.mod-html {
+  display: block;
+  width: 100%;
+  border: 0;
+  background: transparent;
+}

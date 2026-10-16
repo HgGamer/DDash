@@ -41,6 +41,13 @@ describe('ModModal', () => {
     });
   });
 
+  it('passes a mod\'s own html through, capped', async () => {
+    sent.length = 0;
+    const view = { id: 'h', title: 'H', markdown: '', buttons: [], html: '<b data-key="x">hi</b>' };
+    expect((await fetch(`${base}/mod/show`, { method: 'POST', body: JSON.stringify(view) })).status).toBe(204);
+    expect((sent[0]![1] as { html?: string }).html).toBe('<b data-key="x">hi</b>');
+  });
+
   it('rejects a view without an id', async () => {
     expect((await fetch(`${base}/mod/show`, { method: 'POST', body: '{}' })).status).toBe(400);
   });

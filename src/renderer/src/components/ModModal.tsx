@@ -28,6 +28,72 @@ export function ModSidePanel(): JSX.Element | null {
 /** A view's content: its tab strip (switched here, the mod isn't asked), the
  *  shown tab's (or the view's) markdown, and its buttons, pressed back to the mod. */
 export function ModViewBody({ view, className }: { view: ModModalView; className: string }): JSX.Element {
+  if (view.html) return <ModHtmlFrame view={view} className={className} />;
+  return <ModMarkdownBody view={view} className={className} />;
+}
+
+/** dash's theme as CSS custom properties (every --var on :root), resolved now. */
+function themeVars(): string {
+  const names = new Set<string>();
+  for (const sheet of Array.from(document.styleSheets)) {
+    let rules: CSSRuleList;
+    try {
+      rules = sheet.cssRules;
+    } catch {
+      continue;
+    }
+    for (const r of Array.from(rules)) {
+      const st = (r as CSSStyleRule).style;
+      if (st) for (let i = 0; i < st.length; i++) if (st[i]!.startsWith('--')) names.add(st[i]!);
+    }
+  }
+  const cs = getComputedStyle(document.documentElement);
+  return [...names].map((n) => `${n}:${cs.getPropertyValue(n)};`).join('');
+}
+
+// Runs inside the iframe: presses and its content height go to dash by postMessage.
+const BRIDGE = `
+window.dash = { press: (key) => parent.postMessage({ modPress: String(key) }, '*') };
+document.addEventListener('click', (e) => {
+  const el = e.target.closest('[data-key]');
+  if (el) { e.preventDefault(); dash.press(el.dataset.key); }
+});
+const size = () => parent.postMessage({ modHeight: document.documentElement.scrollHeight }, '*');
+new ResizeObserver(size).observe(document.documentElement);
+addEventListener('load', size);`;
+
+/** A mod's own HTML, sandboxed: scripts run, but in an opaque origin with no
+ *  network (CSP) and no reach into dash; it only talks back by postMessage. */
+function ModHtmlFrame({ view, className }: { view: ModModalView; className: string }): JSX.Element {
+  const ref = useRef<HTMLIFrameElement>(null);
+  const [height, setHeight] = useState(120);
+  const doc = useMemo(() => {
+    const md = view.markdown ? `<div class="markdown-body">${renderMarkdown(view.markdown, { projectRoot: '' })}</div>` : '';
+    return `<!doctype html><html><head><meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:; font-src data:">
+<style>:root{${themeVars()}color-scheme:dark light}
+html,body{margin:0;background:transparent;color:var(--color-fg);font:var(--text-md)/1.5 system-ui,-apple-system,sans-serif}
+a{color:var(--color-accent)} button{font:inherit;color:inherit}
+code,pre{font-family:var(--font-mono);font-size:var(--text-sm)}</style></head>
+<body>${view.html!.replace('<!--markdown-->', md)}<script>${BRIDGE}</script></body></html>`;
+  }, [view.html, view.markdown]);
+  useEffect(() => {
+    const on = (e: MessageEvent): void => {
+      if (e.source !== ref.current?.contentWindow || !e.data || typeof e.data !== 'object') return;
+      if (typeof e.data.modPress === 'string') window.api.mod.press(view.id, e.data.modPress);
+      else if (typeof e.data.modHeight === 'number') setHeight(Math.min(4000, Math.max(40, e.data.modHeight)));
+    };
+    window.addEventListener('message', on);
+    return () => window.removeEventListener('message', on);
+  }, [view.id]);
+  return (
+    <div className={className}>
+      <iframe ref={ref} className="mod-html" title={view.title} sandbox="allow-scripts" srcDoc={doc} style={{ height }} />
+    </div>
+  );
+}
+
+function ModMarkdownBody({ view, className }: { view: ModModalView; className: string }): JSX.Element {
   const [tabKey, setTabKey] = useState<string | null>(null);
   const tab = view.tabs?.find((t) => t.key === tabKey) ?? view.tabs?.[0];
   const markdown = tab ? tab.markdown : view.markdown;

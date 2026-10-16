@@ -362,6 +362,11 @@ export interface ModModalView {
   /** Optional tabs, switched in dash; each replaces markdown / buttons while shown.
    *  The first tab is shown first. */
   tabs?: Array<{ key: string; label: string; markdown: string; buttons: ModModalView['buttons'] }>;
+  /** The mod's own UI: drawn instead of markdown / buttons / tabs in a sandboxed
+   *  iframe (opaque origin, no network) with dash's theme tokens as CSS vars.
+   *  Elements with data-key, or dash.press(key), press back to the mod; the
+   *  comment <!--markdown--> is replaced by `markdown`, rendered and sanitised. */
+  html?: string;
 }
 
 export type ClaudeHookScope = 'user' | 'project' | 'local';

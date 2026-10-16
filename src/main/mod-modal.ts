@@ -85,6 +85,7 @@ export class ModModal {
           markdown: String(p.markdown ?? ''),
           placement: p.placement === 'sidebar' || p.placement === 'bottom' ? p.placement : 'float',
           buttons: cleanButtons(p.buttons),
+          ...(typeof p.html === 'string' && p.html ? { html: p.html.slice(0, 512_000) } : {}),
           ...(Array.isArray(p.tabs) && p.tabs.length
             ? {
                 tabs: p.tabs.slice(0, 12).map((t) => ({
