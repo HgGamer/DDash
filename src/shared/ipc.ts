@@ -363,9 +363,9 @@ export interface ModModalView {
    *  The first tab is shown first. */
   tabs?: Array<{ key: string; label: string; markdown: string; buttons: ModModalView['buttons'] }>;
   /** The mod's own UI: drawn instead of markdown / buttons / tabs in a sandboxed
-   *  iframe (opaque origin, no network) with dash's theme tokens as CSS vars.
-   *  Elements with data-key, or dash.press(key), press back to the mod; the
-   *  comment <!--markdown--> is replaced by `markdown`, rendered and sanitised. */
+   *  iframe (no scripts, no network) with dash's theme tokens as CSS vars. A click
+   *  on an element with data-key presses that key back to the mod; the comment
+   *  <!--markdown--> is replaced by `markdown`, rendered and sanitised. */
   html?: string;
 }
 

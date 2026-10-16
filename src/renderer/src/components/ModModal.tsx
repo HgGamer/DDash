@@ -51,44 +51,39 @@ function themeVars(): string {
   return [...names].map((n) => `${n}:${cs.getPropertyValue(n)};`).join('');
 }
 
-// Runs inside the iframe: presses and its content height go to dash by postMessage.
-const BRIDGE = `
-window.dash = { press: (key) => parent.postMessage({ modPress: String(key) }, '*') };
-document.addEventListener('click', (e) => {
-  const el = e.target.closest('[data-key]');
-  if (el) { e.preventDefault(); dash.press(el.dataset.key); }
-});
-const size = () => parent.postMessage({ modHeight: document.documentElement.scrollHeight }, '*');
-new ResizeObserver(size).observe(document.documentElement);
-addEventListener('load', size);`;
-
-/** A mod's own HTML, sandboxed: scripts run, but in an opaque origin with no
- *  network (CSP) and no reach into dash; it only talks back by postMessage. */
+/** A mod's own HTML, sandboxed with no scripts at all (dash's CSP is inherited by
+ *  srcdoc frames, and the sandbox has no allow-scripts): dash listens from outside —
+ *  a click on a [data-key] element presses that key, and the frame takes its
+ *  content's height. allow-same-origin only lets dash reach the frame's DOM. */
 function ModHtmlFrame({ view, className }: { view: ModModalView; className: string }): JSX.Element {
   const ref = useRef<HTMLIFrameElement>(null);
   const [height, setHeight] = useState(120);
   const doc = useMemo(() => {
     const md = view.markdown ? `<div class="markdown-body">${renderMarkdown(view.markdown, { projectRoot: '' })}</div>` : '';
     return `<!doctype html><html><head><meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:; font-src data:">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:">
 <style>:root{${themeVars()}color-scheme:dark light}
 html,body{margin:0;background:transparent;color:var(--color-fg);font:var(--text-md)/1.5 system-ui,-apple-system,sans-serif}
 a{color:var(--color-accent)} button{font:inherit;color:inherit}
 code,pre{font-family:var(--font-mono);font-size:var(--text-sm)}</style></head>
-<body>${view.html!.replace('<!--markdown-->', md)}<script>${BRIDGE}</script></body></html>`;
+<body>${view.html!.replace('<!--markdown-->', md)}</body></html>`;
   }, [view.html, view.markdown]);
-  useEffect(() => {
-    const on = (e: MessageEvent): void => {
-      if (e.source !== ref.current?.contentWindow || !e.data || typeof e.data !== 'object') return;
-      if (typeof e.data.modPress === 'string') window.api.mod.press(view.id, e.data.modPress);
-      else if (typeof e.data.modHeight === 'number') setHeight(Math.min(4000, Math.max(40, e.data.modHeight)));
-    };
-    window.addEventListener('message', on);
-    return () => window.removeEventListener('message', on);
-  }, [view.id]);
+  const wire = (): void => {
+    const d = ref.current?.contentDocument;
+    if (!d) return;
+    d.addEventListener('click', (e) => {
+      const t = e.target as Element | null;
+      if (t?.closest('a')) e.preventDefault(); // links never navigate the frame
+      const el = t?.closest('[data-key]');
+      if (el) window.api.mod.press(view.id, el.getAttribute('data-key') ?? '');
+    });
+    const fit = (): void => setHeight(Math.min(4000, Math.max(40, d.documentElement.scrollHeight)));
+    new ResizeObserver(fit).observe(d.documentElement);
+    fit();
+  };
   return (
     <div className={className}>
-      <iframe ref={ref} className="mod-html" title={view.title} sandbox="allow-scripts" srcDoc={doc} style={{ height }} />
+      <iframe ref={ref} className="mod-html" title={view.title} sandbox="allow-same-origin" srcDoc={doc} onLoad={wire} style={{ height }} />
     </div>
   );
 }
