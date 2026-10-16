@@ -54,7 +54,9 @@ function themeVars(): string {
 /** A mod's own HTML, sandboxed with no scripts at all (dash's CSP is inherited by
  *  srcdoc frames, and the sandbox has no allow-scripts): dash listens from outside —
  *  a click on a [data-key] element presses that key, and the frame takes its
- *  content's height. allow-same-origin only lets dash reach the frame's DOM. */
+ *  content's height. Those clickables default to the app's filled-chip look
+ *  (mods draw them as buttons, divs or links), which the mod's own CSS — later
+ *  in the document, same specificity — is free to override. allow-same-origin only lets dash reach the frame's DOM. */
 function ModHtmlFrame({ view, className }: { view: ModModalView; className: string }): JSX.Element {
   const ref = useRef<HTMLIFrameElement>(null);
   const [height, setHeight] = useState(120);
@@ -65,8 +67,8 @@ function ModHtmlFrame({ view, className }: { view: ModModalView; className: stri
 <style>:root{${themeVars()}color-scheme:dark light}
 html,body{margin:0;background:transparent;color:var(--color-fg);font:var(--text-md)/1.5 system-ui,-apple-system,sans-serif}
 a{color:var(--color-accent)}
-button{font:inherit;color:var(--color-fg);background:var(--color-control);border:1px solid var(--color-border-strong);border-radius:var(--radius-md);padding:5px 10px;cursor:pointer}
-button:hover{background:var(--color-control-hover)}
+button,[data-key]{font:inherit;color:var(--color-fg);background:var(--color-control);border:1px solid var(--color-border-strong);border-radius:var(--radius-md);padding:5px 10px;cursor:pointer}
+button:hover,[data-key]:hover{background:var(--color-control-hover)}
 code,pre{font-family:var(--font-mono);font-size:var(--text-sm)}</style></head>
 <body>${view.html!.replace('<!--markdown-->', md)}</body></html>`;
   }, [view.html, view.markdown]);
