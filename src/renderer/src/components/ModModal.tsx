@@ -5,14 +5,18 @@ import { renderMarkdown } from '../lib/markdown';
 /** A mod's view docked as a right-hand panel (placement 'sidebar'); lives in the
  *  app-main flex row beside the workspace, so it takes room rather than covering it. */
 export function ModSidePanel(): JSX.Element | null {
-  const view = useModView('sidebar');
+  const [view, setView] = useModView('sidebar');
   if (!view) return null;
   const press = (key: string): void => window.api.mod.press(view.id, key);
+  const dismiss = (): void => {
+    press('__close');
+    setView(null);
+  };
   return (
     <aside className="claude-panel" aria-label={view.title}>
       <div className="claude-panel-head">
         <span className="mod-modal-title">{view.title}</span>
-        <button className="btn-ghost" aria-label="Close" onClick={() => press('__close')}>
+        <button className="btn-ghost" aria-label="Close" onClick={dismiss}>
           ✕
         </button>
       </div>
@@ -117,7 +121,9 @@ export function ModBottomPanel(): JSX.Element | null {
 }
 
 /** The last view shown for one placement, until its mod closes it (or ✕). */
-function useModView(placement: 'float' | 'sidebar'): ModModalView | null {
+function useModView(
+  placement: 'float' | 'sidebar',
+): [ModModalView | null, (v: ModModalView | null) => void] {
   const [view, setView] = useState<ModModalView | null>(null);
   useEffect(() => {
     const offShow = window.api.mod.onShow((v) => {
@@ -130,19 +136,24 @@ function useModView(placement: 'float' | 'sidebar'): ModModalView | null {
       offClose();
     };
   }, [placement]);
-  return view;
+  return [view, setView];
 }
 
 /** The floating modal Claude Code mods draw through dash (main/mod-modal.ts).
  *  No backdrop: the terminal stays usable underneath. Drag it by its header;
  *  Esc or ✕ dismisses it (the mod hears '__close'). */
 export function ModModal(): JSX.Element | null {
-  const view = useModView('float');
+  const [view, setView] = useModView('float');
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
   const drag = useRef<{ dx: number; dy: number } | null>(null);
 
   if (!view) return null;
-  const dismiss = (): void => window.api.mod.press(view.id, '__close');
+  // Clear locally right away so ✕/Esc always dismiss — even if the mod has
+  // exited or never echoes /mod/close; still signal the mod it was closed.
+  const dismiss = (): void => {
+    window.api.mod.press(view.id, '__close');
+    setView(null);
+  };
 
   return (
     <div
@@ -157,6 +168,7 @@ export function ModModal(): JSX.Element | null {
       <div
         className="mod-modal-head"
         onPointerDown={(e) => {
+          if ((e.target as HTMLElement).closest('button')) return; // capturing here would swallow the ✕ click
           const r = e.currentTarget.parentElement!.getBoundingClientRect();
           drag.current = { dx: e.clientX - r.left, dy: e.clientY - r.top };
           e.currentTarget.setPointerCapture(e.pointerId);
