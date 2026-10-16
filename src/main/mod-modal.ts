@@ -1,5 +1,5 @@
 import type * as http from 'node:http';
-import type { ModModalView } from '../shared/ipc';
+import type { ModModalView, ModSendOffer } from '../shared/ipc';
 
 // A floating modal any Claude Code mod running in a dash terminal can draw
 // (sessions dash spawns get DASH_MOD_MODAL=1; the port is the hook server's,
@@ -12,8 +12,13 @@ import type { ModModalView } from '../shared/ipc';
 //   GET  /mod/wait?id=<id>            long-poll: { key } of the next button
 //                                     pressed ('__close' = dismissed), 204 after
 //                                     WAIT_MS with nothing
+//   POST /mod/send-offer { id, title, text }
+//                                     offer a prompt for a console the user picks
+//                                     in dash; nothing is typed until they press
+//                                     Send ('__sent' / '__cancel' on /mod/wait)
 const WAIT_MS = 20_000;
 const MAX_BODY = 1_000_000;
+const MAX_OFFER_TEXT = 100_000;
 
 const cleanButtons = (bs: unknown): ModModalView['buttons'] =>
   Array.isArray(bs)
@@ -32,7 +37,7 @@ export class ModModal {
   private readonly queued = new Map<string, string[]>();
 
   constructor(
-    private readonly send: (channel: 'show' | 'close', payload: ModModalView | string) => void,
+    private readonly send: (channel: 'show' | 'close' | 'offer', payload: ModModalView | ModSendOffer | string) => void,
   ) {}
 
   /** Handles /mod/* requests; false for anything else. */
@@ -98,7 +103,14 @@ export class ModModal {
             : {}),
         });
       } else if (url.pathname === '/mod/close') this.send('close', p.id);
-      else {
+      else if (url.pathname === '/mod/send-offer') {
+        const text = (p as { text?: unknown }).text;
+        if (typeof text !== 'string' || !text.trim() || text.length > MAX_OFFER_TEXT) {
+          res.writeHead(400).end();
+          return;
+        }
+        this.send('offer', { id: p.id, title: String(p.title ?? ''), text });
+      } else {
         res.writeHead(404).end();
         return;
       }

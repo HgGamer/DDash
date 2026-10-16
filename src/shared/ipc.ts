@@ -90,6 +90,8 @@ export const IPC = {
   ModModalShow: 'mod:show',
   ModModalClose: 'mod:close',
   ModModalPress: 'mod:press',
+  // A mod offers a prompt for a console the user picks (main → renderer), see main/mod-modal.ts
+  ModSendOffer: 'mod:sendOffer',
 
   // Claude panel: hooks in the settings scopes, installed plugins / mods (renderer → main)
   ClaudeConfigRead: 'claudeConfig:read',
@@ -367,6 +369,15 @@ export interface ModModalView {
    *  on an element with data-key presses that key back to the mod; the comment
    *  <!--markdown--> is replaced by `markdown`, rendered and sanitised. */
   html?: string;
+}
+
+/** A prompt a mod offers for a console of the user's choice (POST /mod/send-offer).
+ *  dash shows it with the open consoles; nothing is typed until the user picks
+ *  one and presses Send. The mod hears '__sent' or '__cancel' on its /mod/wait. */
+export interface ModSendOffer {
+  id: string;
+  title: string;
+  text: string;
 }
 
 export type ClaudeHookScope = 'user' | 'project' | 'local';
@@ -889,6 +900,7 @@ export interface DashApi {
     onShow(handler: (view: ModModalView) => void): () => void;
     onClose(handler: (id: string) => void): () => void;
     press(id: string, key: string): void;
+    onSendOffer(handler: (offer: ModSendOffer) => void): () => void;
   };
   git: {
     isRepo(args: GitTabRef): Promise<GitIsRepoResult>;

@@ -44,6 +44,7 @@ import {
   type NotifyAttentionArgs,
   type ClaudeHookStateEvent,
   type ModModalView,
+  type ModSendOffer,
   type ClaudeConfigArgs,
   type ClaudeHooksSaveArgs,
   type ShellDataEvent,
@@ -218,6 +219,7 @@ const api: DashApi = {
     onShow: (h) => subscribe<ModModalView>(IPC.ModModalShow, h),
     onClose: (h) => subscribe<string>(IPC.ModModalClose, h),
     press: (id: string, key: string) => ipcRenderer.send(IPC.ModModalPress, { id, key }),
+    onSendOffer: (h) => subscribe<ModSendOffer>(IPC.ModSendOffer, h),
   },
   docs: {
     list: (args: DocsListArgs) => ipcRenderer.invoke(IPC.DocsList, args),

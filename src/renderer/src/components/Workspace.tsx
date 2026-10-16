@@ -13,6 +13,7 @@ import { FileView } from './MarkdownViewer';
 import { IntegratedTerminalDock, useWorkspaceHeight } from './IntegratedTerminalDock';
 import { useShellTabs } from '../hooks/useShellTabs';
 import { ModBottomPanel } from './ModModal';
+import { ModSendDialog } from './ModSendDialog';
 import { mainPlacements, tileSpans } from '../lib/board-layout';
 
 interface Props {
@@ -324,6 +325,17 @@ export function Workspace({ activeId }: Props) {
           <ModBottomPanel /> /* mods' bottom views are tabs in the dock; on their own while it's closed */
         )}
       </div>
+      <ModSendDialog
+        targets={panes.map((p) => ({
+          key: p.sessionKey,
+          label: p.windowName,
+          detail: p.displayName,
+          projectId: p.proj.id,
+          worktreeId: p.worktree?.id ?? null,
+          agentId: p.agentId,
+        }))}
+        defaultKey={activeKey ? agentKey(activeId!.projectId, activeId!.worktreeId, activeAgentByKey[activeKey] ?? null) : null}
+      />
     </main>
   );
 }
