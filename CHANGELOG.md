@@ -41,6 +41,15 @@ All notable changes to Dash are documented here.
   header rather than the status bar.
 
 ### Fixed
+- **Buttons are filled, not just outlined.** A hairline border over a transparent
+  background made a button exactly the colour of the surface behind it, so only
+  its outline showed — clearest on the settings buttons and the mod modal’s
+  secondary actions. Bordered controls now carry a translucent fill of their own
+  (`--color-control`, per theme), so they lift one step above whatever surface
+  they sit on. Context-menu rows stay flat, and toolbar/status-bar icon buttons
+  (which have no visible border) are unchanged. In a mod’s own HTML view every
+  `[data-key]` element — not only `<button>` — starts from the same filled chip,
+  which the mod’s CSS may override.
 - **Board “Main + stack” layout now fills the workspace at any window count.**
   It was locked to two columns, so a fourth window went into a 1 + 3 split.
   Columns are now sized from the window count (2 → halves, 3 → main column plus a
