@@ -211,23 +211,20 @@ html.is-mac .workspace {
   min-width: 0;
   min-height: 0;
 }
-/* Main layout: the first window gets a full-height column, the rest stack in
- * the column next to it — one big portrait pane plus a split of the others.
- * Auto-placement handles the stack: the main cell occupies every row of the
- * first column, so the remaining tiles flow down the second one. */
+/* Main layout: columns of equal width, each one filled top to bottom, so the
+ * board is always fully covered — the first window keeps the roomiest column
+ * (full height while it is alone there). Every cell is placed explicitly from
+ * the board order (see lib/board-layout.ts); DOM order here also holds the
+ * hidden, unpinned panes, so auto-placement could not be trusted. */
 .workspace-terminals.board-main {
   display: grid;
-  grid-template-columns: var(--board-main-cols, 1fr 1fr);
+  grid-template-columns: repeat(var(--board-cols, 1), 1fr);
   grid-template-rows: repeat(var(--board-rows, 1), 1fr);
   overflow: hidden;
 }
 .board-main .board-cell {
   min-width: 0;
   min-height: 0;
-}
-.board-main .board-cell-main {
-  grid-column: 1;
-  grid-row: 1 / -1;
 }
 .board-cell-head {
   flex: 0 0 auto;
