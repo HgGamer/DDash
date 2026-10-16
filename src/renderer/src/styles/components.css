@@ -1384,9 +1384,11 @@ html.is-mac .ws-header a {
   overflow: auto;
 }
 .btn-ghost {
-  background: transparent;
+  /* "Ghost" only next to .btn-primary: it still carries a fill, or it reads as
+     an empty outline on the surface behind it (mod modal, dialogs). */
+  background: var(--color-control);
   color: var(--color-fg);
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-md);
   padding: var(--space-2) var(--space-4);
   font: inherit;
@@ -1394,7 +1396,7 @@ html.is-mac .ws-header a {
   transition: background var(--motion-fast) var(--ease-out);
 }
 .btn-ghost:hover {
-  background: var(--color-surface-2);
+  background: var(--color-control-hover);
 }
 .btn-ghost:disabled {
   opacity: 0.5;

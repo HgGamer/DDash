@@ -42,6 +42,12 @@
   --color-surface-2: rgba(255, 255, 255, 0.06); /* hover / active — translucent so it reads on glass */
   --color-border: rgba(255, 255, 255, 0.08); /* hairline */
   --color-border-strong: rgba(255, 255, 255, 0.14);
+  /* Control fill — bordered buttons (and anything else that should read as a
+     pressable chip). Translucent, so the chip sits one step above whatever it
+     is on (modal surface, glass bar, app background) instead of vanishing into
+     it and leaving only its outline behind. */
+  --color-control: rgba(255, 255, 255, 0.09);
+  --color-control-hover: rgba(255, 255, 255, 0.16);
   --color-fg: #e9e9ee;
   --color-fg-muted: #9a9aa3;
   --color-fg-subtle: #6e6e78;
@@ -124,6 +130,8 @@
   --color-surface-2: rgba(0, 0, 0, 0.06);
   --color-border: rgba(0, 0, 0, 0.1);
   --color-border-strong: rgba(0, 0, 0, 0.18);
+  --color-control: rgba(0, 0, 0, 0.06);
+  --color-control-hover: rgba(0, 0, 0, 0.12);
   --color-fg: #1c1c1e;
   /* Darkened so muted/subtle text clears WCAG AA on the light surfaces —
      the old #6b6b70 / #9a9aa0 grays were too faint to read. */
@@ -165,6 +173,8 @@
   --color-surface-2: #481833; /* hover */
   --color-border: #63204a;
   --color-border-strong: #8d2f68;
+  --color-control: rgba(255, 92, 175, 0.16);
+  --color-control-hover: rgba(255, 92, 175, 0.3);
   --color-fg: #ffeaf5;
   --color-fg-muted: #f2a6cb;
   --color-fg-subtle: #c98aab;
