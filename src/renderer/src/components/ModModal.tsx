@@ -64,7 +64,9 @@ function ModHtmlFrame({ view, className }: { view: ModModalView; className: stri
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:">
 <style>:root{${themeVars()}color-scheme:dark light}
 html,body{margin:0;background:transparent;color:var(--color-fg);font:var(--text-md)/1.5 system-ui,-apple-system,sans-serif}
-a{color:var(--color-accent)} button{font:inherit;color:inherit}
+a{color:var(--color-accent)}
+button{font:inherit;color:var(--color-fg);background:var(--color-control);border:1px solid var(--color-border-strong);border-radius:var(--radius-md);padding:5px 10px;cursor:pointer}
+button:hover{background:var(--color-control-hover)}
 code,pre{font-family:var(--font-mono);font-size:var(--text-sm)}</style></head>
 <body>${view.html!.replace('<!--markdown-->', md)}</body></html>`;
   }, [view.html, view.markdown]);
