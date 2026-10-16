@@ -84,6 +84,9 @@ export class ModModal {
         return;
       }
       if (url.pathname === '/mod/show') {
+        // presses still queued belong to the view shown before (e.g. its ✕ while the mod was reloading):
+        // replaying them on the new one closed it right after it opened
+        this.queued.delete(p.id);
         this.send('show', {
           id: p.id,
           title: String(p.title ?? ''),
