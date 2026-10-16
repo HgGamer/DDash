@@ -186,7 +186,10 @@ app.whenReady().then(async () => {
   const modModal = new ModModal((channel, payload) => {
     const win = mainWindow;
     if (!win || win.isDestroyed()) return;
-    win.webContents.send(channel === 'show' ? IPC.ModModalShow : IPC.ModModalClose, payload);
+    win.webContents.send(
+      channel === 'show' ? IPC.ModModalShow : channel === 'offer' ? IPC.ModSendOffer : IPC.ModModalClose,
+      payload,
+    );
   });
   ipcMain.on(IPC.ModModalPress, (_e, a: { id: string; key: string }) => {
     modModal.press(String(a?.id), String(a?.key));
