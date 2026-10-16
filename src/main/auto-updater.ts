@@ -14,6 +14,12 @@ import type { JsonStore } from './store';
 const STARTUP_DELAY_MS = 30_000;
 const RECHECK_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6h
 
+/** Transient, non-actionable update-check failures: a release whose `latest*.yml`
+ *  feed is still uploading (404) or momentarily empty, or a platform not yet
+ *  published. These shouldn't surface as a scary "Update error" — a later check
+ *  (or the user's manual one) succeeds once the feed is readable. */
+const BENIGN_FEED_ERROR = /latest(-mac|-linux)?\.yml|HttpError: 404|\b404\b|Cannot find/i;
+
 /** Strict semver "remote > current" comparator. We can't trust electron-updater's
  *  built-in downgrade guard alone: a previously-downloaded installer cached on
  *  disk can re-emit `update-downloaded` on startup even when its version is now
@@ -147,7 +153,15 @@ class RealAutoUpdater extends EventEmitter implements AutoUpdater {
       this.setState({ kind: 'downloaded', version: info.version });
     });
     this.nativeUpdater.on('error', (err) => {
-      this.setState({ kind: 'error', message: err?.message ?? String(err) });
+      const message = err?.message ?? String(err);
+      // Swallow transient feed-not-found errors: show "no update", not an error.
+      if (BENIGN_FEED_ERROR.test(message)) {
+        console.warn('[auto-updater] ignoring transient feed error:', message);
+        this.setState({ kind: 'idle' });
+        this.markChecked();
+        return;
+      }
+      this.setState({ kind: 'error', message });
     });
 
     // React to user toggling channel / enabled at runtime.
