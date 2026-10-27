@@ -6,6 +6,7 @@ import type { AddressInfo } from 'node:net';
 import type { ClaudeHookStateEvent } from '../shared/ipc';
 import type { ProjectRegistry } from './registry';
 import type { ModModal } from './mod-modal';
+import type { TasksStore } from './tasks-store';
 
 // Marker embedded in the hook command so we can find/replace/remove *our*
 // entry in ~/.claude/settings.json without touching the user's other hooks.
@@ -49,6 +50,8 @@ export interface ClaudeHooksDeps {
   registry: ProjectRegistry;
   /** Serves /mod/* on the same loopback port (mods' floating modal). */
   mod?: ModModal;
+  /** Serves `/tasks*`: sessions write the task board here. */
+  tasks?: TasksStore;
   onState: (ev: ClaudeHookStateEvent) => void;
   /** Called whenever a hook reports the active Claude session id for a cwd, so
    *  the session can be resumed (`--resume <id>`) on next launch. */
@@ -96,6 +99,7 @@ export class ClaudeHooks {
 
   private handle(req: http.IncomingMessage, res: http.ServerResponse): void {
     if (this.deps.mod?.handle(req, res)) return;
+    if (this.deps.tasks?.handle(req, res)) return;
     if (req.method !== 'POST' || !req.url?.startsWith('/claude-hook')) {
       res.writeHead(404).end();
       return;

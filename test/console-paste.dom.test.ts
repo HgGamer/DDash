@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PASTE_END, PASTE_START, pastePayload } from '../src/renderer/src/lib/console-paste';
+import { PASTE_END, PASTE_START, pastePayload } from '../src/shared/console-paste';
 
 describe('pastePayload', () => {
   it('wraps the text in one bracketed paste, newlines kept', () => {

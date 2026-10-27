@@ -2118,7 +2118,7 @@ html.is-mac .ws-header a {
   background: var(--color-surface);
   overflow: hidden;
 }
-/* Hidden, not unmounted: the guest keeps running so the counters stay live. */
+/* Hidden, not unmounted: it keeps listening so the counters stay live. */
 .tasks-panel.is-hidden {
   inset: auto;
   width: 0;
@@ -2140,15 +2140,235 @@ html.is-mac .ws-header a {
   font-weight: 600;
   color: var(--color-fg);
 }
-.tasks-panel-actions {
+.tasks-panel.is-standalone {
+  position: fixed;
+}
+.tasks-filters {
   display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-right: auto;
+  margin-left: var(--space-3);
+}
+.tasks-filter {
+  padding: 2px var(--space-2);
+  font: inherit;
+  font-size: var(--text-xs);
+  color: var(--color-fg-muted);
+  background: var(--color-control);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  cursor: pointer;
+}
+.tasks-filter:hover {
+  background: var(--color-control-hover);
+}
+.tasks-filter[aria-selected='true'] {
+  color: var(--color-accent-fg);
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+}
+.tasks-filter:focus-visible {
+  box-shadow: var(--focus-ring);
+  outline: none;
+}
+.tasks-filter-n {
+  font-weight: 600;
+}
+.tasks-filter[data-attention='true'] {
+  color: var(--color-warn);
+  border-color: var(--color-warn);
+  animation: dash-attention 1.2s ease-in-out infinite;
+}
+.tasks-filter[data-attention='true'][aria-selected='true'] {
+  color: var(--color-bg);
+  background: var(--color-warn);
+}
+.tasks-sessions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--text-xs);
+  color: var(--color-fg-muted);
+  border-bottom: 1px solid var(--color-border);
+}
+.tasks-session strong {
+  color: var(--color-fg);
+  font-weight: 600;
+}
+.tasks-list-wrap {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: var(--space-2) var(--space-3);
+}
+.tasks-empty {
+  color: var(--color-fg-subtle);
+  font-size: var(--text-sm);
+}
+.tasks-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.task-row {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-bg);
+}
+.task-row[data-status='waiting'] {
+  border-color: var(--color-warn);
+  background: var(--color-warn-soft);
+}
+.task-row[data-status='done'] {
+  opacity: 0.7;
+}
+.task-row-main {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+.task-status-dot {
+  flex: 0 0 auto;
+  width: 9px;
+  height: 9px;
+  margin-top: 5px;
+  border-radius: 50%;
+  background: var(--color-fg-subtle);
+}
+.task-status-dot[data-status='running'] {
+  background: var(--color-accent);
+}
+.task-status-dot[data-status='waiting'] {
+  background: var(--color-warn);
+  animation: dash-attention 1.2s ease-in-out infinite;
+}
+.task-status-dot[data-status='done'] {
+  background: var(--color-success);
+}
+.task-row-body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.task-row-title {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-fg);
+  overflow-wrap: anywhere;
+}
+.task-chip {
+  display: inline-block;
+  margin-left: var(--space-1);
+  padding: 0 6px;
+  font-size: var(--text-xs);
+  font-weight: 500;
+  color: var(--color-accent);
+  background: var(--color-accent-soft);
+  border-radius: 999px;
+}
+.task-chip-muted {
+  color: var(--color-fg-muted);
+  background: var(--color-control);
+}
+.task-row-waiting {
+  margin-top: 2px;
+  font-size: var(--text-sm);
+  color: var(--color-warn);
+  white-space: pre-wrap;
+}
+.task-row-note {
+  margin-top: 2px;
+  font-size: var(--text-xs);
+  color: var(--color-fg-muted);
+  white-space: pre-wrap;
+}
+.task-row-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  margin-top: 4px;
+  font-size: var(--text-xs);
+  color: var(--color-fg-subtle);
+}
+.task-row-id {
+  font-family: var(--font-mono);
+}
+.task-link {
+  padding: 0;
+  font: inherit;
+  color: var(--color-accent);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.task-row-controls {
+  display: flex;
+  flex-direction: column;
   gap: var(--space-1);
 }
-.tasks-panel-view {
+.task-select {
+  font: inherit;
+  font-size: var(--text-xs);
+  color: var(--color-fg);
+  background: var(--color-control);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  padding: 2px 4px;
+}
+.task-comments {
+  margin: var(--space-2) 0 0 17px;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-xs);
+  color: var(--color-fg-muted);
+}
+.task-comments li {
+  display: flex;
+  gap: var(--space-2);
+  padding: 1px 0;
+}
+.task-comment-by {
+  flex: 0 0 auto;
+  font-weight: 600;
+  color: var(--color-fg);
+}
+.task-comment-at {
+  flex: 0 0 auto;
+  color: var(--color-fg-subtle);
+}
+.task-comment-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.task-comment-form {
+  display: flex;
+  gap: var(--space-1);
+  margin: var(--space-2) 0 0 17px;
+}
+.task-comment-input {
   flex: 1 1 auto;
-  width: 100%;
-  border: 0;
+  min-width: 0;
+  font: inherit;
+  font-size: var(--text-xs);
+  color: var(--color-fg);
   background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  padding: 3px 6px;
+}
+.task-comment-input:focus-visible,
+.task-select:focus-visible {
+  box-shadow: var(--focus-ring);
+  outline: none;
+}
+.task-row-msg {
+  margin: 4px 0 0 17px;
+  font-size: var(--text-xs);
+  color: var(--color-fg-muted);
 }
 
 /* Activity-bar badge: how many tasks wait for the user; pulses until handled. */
@@ -2200,7 +2420,9 @@ html.is-mac .ws-header a {
 }
 @media (prefers-reduced-motion: reduce) {
   .act-badge,
-  .statusbar-alert {
+  .statusbar-alert,
+  .tasks-filter[data-attention='true'],
+  .task-status-dot[data-status='waiting'] {
     animation: none;
   }
 }
@@ -2237,9 +2459,8 @@ html.is-mac .ws-header a {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  background: var(--glass-popover);
-  -webkit-backdrop-filter: var(--glass-blur-strong);
-  backdrop-filter: var(--glass-blur-strong);
+  /* Opaque, not glass: the terminal behind it made the figures hard to read. */
+  background: var(--color-surface);
   border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-pop);

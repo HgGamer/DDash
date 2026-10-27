@@ -25,17 +25,12 @@ import {
   DEFAULT_WEB_ACCESS_SETTINGS,
 } from '@shared/types';
 import { compositeKey, parseCompositeKey, agentKey, isClaudeAgentId } from '@shared/ipc';
+import type { TaskCounts } from '@shared/tasks';
 import { applyTheme, loadTheme, type AppTheme } from './lib/theme';
 
 /** How the board arranges its pinned windows. 'tile' and 'main' both fill the
  *  workspace; 'free' lets each tile be dragged and resized freely. */
 
-/** The task board's headline counters (see TasksPanel). */
-export interface TaskCounts {
-  running: number;
-  waiting: number;
-  queued: number;
-}
 
 export type BoardLayout = 'free' | 'tile' | 'main';
 
@@ -239,8 +234,8 @@ interface AppStore {
   theme: AppTheme;
   claudeUsage: ClaudeUsageSummary | null;
   claudePlanUsage: ClaudePlanUsage | null;
-  /** Counters read from the embedded task board (Tasks view), or null until the
-   *  board has loaded once. `waiting` is what waits for the user. */
+  /** The task board's counters (kept by TasksPanel), or null until it has
+   *  loaded once. `waiting` is what waits for the user. */
   taskCounts: TaskCounts | null;
   terminalStyle: TerminalStyleSettings;
   notifications: NotificationSettings;

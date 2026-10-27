@@ -7,7 +7,7 @@ import { registerIpc } from './ipc';
 import { registerGitIpc } from './git-ipc';
 import { registerShellIpc } from './shell-ipc';
 import { registerDocsIpc } from './docs-ipc';
-import { registerTasksIpc } from './tasks-window';
+import { createTasksStore, registerTasksIpc } from './tasks-window';
 import { registerClaudeConfigIpc } from './claude-config-ipc';
 import { ShellSessionManager } from './shell-session';
 import { installAppMenu } from './menu';
@@ -84,6 +84,19 @@ function flushRendererStorage(): void {
   }
 }
 
+/** Loads the renderer (dev server or the built page) into `win`; `query`
+ *  selects a single-view window such as the Tasks pop-out. */
+async function loadRenderer(win: BrowserWindow, query: Record<string, string> = {}): Promise<void> {
+  const devUrl = process.env['ELECTRON_RENDERER_URL'];
+  if (isDev && devUrl) {
+    const u = new URL(devUrl);
+    for (const [k, v] of Object.entries(query)) u.searchParams.set(k, v);
+    await win.loadURL(u.toString());
+  } else {
+    await win.loadFile(path.join(__dirname, '../renderer/index.html'), { query });
+  }
+}
+
 async function createWindow(): Promise<void> {
   const state = store.get();
   const isMac = process.platform === 'darwin';
@@ -115,9 +128,6 @@ async function createWindow(): Promise<void> {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
-      // The Tasks view embeds the claude.ai task board; guests are locked down
-      // in tasks-window.ts (partition, no node, navigation allow-list).
-      webviewTag: true,
     },
   });
 
@@ -137,12 +147,7 @@ async function createWindow(): Promise<void> {
 
   attachWindowStatePersistence(win, store);
 
-  const devUrl = process.env['ELECTRON_RENDERER_URL'];
-  if (isDev && devUrl) {
-    await win.loadURL(devUrl);
-  } else {
-    await win.loadFile(path.join(__dirname, '../renderer/index.html'));
-  }
+  await loadRenderer(win);
 
   mainWindow = win;
   win.on('closed', () => {
@@ -206,9 +211,14 @@ app.whenReady().then(async () => {
     modModal.press(String(a?.id), String(a?.key));
     if (a?.key === '__close') mainWindow?.webContents.send(IPC.ModModalClose, String(a.id));   // dismissed in dash: hide it now, the mod may be slow to hear
   });
+  // The task board: sessions write it over the hook port, the user edits it in
+  // the Tasks view (main/tasks-store.ts).
+  const tasks = createTasksStore(app.getPath('userData'), ptyManager);
+  await tasks.load();
   claudeHooks = new ClaudeHooks({
     registry,
     mod: modModal,
+    tasks,
     onState: (ev) => {
       claudeTray?.update(compositeKey(ev.projectId, ev.worktreeId), ev.state);
       const win = mainWindow;
@@ -232,7 +242,11 @@ app.whenReady().then(async () => {
   registerGitIpc({ registry, getWindow: () => mainWindow });
   registerShellIpc({ registry, settings, shellManager, getWindow: () => mainWindow });
   registerDocsIpc({ registry });
-  registerTasksIpc();
+  registerTasksIpc({
+    tasks,
+    loadRenderer,
+    preload: path.join(__dirname, '../preload/index.mjs'),
+  });
   registerClaudeConfigIpc({ registry });
   autoUpdater = createAutoUpdater({ settings, store, getWindow: () => mainWindow });
   registerAutoUpdateIpc({ updater: autoUpdater, settings, store, getWindow: () => mainWindow });
