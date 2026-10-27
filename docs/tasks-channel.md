@@ -6,6 +6,29 @@ and who does it. This is the contract for sessions (and the instructions that
 tell them to report); the code is `src/main/tasks-store.ts` (store and server)
 and `src/renderer/src/components/TasksPanel.tsx` (the view).
 
+## Setting it up
+
+One command per machine, from the Dash repository:
+
+```
+npm run setup:tasks            # or: node scripts/setup-tasks.mjs
+npm run setup:tasks -- --remove
+npm run setup:tasks -- --dry-run
+```
+
+It changes two files in `~/.claude`, keeping a `.bak-dash-tasks` copy of each:
+
+- `settings.json` gets a `UserPromptSubmit` hook. On every prompt it asks Dash for
+  the session's open tasks (`GET /tasks/reminder`, below) and hands them to the
+  model, so an answer the user gives in the chat is written back to the board.
+  It prints nothing when Dash is not running or did not start the session.
+- `CLAUDE.md` gets a short block that tells every session to report its tasks
+  here and to act on the `[Task board]` lines (see "What the user's changes do").
+
+Both are marked, so running it again replaces them rather than adding a second
+copy, and `--remove` takes them out. Sessions pick the change up when they start
+(or after `/hooks` is opened once).
+
 ## Reaching Dash
 
 The port is in `~/.claude/dash-hook-port` (the loopback server Dash's Claude
@@ -32,6 +55,13 @@ The data is kept in `tasks.json` in Dash's userData folder.
 
 Returns `{ "tasks": Task[], "sessions": TaskSession[] }` (`src/shared/tasks.ts`).
 Read it before taking a task, to see what is already queued and who owns what.
+
+## `GET /tasks/reminder?console=<key>` — a session's open tasks, as text
+
+The tasks owned by that console that are `waiting` or `running` (waiting first),
+as a short plain-text note for the session's model, ending with the instruction
+to update the board when the user's message settles one of them. 204 with no
+body when there are none. The setup hook prints it on every prompt.
 
 ## `POST /tasks` — create or update a task
 

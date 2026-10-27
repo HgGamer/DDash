@@ -62,6 +62,26 @@ describe('TasksStore', () => {
   });
 });
 
+describe('TasksStore reminder', () => {
+  it('lists only the open tasks of that console, waiting first', () => {
+    const { s } = store();
+    s.upsert({ id: 'r', title: 'Run', status: 'running', console: 'k1' }, 'x');
+    s.upsert(
+      { id: 'w', title: 'Ask', status: 'waiting', waitingFor: 'Pick one', console: 'k1' },
+      'x',
+    );
+    s.upsert({ id: 'd', title: 'Done', status: 'done', console: 'k1' }, 'x');
+    s.upsert({ id: 'o', title: 'Other', status: 'waiting', console: 'k2' }, 'x');
+    const text = s.reminder('k1');
+    expect(text.indexOf('#w')).toBeLessThan(text.indexOf('#r'));
+    expect(text).toContain('waiting for: Pick one');
+    expect(text).not.toContain('#d');
+    expect(text).not.toContain('#o');
+    expect(s.reminder('nobody')).toBe('');
+    expect(s.reminder('')).toBe('');
+  });
+});
+
 describe('TasksStore over HTTP', () => {
   it('stores UTF-8 and refuses a body that is not UTF-8', async () => {
     const http = await import('node:http');

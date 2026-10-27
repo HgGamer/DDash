@@ -174,6 +174,30 @@ export class TasksStore {
     return { ok: true, delivered, reason: delivered ? undefined : 'console-closed' };
   }
 
+  /** The open tasks (waiting, then running) owned by a console, as a note for
+   *  the session's model; empty when there are none. A UserPromptSubmit hook
+   *  prints it, so an answer given in the chat gets written back to the board
+   *  (scripts/setup-tasks.mjs installs that hook). */
+  reminder(consoleKey: string): string {
+    if (!consoleKey) return '';
+    const mine = this.state.tasks
+      .filter((t) => t.console === consoleKey && (t.status === 'waiting' || t.status === 'running'))
+      .sort((a, b) => (a.status === b.status ? 0 : a.status === 'waiting' ? -1 : 1));
+    if (mine.length === 0) return '';
+    const lines = ['[Dash task board] Your open tasks (owned by this console):'];
+    for (const t of mine) {
+      const waiting =
+        t.status === 'waiting' && t.waitingFor ? ` — waiting for: ${t.waitingFor}` : '';
+      lines.push(`- #${t.id} [${t.status}] ${t.title}${waiting}`);
+    }
+    lines.push(
+      "If the user's message answers, decides or changes one of these, update it on the board " +
+        '(POST /tasks with the same id: new status, note; see docs/tasks-channel.md). ' +
+        'Also update a task when you start or finish it. Otherwise ignore this note.',
+    );
+    return lines.join('\n') + '\n';
+  }
+
   /** Serves `/tasks*` on the loopback hook server; false for other paths. */
   handle(req: http.IncomingMessage, res: http.ServerResponse): boolean {
     const url = new URL(req.url ?? '/', 'http://127.0.0.1');
@@ -183,6 +207,12 @@ export class TasksStore {
     };
     if (req.method === 'GET' && url.pathname === '/tasks') {
       json(200, this.state);
+      return true;
+    }
+    if (req.method === 'GET' && url.pathname === '/tasks/reminder') {
+      const text = this.reminder(url.searchParams.get('console') ?? '');
+      if (text) res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' }).end(text);
+      else res.writeHead(204).end();
       return true;
     }
     if (req.method !== 'POST') {
