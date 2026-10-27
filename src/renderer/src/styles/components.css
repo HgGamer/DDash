@@ -2319,6 +2319,12 @@ html.is-mac .ws-header a {
   border-radius: 4px;
   padding: 2px 4px;
 }
+/* The open list is drawn by the OS; without explicit colours it inherited the
+   light text on a white popup. */
+.task-select option {
+  color: var(--color-fg);
+  background: var(--color-surface);
+}
 .task-comments {
   margin: var(--space-2) 0 0 17px;
   padding: 0;
