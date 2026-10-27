@@ -14,6 +14,7 @@ import { IntegratedTerminalDock, useWorkspaceHeight } from './IntegratedTerminal
 import { useShellTabs } from '../hooks/useShellTabs';
 import { ModBottomPanel } from './ModModal';
 import { ModSendDialog } from './ModSendDialog';
+import { ENTER_DELAY_MS, pastePayload } from '@shared/console-paste';
 import { mainPlacements, tileSpans } from '../lib/board-layout';
 
 interface Props {
@@ -199,7 +200,19 @@ export function Workspace({ activeId }: Props) {
   return (
     <main className="workspace workspace-split" ref={workspaceRef}>
       <div className="workspace-left">
-        {boardMode && <BoardToolbar />}
+        {boardMode && (
+          <BoardToolbar
+            mailTo={
+              activeId
+                ? {
+                    projectId: activeId.projectId,
+                    worktreeId: activeId.worktreeId,
+                    agentId: activeAgentByKey[activeKey!] ?? null,
+                  }
+                : null
+            }
+          />
+        )}
         {!boardMode && activeId && <WorkspaceContentTabs activeId={activeId} />}
         {boardMode && !panes.some((p) => board.includes(p.sessionKey)) && (
           <div className="empty-state">
@@ -434,7 +447,22 @@ function BoardCellHead({
   );
 }
 
-function BoardToolbar() {
+/** The console the toolbar's Mail button types into. */
+interface MailTarget {
+  projectId: string;
+  worktreeId: string | null;
+  agentId: string | null;
+}
+
+/** Opens the Agent Mail inbox (the agent-mail Claude Code mod's `/mail right`)
+ *  as a right-hand panel by typing the command into the active console — on
+ *  the user's click, like the mod send dialog. */
+function openMail(to: MailTarget): void {
+  window.api.pty.write({ ...to, data: pastePayload('/mail right') });
+  setTimeout(() => window.api.pty.write({ ...to, data: '\r' }), ENTER_DELAY_MS);
+}
+
+function BoardToolbar({ mailTo }: { mailTo: MailTarget | null }) {
   const projects = useStore((s) => s.projects);
   const board = useStore((s) => s.board);
   const tabs = useStore((s) => s.tabs);
@@ -472,6 +500,20 @@ function BoardToolbar() {
           onClick={() => setOpen((v) => !v)}
         >
           + Add window
+        </button>
+        <button
+          type="button"
+          className="ws-tab ws-tab-add"
+          aria-label="Open the Agent Mail inbox"
+          title={
+            mailTo
+              ? 'Open the Agent Mail inbox on the right (types /mail right into the active console; needs the agent-mail mod)'
+              : 'Open a Claude console first'
+          }
+          disabled={!mailTo}
+          onClick={() => mailTo && openMail(mailTo)}
+        >
+          ✉ Mail
         </button>
         {open && (
           <div className="ws-agent-menu" role="menu">
