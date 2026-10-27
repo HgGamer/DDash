@@ -164,6 +164,10 @@ export const IPC = {
   DocsDelete: 'docs:delete',
   DocsCreate: 'docs:create',
 
+  // Task board window (renderer → main)
+  TasksOpenWindow: 'tasks:openWindow',
+  TasksReadCounts: 'tasks:readCounts',
+
   // Docs-view settings (renderer ↔ main)
   SettingsGetDocsView: 'settings:getDocsView',
   SettingsSetDocsView: 'settings:setDocsView',
@@ -943,6 +947,13 @@ export interface DashApi {
     rename(args: DocsRenameArgs): Promise<DocsRenameResult>;
     delete(args: DocsDeleteArgs): Promise<DocsDeleteResult>;
     create(args: DocsCreateArgs): Promise<DocsCreateResult>;
+  };
+  tasks: {
+    /** Open (or focus) the task board in its own window. */
+    openWindow(): Promise<void>;
+    /** Read the board's counters from an embedded <webview> (its webContents
+     *  id); null while the page is loading or not logged in. */
+    readCounts(webContentsId: number): Promise<{ running: number; waiting: number; queued: number } | null>;
   };
   autoUpdate: {
     getInfo(): Promise<AutoUpdateInfo>;

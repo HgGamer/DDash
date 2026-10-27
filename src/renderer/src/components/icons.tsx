@@ -76,6 +76,15 @@ export function BoardIcon() {
   );
 }
 
+export function TasksIcon() {
+  return (
+    <svg {...base} aria-hidden="true">
+      <path d="M9 6h11M9 12h11M9 18h11" />
+      <path d="M4 5.5l1 1 2-2M4 11.5l1 1 2-2M4 17.5l1 1 2-2" />
+    </svg>
+  );
+}
+
 export function CopyIcon() {
   return (
     <svg {...base} aria-hidden="true">

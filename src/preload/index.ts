@@ -232,6 +232,10 @@ const api: DashApi = {
     delete: (args: DocsDeleteArgs) => ipcRenderer.invoke(IPC.DocsDelete, args),
     create: (args: DocsCreateArgs) => ipcRenderer.invoke(IPC.DocsCreate, args),
   },
+  tasks: {
+    openWindow: () => ipcRenderer.invoke(IPC.TasksOpenWindow),
+    readCounts: (webContentsId: number) => ipcRenderer.invoke(IPC.TasksReadCounts, webContentsId),
+  },
   autoUpdate: {
     getInfo: () => ipcRenderer.invoke(IPC.AutoUpdateGetInfo),
     getSettings: () => ipcRenderer.invoke(IPC.AutoUpdateGetSettings),
