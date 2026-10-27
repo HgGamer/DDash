@@ -1,4 +1,5 @@
-// A mod's offered prompt as terminal input: one bracketed paste, so a
+// Text typed into a console for the user (a mod's offered prompt, a task-board
+// change) as terminal input: one bracketed paste, so a
 // multi-line prompt lands whole instead of submitting at its first newline.
 // Control characters other than newline and tab are dropped, so the text can
 // neither close the paste early (ESC [201~) nor press keys (ESC, Ctrl-C, …).

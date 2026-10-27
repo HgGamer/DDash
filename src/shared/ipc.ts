@@ -18,6 +18,7 @@ import type {
   WebAccessSettings,
   Worktree,
 } from './types';
+import type { TasksState, TaskUserEdit, TaskUserEditResult } from './tasks';
 import type {
   GitBranch,
   GitChangedEvent,
@@ -164,9 +165,12 @@ export const IPC = {
   DocsDelete: 'docs:delete',
   DocsCreate: 'docs:create',
 
-  // Task board window (renderer → main)
+  // Task board (renderer ↔ main)
+  TasksList: 'tasks:list',
+  TasksEdit: 'tasks:edit',
+  TasksDelete: 'tasks:delete',
+  TasksChanged: 'tasks:changed',
   TasksOpenWindow: 'tasks:openWindow',
-  TasksReadCounts: 'tasks:readCounts',
 
   // Docs-view settings (renderer ↔ main)
   SettingsGetDocsView: 'settings:getDocsView',
@@ -949,11 +953,14 @@ export interface DashApi {
     create(args: DocsCreateArgs): Promise<DocsCreateResult>;
   };
   tasks: {
-    /** Open (or focus) the task board in its own window. */
+    list(): Promise<TasksState>;
+    /** The user's change; may type a note about it into the owner's console. */
+    edit(edit: TaskUserEdit): Promise<TaskUserEditResult>;
+    delete(id: string): Promise<boolean>;
+    /** Fires with the whole board whenever a session or the user changes it. */
+    onChanged(cb: (state: TasksState) => void): () => void;
+    /** Open (or focus) the Tasks view in its own window. */
     openWindow(): Promise<void>;
-    /** Read the board's counters from an embedded <webview> (its webContents
-     *  id); null while the page is loading or not logged in. */
-    readCounts(webContentsId: number): Promise<{ running: number; waiting: number; queued: number } | null>;
   };
   autoUpdate: {
     getInfo(): Promise<AutoUpdateInfo>;

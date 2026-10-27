@@ -1,6 +1,7 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
+import { TasksPanel } from './components/TasksPanel';
 import { applyTheme, loadTheme } from './lib/theme';
 import './styles/tokens.css';
 import './styles.css';
@@ -18,8 +19,10 @@ if (navigator.platform.startsWith('Mac')) {
 
 const container = document.getElementById('root');
 if (!container) throw new Error('root element missing');
+// `?view=tasks` is the Tasks pop-out window (main/tasks-window.ts).
+const standaloneTasks = new URLSearchParams(window.location.search).get('view') === 'tasks';
 createRoot(container).render(
   <React.StrictMode>
-    <App />
+    {standaloneTasks ? <TasksPanel visible standalone /> : <App />}
   </React.StrictMode>,
 );

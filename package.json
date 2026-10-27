@@ -31,7 +31,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "postinstall": "electron-builder install-app-deps",
-    "icon:round": "node scripts/round-icon.mjs"
+    "icon:round": "node scripts/round-icon.mjs",
+    "setup:tasks": "node scripts/setup-tasks.mjs"
   },
   "dependencies": {
     "electron-updater": "^6.8.3",

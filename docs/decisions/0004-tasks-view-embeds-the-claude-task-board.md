@@ -1,5 +1,7 @@
 # 0004 — The Tasks view embeds the claude.ai task board instead of re-implementing it
 
+**Superseded by 0005:** the Tasks view is now native and Dash owns the board.
+
 ## The question
 
 When several Claude Code sessions run in parallel (one per Dash tab, plus

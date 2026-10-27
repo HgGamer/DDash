@@ -93,6 +93,8 @@ export class PtySession {
     if (!env.CLAUDE_CODE_STOP_HOOK_BLOCK_CAP) env.CLAUDE_CODE_STOP_HOOK_BLOCK_CAP = '2';
     // Tells Claude Code mods they can draw a floating modal here (main/mod-modal.ts).
     env.DASH_MOD_MODAL = '1';
+    // Lets a session tell the task board which console it runs in (main/tasks-store.ts).
+    env.DASH_PTY_KEY = opts.key;
 
     const isWin = process.platform === 'win32';
     // Windows-only shell override (e.g. PowerShell). When set, Claude Code and

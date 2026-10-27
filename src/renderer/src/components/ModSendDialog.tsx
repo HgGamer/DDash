@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { ModSendOffer } from '@shared/ipc';
-import { ENTER_DELAY_MS, pastePayload } from '../lib/console-paste';
+import { ENTER_DELAY_MS, pastePayload } from '@shared/console-paste';
 
 /** A console a mod's offered prompt can go to: one open Claude / agent pane. */
 export interface SendTarget {
