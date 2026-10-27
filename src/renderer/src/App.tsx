@@ -9,6 +9,7 @@ import { ClaudePanel } from './components/ClaudePanel';
 import { CommandPalette } from './components/CommandPalette';
 import { NewWorktreeModal } from './components/NewWorktreeModal';
 import { StatusBar } from './components/StatusBar';
+import { TasksPanel } from './components/TasksPanel';
 import { UpdateBanner } from './components/UpdateBanner';
 import { ToastHost, toast } from './components/Toast';
 import { useStore, loadSavedActive } from './store';
@@ -382,7 +383,7 @@ export function App() {
       <div className="app-body">
         <ActivityBar />
         <div className="app-main">
-          {sidebarOpen && sidebarView !== 'git' && sidebarView !== 'board' && (
+          {sidebarOpen && sidebarView !== 'git' && sidebarView !== 'board' && sidebarView !== 'tasks' && (
             <Sidebar
               activeId={activeId}
               onActivate={activate}
@@ -397,6 +398,7 @@ export function App() {
           {sidebarOpen && sidebarView === 'git' && (
             <GitClient active={activeId} isWorktreeTab={!!activeId?.worktreeId} />
           )}
+          <TasksPanel visible={sidebarOpen && sidebarView === 'tasks'} />
           {claudePanelOpen && <ClaudePanel active={activeId} />}
           <ModSidePanel />
         </div>

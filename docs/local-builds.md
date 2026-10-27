@@ -51,3 +51,16 @@ one is never silently overwritten.
   and build again, which re-downloads it.
 - A build that succeeds but starts with a blank window usually means `.stage/`
   is stale from an interrupted `electron-vite build`; remove it and rebuild.
+
+## Running `npm run dev` beside an installed Dash
+
+The dev build and an installed Dash read the same settings folder by default, so
+a dev window restores the same project tabs and starts a second Claude Code
+session in them. Give the dev run its own folder:
+
+```
+DASH_USER_DATA="$APPDATA/dash-dev" npm run dev        # Git Bash
+$env:DASH_USER_DATA="$env:APPDATA\dash-dev"; npm run dev   # PowerShell
+```
+
+It starts with no projects; anything you add there stays in that folder.

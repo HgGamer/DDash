@@ -7,6 +7,7 @@ import { registerIpc } from './ipc';
 import { registerGitIpc } from './git-ipc';
 import { registerShellIpc } from './shell-ipc';
 import { registerDocsIpc } from './docs-ipc';
+import { registerTasksIpc } from './tasks-window';
 import { registerClaudeConfigIpc } from './claude-config-ipc';
 import { ShellSessionManager } from './shell-session';
 import { installAppMenu } from './menu';
@@ -22,6 +23,13 @@ import { compositeKey, IPC } from '../shared/ipc';
 import { resolveTerminalStyleOptions, type WebAccessSettings } from '@shared/types';
 
 const isDev = !app.isPackaged;
+
+// Dev only: DASH_USER_DATA points `npm run dev` at its own settings/projects
+// folder, so a dev window beside an installed Dash neither restores (and
+// respawns) the same project tabs nor writes into the release's store.
+if (isDev && process.env['DASH_USER_DATA']) {
+  app.setPath('userData', process.env['DASH_USER_DATA']);
+}
 
 // In production, electron-builder generates platform-native icons from
 // `build/icon.png` and packs them into the app bundle, so the OS picks them
@@ -107,6 +115,9 @@ async function createWindow(): Promise<void> {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
+      // The Tasks view embeds the claude.ai task board; guests are locked down
+      // in tasks-window.ts (partition, no node, navigation allow-list).
+      webviewTag: true,
     },
   });
 
@@ -221,6 +232,7 @@ app.whenReady().then(async () => {
   registerGitIpc({ registry, getWindow: () => mainWindow });
   registerShellIpc({ registry, settings, shellManager, getWindow: () => mainWindow });
   registerDocsIpc({ registry });
+  registerTasksIpc();
   registerClaudeConfigIpc({ registry });
   autoUpdater = createAutoUpdater({ settings, store, getWindow: () => mainWindow });
   registerAutoUpdateIpc({ updater: autoUpdater, settings, store, getWindow: () => mainWindow });

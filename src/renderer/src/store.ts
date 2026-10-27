@@ -29,6 +29,14 @@ import { applyTheme, loadTheme, type AppTheme } from './lib/theme';
 
 /** How the board arranges its pinned windows. 'tile' and 'main' both fill the
  *  workspace; 'free' lets each tile be dragged and resized freely. */
+
+/** The task board's headline counters (see TasksPanel). */
+export interface TaskCounts {
+  running: number;
+  waiting: number;
+  queued: number;
+}
+
 export type BoardLayout = 'free' | 'tile' | 'main';
 
 const BOARD_KEY = 'dash.board';
@@ -231,6 +239,9 @@ interface AppStore {
   theme: AppTheme;
   claudeUsage: ClaudeUsageSummary | null;
   claudePlanUsage: ClaudePlanUsage | null;
+  /** Counters read from the embedded task board (Tasks view), or null until the
+   *  board has loaded once. `waiting` is what waits for the user. */
+  taskCounts: TaskCounts | null;
   terminalStyle: TerminalStyleSettings;
   notifications: NotificationSettings;
   gitView: GitViewSettings;
@@ -260,7 +271,7 @@ interface AppStore {
    *  activeDocByKey when set. */
   activeAgentByKey: Record<string, string | null>;
   /** Which view the side panel shows (selected from the activity bar). */
-  sidebarView: 'projects' | 'files' | 'git' | 'board';
+  sidebarView: 'projects' | 'files' | 'git' | 'board' | 'tasks';
   /** Selection compositeKeys pinned to the multi-project board grid, in display
    *  order. Persisted in localStorage; the board reuses the panes Workspace
    *  keeps mounted. */
@@ -299,6 +310,7 @@ interface AppStore {
   setTheme: (theme: AppTheme) => void;
   setClaudeUsage: (usage: ClaudeUsageSummary | null) => void;
   setClaudePlanUsage: (usage: ClaudePlanUsage | null) => void;
+  setTaskCounts: (counts: TaskCounts | null) => void;
   setActive: (active: ActiveSelection | null) => void;
   ensureMounted: (key: string) => void;
   upsertTab: (key: string, patch: Partial<TabState>) => void;
@@ -340,7 +352,7 @@ interface AppStore {
   setActiveAgent: (selectionKey: string, agentId: string) => void;
   /** Activity-bar click: select a view (opening the panel), or collapse it when
    *  the already-active view's icon is clicked again. */
-  selectSidebarView: (view: 'projects' | 'files' | 'git' | 'board') => void;
+  selectSidebarView: (view: 'projects' | 'files' | 'git' | 'board' | 'tasks') => void;
   /** Close a selection's built-in "Claude Code" window. Only takes effect while
    *  another window is open, so a selection never ends up with none; the built-in
    *  window returns when the last extra one is closed. */
@@ -376,6 +388,7 @@ export const useStore = create<AppStore>((set) => ({
   theme: loadTheme(),
   claudeUsage: null,
   claudePlanUsage: null,
+  taskCounts: null,
   terminalStyle: { version: 1, preset: 'dash-dark' },
   notifications: { ...DEFAULT_NOTIFICATION_SETTINGS },
   gitView: { ...DEFAULT_GIT_VIEW_SETTINGS },
@@ -415,6 +428,7 @@ export const useStore = create<AppStore>((set) => ({
   },
   setClaudeUsage: (usage) => set({ claudeUsage: usage }),
   setClaudePlanUsage: (usage) => set({ claudePlanUsage: usage }),
+  setTaskCounts: (counts) => set({ taskCounts: counts }),
   setActive: (active) =>
     set((s) => {
       saveActive(active);

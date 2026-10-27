@@ -1,4 +1,6 @@
+import { useState } from 'react';
 import { useStore } from '../store';
+import { PlanUsagePopover } from './PlanUsagePopover';
 
 const TOKEN_FORMATTER = new Intl.NumberFormat('en', {
   notation: 'compact',
@@ -29,11 +31,15 @@ export function StatusBar() {
   const planUsage = useStore((s) => s.claudePlanUsage);
   const theme = useStore((s) => s.theme);
   const setTheme = useStore((s) => s.setTheme);
+  const waiting = useStore((s) => s.taskCounts?.waiting ?? 0);
+  const selectSidebarView = useStore((s) => s.selectSidebarView);
+  const tasksShown = useStore((s) => s.sidebarOpen && s.sidebarView === 'tasks');
+  const [planOpen, setPlanOpen] = useState(false);
 
-  const proj = activeId ? projects.find((p) => p.id === activeId.projectId) ?? null : null;
+  const proj = activeId ? (projects.find((p) => p.id === activeId.projectId) ?? null) : null;
   const worktree =
     activeId?.worktreeId && proj
-      ? proj.worktrees.find((w) => w.id === activeId.worktreeId) ?? null
+      ? (proj.worktrees.find((w) => w.id === activeId.worktreeId) ?? null)
       : null;
   const showUsage = !!claudeUsage?.available && claudeUsage.totalTokens > 0;
   const totalTokens = claudeUsage?.totalTokens ?? 0;
@@ -70,23 +76,46 @@ export function StatusBar() {
             {worktree && <span className="statusbar-project-branch">⎇ {worktree.branch}</span>}
           </span>
         )}
+        {waiting > 0 && (
+          <button
+            type="button"
+            className="statusbar-alert"
+            title="Open the task board"
+            onClick={() => {
+              if (!tasksShown) selectSidebarView('tasks');
+            }}
+          >
+            ⚠ {waiting} waiting for you
+          </button>
+        )}
         {showPlan && (
-          <div className="statusbar-usage" title={planTitle}>
-            <div className="statusbar-usage-copy">
-              <span className="statusbar-usage-label">Plan</span>
-              <span className="statusbar-usage-value">
-                {fiveH !== null && `5h ${Math.round(fiveH)}%`}
-                {fiveH !== null && sevenD !== null && ' · '}
-                {sevenD !== null && `7d ${Math.round(sevenD)}%`}
-              </span>
-            </div>
-            <div className="statusbar-plan-bar" aria-hidden="true">
-              <span
-                className="statusbar-plan-fill"
-                data-level={planLevel}
-                style={{ width: `${planGauge}%` }}
-              />
-            </div>
+          <div className="statusbar-plan-wrap">
+            {planOpen && planUsage && (
+              <PlanUsagePopover usage={planUsage} onClose={() => setPlanOpen(false)} />
+            )}
+            <button
+              type="button"
+              className="statusbar-usage statusbar-usage-button"
+              title={planTitle}
+              aria-expanded={planOpen}
+              onClick={() => setPlanOpen((v) => !v)}
+            >
+              <div className="statusbar-usage-copy">
+                <span className="statusbar-usage-label">Plan</span>
+                <span className="statusbar-usage-value">
+                  {fiveH !== null && `5h ${Math.round(fiveH)}%`}
+                  {fiveH !== null && sevenD !== null && ' · '}
+                  {sevenD !== null && `7d ${Math.round(sevenD)}%`}
+                </span>
+              </div>
+              <div className="statusbar-plan-bar" aria-hidden="true">
+                <span
+                  className="statusbar-plan-fill"
+                  data-level={planLevel}
+                  style={{ width: `${planGauge}%` }}
+                />
+              </div>
+            </button>
           </div>
         )}
         {showUsage && claudeUsage && (
