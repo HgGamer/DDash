@@ -2,25 +2,43 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'reac
 import type { ModModalView } from '@shared/ipc';
 import { renderMarkdown } from '../lib/markdown';
 
-/** A mod's view docked as a right-hand panel (placement 'sidebar'); lives in the
- *  app-main flex row beside the workspace, so it takes room rather than covering it. */
+/** Mods' views docked as a right-hand panel (placement 'sidebar'); lives in the app-main flex row beside the
+ *  workspace, so it takes room rather than covering it. Several mods share it as tabs (mail, todos, ...): a newly
+ *  opened view takes the focus, ✕ closes the shown one. */
 export function ModSidePanel(): JSX.Element | null {
-  const [view, setView] = useModView('sidebar');
-  if (!view) return null;
-  const press = (key: string): void => window.api.mod.press(view.id, key);
-  const dismiss = (): void => {
-    press('__close');
-    setView(null);
-  };
+  const { views, added } = useModViews('sidebar');
+  const [current, setCurrent] = useState<string | null>(null);
+  useEffect(() => {
+    if (added) setCurrent(added);
+  }, [added]);
+  if (!views.length) return null;
+  const view = views.find((v) => v.id === current) ?? views[views.length - 1]!;
   return (
-    <aside className="claude-panel" aria-label={view.title}>
+    <aside className="claude-panel" aria-label="Mod panels">
       <div className="claude-panel-head">
-        <span className="mod-modal-title">{view.title}</span>
-        <button className="btn-ghost" aria-label="Close" onClick={dismiss}>
+        {views.length > 1 ? (
+          <div className="claude-tabs mod-side-tabs" role="tablist">
+            {views.map((v) => (
+              <button key={v.id} role="tab" aria-selected={v === view} className={v === view ? 'on' : ''} title={v.title} onClick={() => setCurrent(v.id)}>
+                {v.title}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <span className="mod-modal-title">{view.title}</span>
+        )}
+        <button
+          className="btn-ghost"
+          aria-label={`Close ${view.title}`}
+          onClick={() => {
+            window.api.mod.press(view.id, '__close');
+            storeFor('sidebar').drop(view.id); // gone at once, even when its mod has exited and never answers
+          }}
+        >
           ✕
         </button>
       </div>
-      <ModViewBody view={view} className="claude-panel-body" />
+      <ModViewBody key={view.id} view={view} className="claude-panel-body" />
     </aside>
   );
 }
@@ -136,37 +154,43 @@ function ModMarkdownBody({ view, className }: { view: ModModalView; className: s
   );
 }
 
-// Mods' 'bottom' views, one list for the whole renderer: tabs in the integrated
-// shell dock's strip (IntegratedTerminalDock), or ModBottomPanel when the dock is closed.
-let bottom: { views: ModModalView[]; added: string | null } = { views: [], added: null };
-const bottomSubs = new Set<() => void>();
-let bottomStarted = false;
-function startBottom(): void {
-  if (bottomStarted) return;
-  bottomStarted = true;
-  const set = (next: typeof bottom) => {
-    bottom = next;
-    bottomSubs.forEach((f) => f());
+// Mods' views per placement, one list each for the whole renderer: 'bottom' = tabs in the integrated shell dock's strip
+// (IntegratedTerminalDock), or ModBottomPanel when the dock is closed; 'sidebar' = tabs in ModSidePanel.
+type ModViews = { views: ModModalView[]; added: string | null };
+type Store = { state: ModViews; subs: Set<() => void>; drop: (id: string) => void };
+const stores = new Map<'bottom' | 'sidebar', Store>();
+function storeFor(placement: 'bottom' | 'sidebar') {
+  let st = stores.get(placement);
+  if (st) return st;
+  const s: Store = { state: { views: [], added: null }, subs: new Set(), drop: () => undefined };
+  stores.set(placement, s);
+  const set = (next: ModViews) => {
+    s.state = next;
+    s.subs.forEach((f) => f());
   };
-  const drop = (id: string) => bottom.views.some((v) => v.id === id) && set({ ...bottom, views: bottom.views.filter((v) => v.id !== id) });
+  const drop = (id: string) => void (s.state.views.some((v) => v.id === id) && set({ ...s.state, views: s.state.views.filter((v) => v.id !== id) }));
+  s.drop = drop;
   window.api.mod.onShow((v) => {
-    if (v.placement !== 'bottom') return void drop(v.id); // moved elsewhere
-    const has = bottom.views.some((x) => x.id === v.id);
-    set({ views: has ? bottom.views.map((x) => (x.id === v.id ? v : x)) : [...bottom.views, v], added: has ? bottom.added : v.id });
+    if (v.placement !== placement) return void drop(v.id); // moved elsewhere
+    const has = s.state.views.some((x) => x.id === v.id);
+    set({ views: has ? s.state.views.map((x) => (x.id === v.id ? v : x)) : [...s.state.views, v], added: has ? s.state.added : v.id });
   });
   window.api.mod.onClose((id) => void drop(id));
+  st = s;
+  return st;
 }
-/** The bottom views, and the id of the one added last (a new one gets focus). */
-export function useBottomModViews(): { views: ModModalView[]; added: string | null } {
-  startBottom();
+/** The views of one placement, and the id of the one added last (a new one gets focus). */
+function useModViews(placement: 'bottom' | 'sidebar'): ModViews {
+  const st = storeFor(placement);
   return useSyncExternalStore(
     (f) => {
-      bottomSubs.add(f);
-      return () => bottomSubs.delete(f);
+      st.subs.add(f);
+      return () => st.subs.delete(f);
     },
-    () => bottom,
+    () => st.state,
   );
 }
+export const useBottomModViews = (): ModViews => useModViews('bottom');
 
 /** The mods' bottom views while the shell dock is closed: the same tabs, on their own. */
 export function ModBottomPanel(): JSX.Element | null {
@@ -200,7 +224,7 @@ export function ModBottomPanel(): JSX.Element | null {
 
 /** The last view shown for one placement, until its mod closes it (or ✕). */
 function useModView(
-  placement: 'float' | 'sidebar',
+  placement: 'float',
 ): [ModModalView | null, (v: ModModalView | null) => void] {
   const [view, setView] = useState<ModModalView | null>(null);
   useEffect(() => {

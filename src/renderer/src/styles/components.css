@@ -2094,6 +2094,17 @@ html.is-mac .ws-header a {
   background: transparent;
 }
 
+/* Several mods in the right-hand panel: their views as tabs in its header (ModSidePanel). */
+.mod-side-tabs {
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.mod-side-tabs button {
+  white-space: nowrap;
+}
+
 /* ---- Tasks view: the embedded claude.ai task board (TasksPanel) ---- */
 /* The Tasks view covers the whole main area: the board is the view, as on the
    artifact page. The workspace stays mounted underneath so terminals keep
@@ -2179,8 +2190,13 @@ html.is-mac .ws-header a {
   outline: none;
 }
 @keyframes dash-attention {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.35; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
 }
 @media (prefers-reduced-motion: reduce) {
   .act-badge,
