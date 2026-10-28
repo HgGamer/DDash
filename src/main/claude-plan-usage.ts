@@ -1,3 +1,4 @@
+import { execFile } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -5,8 +6,9 @@ import type { ClaudePlanUsage, ClaudePlanWindow } from '@shared/types';
 
 /**
  * Live subscription plan usage — the same data Claude Code's `/usage` command
- * shows. Fetched from the Anthropic OAuth usage endpoint using the local
- * credentials in `~/.claude/.credentials.json`.
+ * shows. Fetched from the Anthropic OAuth usage endpoint using the local Claude
+ * Code credentials: `~/.claude/.credentials.json` on Windows and Linux, the
+ * login keychain on macOS (see {@link readKeychainCredentials}).
  *
  * The endpoint rate-limits aggressively (HTTP 429) when polled, so results are
  * cached and refreshed at most every {@link MIN_INTERVAL_MS}; a 429 triggers a
@@ -46,15 +48,50 @@ type TokenResult =
   | { ok: true; token: string }
   | { ok: false; reason: 'no-credentials' | 'expired' };
 
+// macOS keeps the credentials in the login keychain instead of a file, under
+// this service name. `security` is the only supported way to read it.
+const KEYCHAIN_SERVICE = 'Claude Code-credentials';
+// The item was written by Claude Code, so reading it from another binary makes
+// macOS show an allow/deny prompt. Denied once, we stop asking for this run —
+// the 5-minute refresh would otherwise reopen the dialog all day.
+let keychainDenied = false;
+// A prompt stays up until the user answers it; one pending read is enough.
+let keychainRead: Promise<string | null> | null = null;
+
+/** The credential JSON from the macOS login keychain, or null. */
+function readKeychainCredentials(): Promise<string | null> {
+  if (keychainRead) return keychainRead;
+  keychainRead = new Promise<string | null>((resolve) => {
+    execFile('security', ['find-generic-password', '-s', KEYCHAIN_SERVICE, '-w'], (err, stdout) => {
+      if (err) {
+        // 128 is the user dismissing or denying the access prompt; 44 is "no
+        // such item", which just means Claude Code has not logged in here.
+        if ((err as { code?: number }).code === 128) keychainDenied = true;
+        resolve(null);
+        return;
+      }
+      resolve(stdout.toString().trim() || null);
+    });
+  }).finally(() => {
+    keychainRead = null;
+  });
+  return keychainRead;
+}
+
 /** Read the OAuth access token from the local Claude Code credential store. */
 async function readAccessToken(): Promise<TokenResult> {
   const file = path.join(os.homedir(), '.claude', '.credentials.json');
-  let raw: string;
+  let raw: string | null;
   try {
     raw = await fs.readFile(file, 'utf8');
   } catch {
-    return { ok: false, reason: 'no-credentials' };
+    raw = null;
   }
+
+  if (raw === null && process.platform === 'darwin' && !keychainDenied) {
+    raw = await readKeychainCredentials();
+  }
+  if (raw === null) return { ok: false, reason: 'no-credentials' };
 
   let obj: {
     claudeAiOauth?: { accessToken?: string; expiresAt?: number };
