@@ -3,6 +3,7 @@ import type {
   ActiveSelection,
   AgentDef,
   ClaudeUsageSummary,
+  ConsoleCommandSettings,
   ClaudePlanUsage,
   DocsViewSettings,
   GitViewSettings,
@@ -18,6 +19,7 @@ import type {
   Worktree,
 } from '@shared/types';
 import {
+  DEFAULT_CONSOLE_COMMAND_SETTINGS,
   DEFAULT_DOCS_VIEW_SETTINGS,
   DEFAULT_GIT_VIEW_SETTINGS,
   DEFAULT_INTEGRATED_TERMINAL_SETTINGS,
@@ -243,6 +245,8 @@ interface AppStore {
   docsView: DocsViewSettings;
   integratedTerminal: IntegratedTerminalSettings;
   webAccess: WebAccessSettings;
+  /** The workspace toolbar's one-click console command (label + command). */
+  consoleCommand: ConsoleCommandSettings;
   /** Per-selection shell tab state, keyed by compositeKey(projectId, worktreeId). */
   shellTabs: Record<string, ShellTabsEntry>;
   gitDiff: GitDiffSelection | null;
@@ -318,6 +322,7 @@ interface AppStore {
   setIntegratedTerminal: (s: IntegratedTerminalSettings) => void;
   setWebAccess: (s: WebAccessSettings) => void;
   setAgents: (agents: AgentDef[]) => void;
+  setConsoleCommand: (s: ConsoleCommandSettings) => void;
   setShellTabsFor: (selectionKey: string, tabs: ShellTab[]) => void;
   addShellTab: (selectionKey: string, tab: ShellTab) => void;
   removeShellTab: (selectionKey: string, tabId: string) => void;
@@ -390,6 +395,7 @@ export const useStore = create<AppStore>((set) => ({
   docsView: { ...DEFAULT_DOCS_VIEW_SETTINGS },
   integratedTerminal: { ...DEFAULT_INTEGRATED_TERMINAL_SETTINGS },
   webAccess: { ...DEFAULT_WEB_ACCESS_SETTINGS },
+  consoleCommand: { ...DEFAULT_CONSOLE_COMMAND_SETTINGS },
   shellTabs: {},
   gitDiff: null,
   gitCommit: null,
@@ -530,6 +536,7 @@ export const useStore = create<AppStore>((set) => ({
   setDocsView: (s) => set({ docsView: s }),
   setIntegratedTerminal: (s) => set({ integratedTerminal: s }),
   setWebAccess: (s) => set({ webAccess: s }),
+  setConsoleCommand: (s) => set({ consoleCommand: s }),
   setAgents: (agents) =>
     set((s) => {
       // If a configured agent was removed, drop any open tabs referencing it.

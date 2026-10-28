@@ -182,3 +182,51 @@ describe('AutoUpdateState shape', () => {
     if (deb.kind === 'idle') expect(deb.disabledReason).toBe('unsupported-platform');
   });
 });
+
+describe('SettingsManager.consoleCommand', () => {
+  it('defaults to the agent-mail inbox', () => {
+    expect(settings.getConsoleCommand()).toEqual({
+      version: 1,
+      enabled: true,
+      label: '✉ Mail',
+      command: '/mail right',
+    });
+  });
+
+  it('round-trips a custom label and command across reload', async () => {
+    settings.setConsoleCommand({ label: 'Inbox', command: '/inbox' });
+    await store.flush();
+
+    const reloaded = new JsonStore({ dir: tmpDir, debounceMs: 0 });
+    await reloaded.load();
+    const s2 = new SettingsManager(reloaded);
+    expect(s2.getConsoleCommand()).toMatchObject({ label: 'Inbox', command: '/inbox' });
+  });
+
+  it('keeps the other field when only one is patched', () => {
+    settings.setConsoleCommand({ label: 'Inbox', command: '/inbox' });
+    settings.setConsoleCommand({ enabled: false });
+    expect(settings.getConsoleCommand()).toEqual({
+      version: 1,
+      enabled: false,
+      label: 'Inbox',
+      command: '/inbox',
+    });
+  });
+
+  it('falls back to the default when a field is cleared, so the button stays usable', () => {
+    settings.setConsoleCommand({ label: '   ', command: '' });
+    expect(settings.getConsoleCommand()).toMatchObject({
+      label: '✉ Mail',
+      command: '/mail right',
+    });
+  });
+
+  it('emits consoleCommandChanged on every change', () => {
+    const seen: string[] = [];
+    settings.on('consoleCommandChanged', (s) => seen.push(s.command));
+    settings.setConsoleCommand({ command: '/inbox' });
+    settings.setConsoleCommand({ command: '/mail left' });
+    expect(seen).toEqual(['/inbox', '/mail left']);
+  });
+});

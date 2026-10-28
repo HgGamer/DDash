@@ -64,6 +64,7 @@ import type {
   AgentsSettings,
   AutoUpdateInfo,
   AutoUpdateSettings,
+  ConsoleCommandSettings,
   DocsViewSettings,
   GitViewSettings,
   IntegratedTerminalSettings,
@@ -164,6 +165,11 @@ const api: DashApi = {
     getAgents: () => ipcRenderer.invoke(IPC.SettingsGetAgents),
     setAgents: (agents: AgentDef[]) => ipcRenderer.invoke(IPC.SettingsSetAgents, agents),
     onAgentsChanged: (h) => subscribe<AgentsSettings>(IPC.SettingsAgentsChanged, h),
+    getConsoleCommand: () => ipcRenderer.invoke(IPC.SettingsGetConsoleCommand),
+    setConsoleCommand: (patch: Partial<Omit<ConsoleCommandSettings, 'version'>>) =>
+      ipcRenderer.invoke(IPC.SettingsSetConsoleCommand, patch),
+    onConsoleCommandChanged: (h) =>
+      subscribe<ConsoleCommandSettings>(IPC.SettingsConsoleCommandChanged, h),
   },
   shell: {
     open: (args: ShellOpenArgs) => ipcRenderer.invoke(IPC.ShellOpen, args),

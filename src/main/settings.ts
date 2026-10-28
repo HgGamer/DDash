@@ -3,6 +3,7 @@ import type {
   AgentDef,
   AgentsSettings,
   AutoUpdateSettings,
+  ConsoleCommandSettings,
   GitViewSettings,
   IntegratedTerminalSettings,
   NotificationSettings,
@@ -14,6 +15,7 @@ import type {
 } from '@shared/types';
 import {
   DEFAULT_AUTO_UPDATE_SETTINGS,
+  DEFAULT_CONSOLE_COMMAND_SETTINGS,
   DEFAULT_GIT_VIEW_SETTINGS,
   DEFAULT_INTEGRATED_TERMINAL_SETTINGS,
   DEFAULT_NOTIFICATION_SETTINGS,
@@ -39,6 +41,7 @@ export interface SettingsManagerEvents {
   autoUpdateChanged: (settings: AutoUpdateSettings) => void;
   webAccessChanged: (settings: WebAccessSettings) => void;
   agentsChanged: (settings: AgentsSettings) => void;
+  consoleCommandChanged: (settings: ConsoleCommandSettings) => void;
 }
 
 export class SettingsManager extends EventEmitter {
@@ -231,6 +234,33 @@ export class SettingsManager extends EventEmitter {
       draft.agents = next;
     });
     this.emit('agentsChanged', next);
+    return next;
+  }
+
+  getConsoleCommand(): ConsoleCommandSettings {
+    const raw = this.store.get().consoleCommand;
+    if (!raw) return { ...DEFAULT_CONSOLE_COMMAND_SETTINGS };
+    return { ...raw };
+  }
+
+  setConsoleCommand(
+    patch: Partial<Omit<ConsoleCommandSettings, 'version'>>,
+  ): ConsoleCommandSettings {
+    const current = this.getConsoleCommand();
+    // A blank label or command is treated as "unset" and falls back to the
+    // default, so the button never renders empty or types nothing.
+    const label = typeof patch.label === 'string' ? patch.label.trim() : current.label;
+    const command = typeof patch.command === 'string' ? patch.command.trim() : current.command;
+    const next: ConsoleCommandSettings = {
+      version: 1,
+      enabled: patch.enabled ?? current.enabled,
+      label: label || DEFAULT_CONSOLE_COMMAND_SETTINGS.label,
+      command: command || DEFAULT_CONSOLE_COMMAND_SETTINGS.command,
+    };
+    this.store.update((draft) => {
+      draft.consoleCommand = next;
+    });
+    this.emit('consoleCommandChanged', next);
     return next;
   }
 

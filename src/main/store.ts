@@ -4,6 +4,7 @@ import {
   DEFAULT_AGENTS_SETTINGS,
   DEFAULT_APP_STATE,
   DEFAULT_AUTO_UPDATE_SETTINGS,
+  DEFAULT_CONSOLE_COMMAND_SETTINGS,
   DEFAULT_GIT_VIEW_SETTINGS,
   DEFAULT_INTEGRATED_TERMINAL_SETTINGS,
   DEFAULT_NOTIFICATION_SETTINGS,
@@ -22,6 +23,7 @@ import {
   type AgentsSettings,
   type AppState,
   type AutoUpdateSettings,
+  type ConsoleCommandSettings,
   type DocsViewSettings,
   type GitViewSettings,
   type IntegratedTerminalSettings,
@@ -172,6 +174,7 @@ export class JsonStore {
       autoUpdate: migrateAutoUpdate(r.autoUpdate),
       webAccess: migrateWebAccess(r.webAccess),
       agents: migrateAgents(r.agents),
+      consoleCommand: migrateConsoleCommand(r.consoleCommand),
       claudeSessions:
         r.claudeSessions && typeof r.claudeSessions === 'object'
           ? (r.claudeSessions as Record<string, string>)
@@ -369,6 +372,27 @@ function migrateAgents(raw: unknown): AgentsSettings {
         .filter((a): a is AgentDef => a !== null)
     : [];
   return { version: 1, agents };
+}
+
+function migrateConsoleCommand(raw: unknown): ConsoleCommandSettings {
+  if (!raw || typeof raw !== 'object') return { ...DEFAULT_CONSOLE_COMMAND_SETTINGS };
+  const r = raw as Partial<ConsoleCommandSettings>;
+  // An empty label or command would render an unusable button, so a blank
+  // stored value falls back to the default rather than to "".
+  const label =
+    typeof r.label === 'string' && r.label.trim()
+      ? r.label.trim()
+      : DEFAULT_CONSOLE_COMMAND_SETTINGS.label;
+  const command =
+    typeof r.command === 'string' && r.command.trim()
+      ? r.command.trim()
+      : DEFAULT_CONSOLE_COMMAND_SETTINGS.command;
+  return {
+    version: 1,
+    enabled: typeof r.enabled === 'boolean' ? r.enabled : DEFAULT_CONSOLE_COMMAND_SETTINGS.enabled,
+    label,
+    command,
+  };
 }
 
 function migrateWebAccess(raw: unknown): WebAccessSettings {
