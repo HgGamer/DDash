@@ -3,6 +3,7 @@ import type {
   AgentDef,
   AutoUpdateChannel,
   AutoUpdateState,
+  ConsoleCommandSettings,
   NotificationSettings,
   TerminalCursorStyle,
   TerminalStyleOptions,
@@ -828,7 +829,66 @@ function AgentsPanel() {
           </button>
         </div>
       </section>
+      <ConsoleCommandSection />
     </div>
+  );
+}
+
+/** The one-click command button shown on the board toolbar and in the
+ *  workspace tab bar. Both its label and what it types are the user's. */
+function ConsoleCommandSection() {
+  const cfg = useStore((s) => s.consoleCommand);
+  // Local drafts so a half-typed value isn't trimmed mid-keystroke; the
+  // sanitized value is persisted on blur.
+  const [label, setLabel] = useState(cfg.label);
+  const [command, setCommand] = useState(cfg.command);
+  useEffect(() => setLabel(cfg.label), [cfg.label]);
+  useEffect(() => setCommand(cfg.command), [cfg.command]);
+
+  const patch = (p: Partial<Omit<ConsoleCommandSettings, 'version'>>) =>
+    void window.api.settings.setConsoleCommand(p);
+
+  return (
+    <section>
+      <h4>Command button</h4>
+      <p className="preset-desc">
+        A button in the workspace tab bar and on the board toolbar that types a command into the
+        active console and presses Enter — as if you typed it. It starts out as the agent-mail
+        mod&rsquo;s inbox (<code>/mail right</code>), but any slash command or line of text works.
+      </p>
+      <div className="field-row">
+        <label className="field-label">Show the button</label>
+        <input
+          type="checkbox"
+          checked={cfg.enabled}
+          onChange={(e) => patch({ enabled: e.target.checked })}
+        />
+      </div>
+      <div className="field-row">
+        <label className="field-label">Button name</label>
+        <input
+          className="field-input"
+          type="text"
+          value={label}
+          placeholder="✉ Mail"
+          aria-label="Command button name"
+          onChange={(e) => setLabel(e.target.value)}
+          onBlur={() => patch({ label })}
+        />
+      </div>
+      <div className="field-row">
+        <label className="field-label">Command</label>
+        <input
+          className="field-input"
+          type="text"
+          value={command}
+          placeholder="/mail right"
+          aria-label="Command typed into the console"
+          onChange={(e) => setCommand(e.target.value)}
+          onBlur={() => patch({ command })}
+        />
+      </div>
+    </section>
   );
 }
 

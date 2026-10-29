@@ -42,6 +42,7 @@ import type {
   ActiveSelection,
   AgentDef,
   AgentsSettings,
+  ConsoleCommandSettings,
   DocsViewSettings,
   GitViewSettings,
   IntegratedTerminalSettings,
@@ -564,6 +565,27 @@ export function registerIpc(args: {
 
   settings.on('agentsChanged', (s: AgentsSettings) => {
     send(IPC.SettingsAgentsChanged, s);
+  });
+
+  ipcMain.handle(
+    IPC.SettingsGetConsoleCommand,
+    async (): Promise<ConsoleCommandSettings> => settings.getConsoleCommand(),
+  );
+
+  ipcMain.handle(
+    IPC.SettingsSetConsoleCommand,
+    async (
+      _e,
+      patch: Partial<Omit<ConsoleCommandSettings, 'version'>>,
+    ): Promise<ConsoleCommandSettings> => {
+      const next = settings.setConsoleCommand(patch);
+      await store.flush();
+      return next;
+    },
+  );
+
+  settings.on('consoleCommandChanged', (s: ConsoleCommandSettings) => {
+    send(IPC.SettingsConsoleCommandChanged, s);
   });
 
   ipcMain.handle(

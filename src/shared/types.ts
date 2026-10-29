@@ -268,6 +268,28 @@ export const DEFAULT_AGENTS_SETTINGS: AgentsSettings = {
   agents: [],
 };
 
+/** The workspace toolbar's one-click command: a button that types `command`
+ *  into the active console and presses Enter, on the user's click. It ships
+ *  pointed at the agent-mail mod's inbox because that is what it was built
+ *  for, but both the label and the command are the user's to change — any
+ *  slash command or line of text works. */
+export interface ConsoleCommandSettings {
+  version: 1;
+  /** When false, the button is hidden everywhere. */
+  enabled: boolean;
+  /** Button label, e.g. "✉ Mail". */
+  label: string;
+  /** What is typed into the console, e.g. "/mail right". */
+  command: string;
+}
+
+export const DEFAULT_CONSOLE_COMMAND_SETTINGS: ConsoleCommandSettings = {
+  version: 1,
+  enabled: true,
+  label: '✉ Mail',
+  command: '/mail right',
+};
+
 export type AutoUpdateChannel = 'stable' | 'beta';
 
 export interface AutoUpdateSettings {
@@ -368,6 +390,7 @@ export interface AppState {
   autoUpdate: AutoUpdateSettings;
   webAccess: WebAccessSettings;
   agents: AgentsSettings;
+  consoleCommand: ConsoleCommandSettings;
   /** Latest Claude Code session id seen (via hooks) per selection compositeKey,
    *  used to `claude --resume <id>` when restoring a session on launch. */
   claudeSessions: Record<string, string>;
@@ -395,6 +418,7 @@ export const DEFAULT_APP_STATE: AppState = {
   autoUpdate: DEFAULT_AUTO_UPDATE_SETTINGS,
   webAccess: DEFAULT_WEB_ACCESS_SETTINGS,
   agents: DEFAULT_AGENTS_SETTINGS,
+  consoleCommand: DEFAULT_CONSOLE_COMMAND_SETTINGS,
   claudeSessions: {},
 };
 

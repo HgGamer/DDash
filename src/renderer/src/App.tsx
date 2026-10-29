@@ -35,6 +35,7 @@ export function App() {
     setIntegratedTerminal,
     setWebAccess,
     setAgents,
+    setConsoleCommand,
     openSettings,
     closeSettings,
     settingsModalOpen,
@@ -180,6 +181,15 @@ export function App() {
     const off = window.api.settings.onWebAccessChanged((s) => setWebAccess(s));
     return () => off();
   }, [setWebAccess]);
+
+  useEffect(() => {
+    void (async () => {
+      const current = await window.api.settings.getConsoleCommand();
+      setConsoleCommand(current);
+    })();
+    const off = window.api.settings.onConsoleCommandChanged((s) => setConsoleCommand(s));
+    return () => off();
+  }, [setConsoleCommand]);
 
   useEffect(() => {
     let cancelled = false;

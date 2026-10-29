@@ -4,6 +4,7 @@ import type {
   AgentsSettings,
   AutoUpdateInfo,
   AutoUpdateSettings,
+  ConsoleCommandSettings,
   GitViewSettings,
   DocsViewSettings,
   IntegratedTerminalSettings,
@@ -182,6 +183,11 @@ export const IPC = {
   SettingsGetAgents: 'settings:getAgents',
   SettingsSetAgents: 'settings:setAgents',
   SettingsAgentsChanged: 'settings:agentsChanged',
+
+  // The workspace toolbar's one-click console command (renderer ↔ main)
+  SettingsGetConsoleCommand: 'settings:getConsoleCommand',
+  SettingsSetConsoleCommand: 'settings:setConsoleCommand',
+  SettingsConsoleCommandChanged: 'settings:consoleCommandChanged',
 
   // Auto-update (renderer ↔ main)
   AutoUpdateGetInfo: 'autoUpdate:getInfo',
@@ -885,6 +891,11 @@ export interface DashApi {
     getAgents(): Promise<AgentsSettings>;
     setAgents(agents: AgentDef[]): Promise<AgentsSettings>;
     onAgentsChanged(handler: (s: AgentsSettings) => void): () => void;
+    getConsoleCommand(): Promise<ConsoleCommandSettings>;
+    setConsoleCommand(
+      patch: Partial<Omit<ConsoleCommandSettings, 'version'>>,
+    ): Promise<ConsoleCommandSettings>;
+    onConsoleCommandChanged(handler: (s: ConsoleCommandSettings) => void): () => void;
   };
   shell: {
     open(args: ShellOpenArgs): Promise<ShellOpenResult>;

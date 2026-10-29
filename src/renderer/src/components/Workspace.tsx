@@ -447,22 +447,54 @@ function BoardCellHead({
   );
 }
 
-/** The console the toolbar's Mail button types into. */
-interface MailTarget {
+/** The console a toolbar command types into. */
+interface CommandTarget {
   projectId: string;
   worktreeId: string | null;
   agentId: string | null;
 }
 
-/** Opens the Agent Mail inbox (the agent-mail Claude Code mod's `/mail right`)
- *  as a right-hand panel by typing the command into the active console — on
- *  the user's click, like the mod send dialog. */
-function openMail(to: MailTarget): void {
-  window.api.pty.write({ ...to, data: pastePayload('/mail right') });
-  setTimeout(() => window.api.pty.write({ ...to, data: '\r' }), ENTER_DELAY_MS);
+/**
+ * The configurable one-click command, shown both on the board toolbar and in
+ * the workspace tab bar. A click types the user's command into the active
+ * console and presses Enter — on the user's gesture, the same rule as the mod
+ * send dialog. It ships as the agent-mail mod's inbox (`/mail right`); the
+ * label and the command are settings.
+ */
+function ConsoleCommandButton({
+  target,
+  onBeforeRun,
+}: {
+  target: CommandTarget | null;
+  onBeforeRun?: () => void;
+}) {
+  const cfg = useStore((s) => s.consoleCommand);
+  if (!cfg.enabled) return null;
+
+  const run = () => {
+    if (!target) return;
+    onBeforeRun?.();
+    window.api.pty.write({ ...target, data: pastePayload(cfg.command) });
+    setTimeout(() => window.api.pty.write({ ...target, data: '\r' }), ENTER_DELAY_MS);
+  };
+
+  return (
+    <button
+      type="button"
+      className="ws-tab ws-tab-add"
+      aria-label={`Run ${cfg.command} in the active console`}
+      title={
+        target ? `Types ${cfg.command} into the active console` : 'Open a Claude console first'
+      }
+      disabled={!target}
+      onClick={run}
+    >
+      {cfg.label}
+    </button>
+  );
 }
 
-function BoardToolbar({ mailTo }: { mailTo: MailTarget | null }) {
+function BoardToolbar({ mailTo }: { mailTo: CommandTarget | null }) {
   const projects = useStore((s) => s.projects);
   const board = useStore((s) => s.board);
   const tabs = useStore((s) => s.tabs);
@@ -501,20 +533,7 @@ function BoardToolbar({ mailTo }: { mailTo: MailTarget | null }) {
         >
           + Add window
         </button>
-        <button
-          type="button"
-          className="ws-tab ws-tab-add"
-          aria-label="Open the Agent Mail inbox"
-          title={
-            mailTo
-              ? 'Open the Agent Mail inbox on the right (types /mail right into the active console; needs the agent-mail mod)'
-              : 'Open a Claude console first'
-          }
-          disabled={!mailTo}
-          onClick={() => mailTo && openMail(mailTo)}
-        >
-          ✉ Mail
-        </button>
+        <ConsoleCommandButton target={mailTo} />
         {open && (
           <div className="ws-agent-menu" role="menu">
             {selections.length === 0 ? (
@@ -755,6 +774,16 @@ function WorkspaceContentTabs({ activeId }: { activeId: ActiveSelection }) {
         })}
       </div>
       <div className="ws-header-actions">
+        <ConsoleCommandButton
+          target={{
+            projectId: activeId.projectId,
+            worktreeId: activeId.worktreeId,
+            agentId: activeAgent,
+          }}
+          // A doc tab covers the console, so the typed command would land out
+          // of sight; bring the console forward first.
+          onBeforeRun={() => activeDoc !== null && setActiveDoc(key, null)}
+        />
         <AgentLauncher
           agents={agents}
           openAgentIds={openAgents}
