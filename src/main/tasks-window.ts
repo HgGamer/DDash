@@ -1,7 +1,7 @@
 import { BrowserWindow, ipcMain } from 'electron';
 import { IPC } from '@shared/ipc';
 import { ENTER_DELAY_MS, pastePayload } from '@shared/console-paste';
-import type { TaskUserEdit } from '@shared/tasks';
+import type { TaskDraft, TaskUserEdit } from '@shared/tasks';
 import type { PtySessionManager } from './pty-session';
 import { TasksStore } from './tasks-store';
 
@@ -36,6 +36,7 @@ export function registerTasksIpc(deps: {
   });
 
   ipcMain.handle(IPC.TasksList, () => tasks.get());
+  ipcMain.handle(IPC.TasksCreate, (_e, draft: TaskDraft) => tasks.create(draft));
   ipcMain.handle(IPC.TasksEdit, (_e, edit: TaskUserEdit) => tasks.userEdit(edit));
   ipcMain.handle(IPC.TasksDelete, (_e, id: string) => tasks.remove(String(id)));
 

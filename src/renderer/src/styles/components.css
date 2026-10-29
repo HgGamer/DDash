@@ -2184,6 +2184,29 @@ html.is-mac .ws-header a {
   color: var(--color-bg);
   background: var(--color-warn);
 }
+.tasks-new {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+}
+.tasks-new-title {
+  flex: 2 1 220px;
+}
+.tasks-new .task-comment-input {
+  flex: 1 1 160px;
+  font-size: var(--text-sm);
+}
+.tasks-new-project {
+  flex: 0 1 120px;
+}
+.tasks-new-msg {
+  flex: 1 0 100%;
+  font-size: var(--text-xs);
+  color: var(--color-fg-muted);
+}
 .tasks-sessions {
   display: flex;
   flex-wrap: wrap;

@@ -76,6 +76,27 @@ export function countTasks(tasks: Task[]): TaskCounts {
   return c;
 }
 
+/** A task the user writes in the Tasks view. Nobody owns it yet, so the view
+ *  offers it to the sessions running in Dash ("Give to…"). */
+export interface TaskDraft {
+  title: string;
+  /** What the session has to do; it is handed over with the task. */
+  note?: string;
+  project?: string;
+}
+
+/** The id for a task the user typed: its title, reduced to what ids allow. */
+export function taskIdFromTitle(title: string): string {
+  const slug = title
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 60);
+  return slug || 'task';
+}
+
 /** A change the user makes in the Tasks view. */
 export interface TaskUserEdit {
   id: string;

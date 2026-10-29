@@ -73,7 +73,7 @@ import type {
   TerminalStyleSettings,
   WebAccessSettings,
 } from '@shared/types';
-import type { TasksState, TaskUserEdit } from '@shared/tasks';
+import type { TaskDraft, TasksState, TaskUserEdit } from '@shared/tasks';
 
 function subscribe<T>(channel: string, handler: (payload: T) => void): () => void {
   const listener = (_e: IpcRendererEvent, payload: T) => handler(payload);
@@ -235,6 +235,7 @@ const api: DashApi = {
   },
   tasks: {
     list: () => ipcRenderer.invoke(IPC.TasksList),
+    create: (draft: TaskDraft) => ipcRenderer.invoke(IPC.TasksCreate, draft),
     edit: (edit: TaskUserEdit) => ipcRenderer.invoke(IPC.TasksEdit, edit),
     delete: (id: string) => ipcRenderer.invoke(IPC.TasksDelete, id),
     onChanged: (cb: (state: TasksState) => void) => subscribe<TasksState>(IPC.TasksChanged, cb),

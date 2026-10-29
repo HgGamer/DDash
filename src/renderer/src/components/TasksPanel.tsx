@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import {
   TASK_STATUSES,
   TASK_STATUS_LABEL,
@@ -172,6 +172,79 @@ function TaskRow({ task, sessions }: { task: Task; sessions: TaskSession[] }) {
 }
 
 /**
+ * The task the user writes themselves. It lands on the board queued and
+ * unowned, which is what makes the row's "Give to…" appear: the user can write
+ * down work first and hand it to a session later, or never.
+ */
+function NewTaskForm({ onDone }: { onDone: () => void }) {
+  const [title, setTitle] = useState('');
+  const [note, setNote] = useState('');
+  const [project, setProject] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!title.trim() || busy) return;
+    setBusy(true);
+    try {
+      const task = await window.api.tasks.create({ title, note, project });
+      if (!task) {
+        setMsg('The board could not take it.');
+        return;
+      }
+      // Kept open, cleared: writing down a list of tasks is one sitting.
+      setTitle('');
+      setNote('');
+      setMsg(`Added #${task.id}. Hand it to a session with “Give to…”, or leave it queued.`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <form
+      className="tasks-new"
+      onSubmit={(e) => void submit(e)}
+      onKeyDown={(e) => e.key === 'Escape' && onDone()}
+    >
+      <input
+        className="task-comment-input tasks-new-title"
+        value={title}
+        autoFocus
+        placeholder="What has to be done"
+        aria-label="Task title"
+        disabled={busy}
+        onChange={(e) => setTitle(e.target.value)}
+      />
+      <input
+        className="task-comment-input"
+        value={note}
+        placeholder="Details — handed over with the task"
+        aria-label="Details"
+        disabled={busy}
+        onChange={(e) => setNote(e.target.value)}
+      />
+      <input
+        className="task-comment-input tasks-new-project"
+        value={project}
+        placeholder="Project"
+        aria-label="Project"
+        disabled={busy}
+        onChange={(e) => setProject(e.target.value)}
+      />
+      <button type="submit" className="statusbar-button" disabled={busy || !title.trim()}>
+        Add
+      </button>
+      <button type="button" className="statusbar-button" onClick={onDone}>
+        Close
+      </button>
+      {msg && <div className="tasks-new-msg">{msg}</div>}
+    </form>
+  );
+}
+
+/**
  * Tasks view: every Claude session's tasks in one list — what runs, what waits
  * for you, what is queued, what is done, and who does it. The counters filter
  * the list. Changing a status or writing a comment saves it and types a note
@@ -190,6 +263,7 @@ export function TasksPanel({
   const setTaskCounts = useStore((s) => s.setTaskCounts);
   const [state, setState] = useState<TasksState>({ tasks: [], sessions: [] });
   const [filter, setFilter] = useState<Filter>('all');
+  const [adding, setAdding] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -241,6 +315,15 @@ export function TasksPanel({
             </button>
           ))}
         </div>
+        <button
+          type="button"
+          className="statusbar-button"
+          aria-expanded={adding}
+          title="Write a task yourself, to give to a session later"
+          onClick={() => setAdding((v) => !v)}
+        >
+          New task
+        </button>
         {!standalone && (
           <button
             type="button"
@@ -252,6 +335,7 @@ export function TasksPanel({
           </button>
         )}
       </header>
+      {adding && <NewTaskForm onDone={() => setAdding(false)} />}
       {state.sessions.length > 0 && (
         <div className="tasks-sessions">
           {state.sessions.map((s) => (
@@ -266,7 +350,7 @@ export function TasksPanel({
         {shown.length === 0 ? (
           <p className="tasks-empty">
             {state.tasks.length === 0
-              ? 'No tasks yet. Claude sessions add theirs through the task channel (docs/tasks-channel.md).'
+              ? 'No tasks yet. Write one with “New task”, or let the Claude sessions add theirs through the task channel (docs/tasks-channel.md).'
               : 'Nothing in this group.'}
           </p>
         ) : (
