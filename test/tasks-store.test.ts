@@ -62,6 +62,49 @@ describe('TasksStore', () => {
   });
 });
 
+describe('TasksStore.create (the user writes a task)', () => {
+  it('makes an id from the title, queued and unowned', () => {
+    const { s } = store();
+    const t = s.create({ title: 'Tavoli kiugro splatok szurese', note: 'a Splat Factoryban' });
+    expect(t).toMatchObject({
+      id: 'tavoli-kiugro-splatok-szurese',
+      status: 'queued',
+      who: '',
+      console: '',
+      note: 'a Splat Factoryban',
+      updatedBy: 'you',
+    });
+  });
+
+  it('strips accents and numbers an id that is taken', () => {
+    const { s } = store();
+    expect(s.create({ title: 'Felbontás ellenőrzése' })?.id).toBe('felbontas-ellenorzese');
+    expect(s.create({ title: 'Felbontás ellenőrzése' })?.id).toBe('felbontas-ellenorzese-2');
+    expect(s.create({ title: '???' })?.id).toBe('task');
+    expect(s.get().tasks).toHaveLength(3);
+  });
+
+  it('refuses an empty title', () => {
+    const { s } = store();
+    expect(s.create({ title: '   ' })).toBeNull();
+    expect(s.get().tasks).toHaveLength(0);
+  });
+
+  it('hands the task over with its note, into the session console', () => {
+    const { s, typed } = store();
+    const t = s.create({ title: 'Check the export', note: 'nine clips on the share' });
+    const r = s.userEdit({
+      id: t?.id ?? '',
+      assignTo: { who: 'splatfactory-28', console: 'p::w::c' },
+      notify: true,
+    });
+    expect(r).toMatchObject({ ok: true, delivered: true });
+    expect(typed[0][1]).toContain('assigned to you (splatfactory-28)');
+    expect(typed[0][1]).toContain('what to do: nine clips on the share');
+    expect(s.get().tasks[0].who).toBe('splatfactory-28');
+  });
+});
+
 describe('TasksStore reminder', () => {
   it('lists only the open tasks of that console, waiting first', () => {
     const { s } = store();

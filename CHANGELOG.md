@@ -5,6 +5,13 @@ All notable changes to Dash are documented here.
 ## Unreleased
 
 ### Added
+- **You can write a task in the Tasks view.** "New task" takes a title, details
+  and a project, and puts it on the board `queued` with no owner — the state the
+  row's "Give to…" works on, so you can note work down now and hand it to a
+  session later, or leave it as a reminder to yourself. The id is made from the
+  title (accents stripped, numbered when it is taken). A handover now also types
+  the task's details into the session's console (`what to do: …`), because a task
+  you wrote exists only on the board. See `docs/decisions/0008-the-user-writes-tasks-too.md`.
 - **A mod can acknowledge the press it received** (`GET /mod/wait?id=…&ack=<key>`).
   A press was written into the mod’s open long poll and forgotten, which lost it
   if that poll’s client was gone while its socket still looked writable. A mod

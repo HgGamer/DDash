@@ -92,13 +92,18 @@ session that sent a `console` here.
 
 ## What the user's changes do
 
-In the Tasks view the user can change a task's status, write a comment, or hand
-an unowned task to a session. Each change is saved and, if the task's `console`
-is open in Dash, typed into that console as one line, for example:
+In the Tasks view the user can write a task themselves ("New task": title,
+details, project — it lands `queued` with no owner and an id made from the
+title), change a task's status, write a comment, or hand an unowned task to a
+session. Each change is saved and, if the task's `console` is open in Dash,
+typed into that console as one line, for example:
 
 ```
 [Task board] #k66 "K-66 metric measurement" — status set to Queued by the user — user's comment: start after the optizen queue
 ```
+
+A handover also carries the task's `note` as `what to do: …`, because a task the
+user wrote exists only on the board.
 
 The session should treat that line as the user's instruction about the task:
 pick it up, answer the comment, and report its new status back through

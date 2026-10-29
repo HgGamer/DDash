@@ -5,7 +5,9 @@ import {
   TASK_ID_RE,
   TASK_STATUSES,
   TASK_STATUS_LABEL,
+  taskIdFromTitle,
   type Task,
+  type TaskDraft,
   type TaskSession,
   type TaskStatus,
   type TasksState,
@@ -124,6 +126,18 @@ export class TasksStore {
     return task;
   }
 
+  /** A task the user wrote in the Tasks view. It starts queued and unowned, so
+   *  the view offers it to the sessions running in Dash; its id comes from the
+   *  title, numbered when that one is taken. */
+  create(d: TaskDraft): Task | null {
+    const title = str(d.title, 300)?.trim();
+    if (!title) return null;
+    const base = taskIdFromTitle(title);
+    let id = base;
+    for (let n = 2; this.state.tasks.some((t) => t.id === id); n++) id = `${base}-${n}`;
+    return this.upsert({ id, title, note: d.note, project: d.project, status: 'queued' }, 'you');
+  }
+
   remove(id: string): boolean {
     const n = this.state.tasks.length;
     this.state.tasks = this.state.tasks.filter((t) => t.id !== id);
@@ -167,7 +181,12 @@ export class TasksStore {
     if (!e.notify) return { ok: true, delivered: false };
     if (!task.console) return { ok: true, delivered: false, reason: 'no-console' };
     const parts = [`[Task board] #${task.id} "${task.title}"`];
-    if (e.assignTo) parts.push(`assigned to you (${task.who})`);
+    if (e.assignTo) {
+      parts.push(`assigned to you (${task.who})`);
+      // A task the user wrote exists only on the board, so its note is all the
+      // session has to go on; without it the line is a bare title.
+      if (task.note) parts.push(`what to do: ${task.note}`);
+    }
     if (e.status) parts.push(`status set to ${TASK_STATUS_LABEL[e.status]} by the user`);
     if (e.comment?.trim()) parts.push(`user's comment: ${e.comment.trim()}`);
     const delivered = this.typeInto(task.console, parts.join(' — '));

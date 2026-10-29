@@ -18,7 +18,7 @@ import type {
   WebAccessSettings,
   Worktree,
 } from './types';
-import type { TasksState, TaskUserEdit, TaskUserEditResult } from './tasks';
+import type { Task, TaskDraft, TasksState, TaskUserEdit, TaskUserEditResult } from './tasks';
 import type {
   GitBranch,
   GitChangedEvent,
@@ -167,6 +167,7 @@ export const IPC = {
 
   // Task board (renderer ↔ main)
   TasksList: 'tasks:list',
+  TasksCreate: 'tasks:create',
   TasksEdit: 'tasks:edit',
   TasksDelete: 'tasks:delete',
   TasksChanged: 'tasks:changed',
@@ -954,6 +955,9 @@ export interface DashApi {
   };
   tasks: {
     list(): Promise<TasksState>;
+    /** Add a task the user wrote: queued, unowned, ready to be given away.
+     *  Null when the title is empty or the board is full. */
+    create(draft: TaskDraft): Promise<Task | null>;
     /** The user's change; may type a note about it into the owner's console. */
     edit(edit: TaskUserEdit): Promise<TaskUserEditResult>;
     delete(id: string): Promise<boolean>;
